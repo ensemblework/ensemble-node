@@ -43,9 +43,9 @@ The website has no server secrets and makes no server-side calls. The browser lo
 | Website | User unit `ensemble-node-web.service`: `Restart=always`, at most 1 GB of memory so it never starves the API. Lingering starts it at boot without a login. |
 | Tunnel | Docker container, `restart: unless-stopped` |
 | Deploys | `ensemble-node-autodeploy.timer`, every minute: when `origin/production` moved, `update.sh` |
-| Watchdog | Cron at minutes 7, 22, 37 and 52 (Ensemble's runs at 0, 15, 30 and 45) and after boot: starts whatever stopped, restarts the website when `/health` is silent for a minute, restarts the tunnel when only the public URL fails |
+| Watchdog | Cron at minutes 7, 22, 37 and 52 (Ensemble's runs at 0, 15, 30 and 45) and after boot: starts whatever stopped, restarts the website when `/health` is silent for a minute, restarts the tunnel when only the public URL fails, three times in a row |
 
-Ports, all on 127.0.0.1: 13300 (website) and 20251 (tunnel metrics and `/ready`). Ensemble's home install uses 14000, 15055, 15432 and 16379; development uses 3000, 3300, 4000, 5055, 5432 and 6379.
+Ports, all on 127.0.0.1: 13300 (website) and 20251 (tunnel metrics and `/ready`). Ensemble's API, its observability stack and development servers share the machine, so check `ss -ltn` there before taking a new port.
 
 ## 3. How a deploy reaches the server
 
@@ -140,7 +140,7 @@ bash ~/ensemble-node-host/bin/watchdog.sh                          # the 15-minu
 | Symptom | Cause |
 | --- | --- |
 | `deploy` workflow: "did not report <commit> within 20 minutes" | The server's deploy failed: `journalctl --user -u ensemble-node-autodeploy -n 200 --no-pager` and `cat ~/ensemble-node-host/state/autodeploy.failed`. Push a fix, or run `update.sh` by hand. |
-| `node.ensemblework.com` shows Cloudflare error 1033 | The tunnel is down: `docker ps --filter name=ensemble-node`, `docker logs ensemble-node-cloudflared`. The watchdog restarts it within 15 minutes. |
+| `node.ensemblework.com` shows Cloudflare error 1033 | The tunnel is down: `docker ps --filter name=ensemble-node-cloudflared`, `docker logs ensemble-node-cloudflared`. The watchdog restarts it within 15 minutes. |
 | Cloudflare 502 | The tunnel is up but the website is not: `systemctl --user status ensemble-node-web` |
 | Browser console: CORS error on `api.ensemblework.com` | The API does not have the Node module yet, or `ENSEMBLE_NODE_WEB_ORIGIN` is missing, has a trailing slash, or the API was not restarted |
 | Sign-in succeeds but Node shows the landing page again | The cookie is not shared: check `ENSEMBLE_COOKIE_DOMAIN=ensemblework.com` |

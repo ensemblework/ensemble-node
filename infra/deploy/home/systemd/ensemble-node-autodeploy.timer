@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for a new Ensemble Node deploy every minute
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=1min
+AccuracySec=10s
+Persistent=false
+
+[Install]
+WantedBy=timers.target

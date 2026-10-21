@@ -1,0 +1,115 @@
+name: deploy
+
+# Ships main to the home server after ci passes on it:
+#   1. moves the `production` branch to that commit (the server checks it every minute and builds
+#      it, see infra/deploy/home/autodeploy.sh),
+#   2. waits until node.ensemblework.com reports that commit on /health and its pages answer,
+#   3. warns when Ensemble's API does not yet allow this site (CORS), without failing.
+# Does nothing until the repository variable DEPLOY_ENABLED is "true".
+#
+# Repository variables: DEPLOY_ENABLED, and optionally ENSEMBLE_NODE_URL and ENSEMBLE_API_URL
+# (defaults https://node.ensemblework.com and https://api.ensemblework.com). No secrets.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One deploy at a time. A newer run waits; it never cancels a deploy halfway.
+concurrency:
+  group: production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Move production to this commit
+    if: >-
+      vars.DEPLOY_ENABLED == 'true' && (
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.event == 'push' &&
+         github.event.workflow_run.head_repository.full_name == github.repository)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      current: ${{ steps.plan.outputs.current }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Plan
+        id: plan
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          # CI runs can finish out of order. Only main's newest commit ships;
+          # an older one would roll the website back.
+          if [ "$(git rev-parse origin/main)" = "$SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+            echo "Deploying $SHA."
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$SHA is no longer the tip of main. The newer commit's run deploys instead."
+          fi
+
+      - name: Fast-forward production
+        if: steps.plan.outputs.current == 'true'
+        env:
+          SHA: ${{ steps.plan.outputs.sha }}
+        # No --force: production only moves forward.
+        run: git push origin "$SHA:refs/heads/production"
+
+  website:
+    name: Wait for the home server
+    needs: promote
+    if: needs.promote.outputs.current == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment:
+      name: production
+      url: ${{ vars.ENSEMBLE_NODE_URL || 'https://node.ensemblework.com' }}
+    env:
+      NODE_URL: ${{ vars.ENSEMBLE_NODE_URL || 'https://node.ensemblework.com' }}
+      API_URL: ${{ vars.ENSEMBLE_API_URL || 'https://api.ensemblework.com' }}
+      SHA: ${{ needs.promote.outputs.sha }}
+    steps:
+      - name: Wait until /health reports this commit
+        run: |
+          # The server checks every minute; install and build take a few more.
+          deadline=$((SECONDS + 20 * 60))
+          until [ "$(curl -fsS --max-time 10 "$NODE_URL/health" 2>/dev/null | jq -r '.commit // empty' 2>/dev/null)" = "$SHA" ]; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$NODE_URL did not report $SHA within 20 minutes. On the server: journalctl --user -u ensemble-node-autodeploy -n 200 --no-pager, and cat ~/ensemble-node-host/state/autodeploy.failed"
+              exit 1
+            fi
+            sleep 15
+          done
+          echo "$NODE_URL serves $SHA."
+
+      - name: Pages answer
+        run: |
+          for path in / /login /chat /manifest.webmanifest; do
+            curl -fsS --max-time 15 -o /dev/null "$NODE_URL$path"
+            echo "$path: 200"
+          done
+
+      - name: Ensemble's API allows this site
+        run: |
+          headers="$(curl -sS -o /dev/null -D - --max-time 15 -X OPTIONS "$API_URL/api/node/bootstrap" \
+            -H "Origin: $NODE_URL" -H 'Access-Control-Request-Method: GET' || true)"
+          allowed="$(printf '%s\n' "$headers" | tr -d '\r' | awk 'tolower($0) ~ /^access-control-allow-origin:/ { sub(/^[^:]*:[ \t]*/, ""); print }')"
+          if [ "$allowed" = "$NODE_URL" ]; then
+            echo "$API_URL allows $NODE_URL."
+          else
+            echo "::warning::$API_URL does not allow $NODE_URL yet, so sign-in on Node fails. Ship Ensemble's Node module and set ENSEMBLE_NODE_WEB_ORIGIN=$NODE_URL in ~/ensemble-host/ensemble.env (docs/04)."
+          fi

@@ -27,7 +27,7 @@ main() {
     exit 1
   fi
   load_host_env
-  local branch target release previous
+  local branch target release previous since
   branch="$(deploy_branch)"
   if [ -z "${ENSEMBLE_NODE_DEPLOY_LOCKED:-}" ]; then
     exec 9>"$LOCK_FILE"
@@ -57,10 +57,11 @@ main() {
 
   previous="$(current_release)"
   install_runtime_files "$RELEASES/$release"
+  since="$(date '+%Y-%m-%d %H:%M:%S')"
   if [ "$previous" = "$release" ] && [ "$(served_commit)" = "$target" ]; then
     echo "Already serving $release; not restarting."
   elif ! serve_release "$release"; then
-    journalctl --user -u "$WEB_UNIT" --no-pager -n 60 >&2 || true
+    journalctl --user -u "$WEB_UNIT" --since "$since" --no-pager >&2 || true
     if [ -n "$previous" ] && [ "$previous" != "$release" ] && [ -f "$RELEASES/$previous/.release-env" ]; then
       echo "Going back to $previous." >&2
       install_runtime_files "$RELEASES/$previous"

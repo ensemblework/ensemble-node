@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Ensemble Node: a near-black petrol night (Ensemble's Deep Petrol family) with Satin Gold, the
+ * accent the Ensemble app and CLI share. Light mode keeps Ensemble's warm paper.
+ */
+:root {
+  --bg: 8 17 19;
+  --panel: 13 27 30;
+  --raised: 20 39 43;
+  --line: 34 58 62;
+  --ink: 236 233 224;
+  --muted: 140 155 153;
+  --accent: 215 181 111;
+  --accent-ink: 24 20 12;
+  --ok: 104 190 140;
+  --warn: 222 170 80;
+  --danger: 232 110 110;
+  --private: 178 150 240;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: 250 248 244;
+    --panel: 255 255 255;
+    --raised: 243 240 233;
+    --line: 228 223 212;
+    --ink: 28 26 22;
+    --muted: 112 106 95;
+    --accent: 135 99 36;
+    --accent-ink: 255 255 255;
+    --ok: 46 125 80;
+    --warn: 176 110 20;
+    --danger: 180 50 50;
+    --private: 108 76 170;
+    color-scheme: light;
+  }
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-ink antialiased;
+}
+
+::selection {
+  background: rgb(var(--accent) / 0.3);
+}
+
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--line)) transparent;
+}
+
+/* A node that is thinking breathes; reduced motion keeps it still. */
+@keyframes node-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgb(var(--accent) / 0));
+  }
+  50% {
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 10px rgb(var(--accent) / 0.45));
+  }
+}
+@keyframes node-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.1);
+  }
+}
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+.node-thinking {
+  animation: node-breathe 1.6s ease-in-out infinite;
+}
+.node-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: node-blink 5s infinite;
+}
+.float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .node-thinking,
+  .node-eyes,
+  .float-slow {
+    animation: none;
+  }
+}
+
+.glow {
+  background: radial-gradient(60% 50% at 50% 0%, rgb(var(--accent) / 0.16), transparent 70%);
+}

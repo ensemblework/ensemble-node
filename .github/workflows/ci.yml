@@ -1,5 +1,7 @@
 name: ci
 
+# Every pull request and every push to main. deploy.yml waits for this workflow to pass on main
+# before it moves `production`, which the home server deploys (docs/04).
 on:
   pull_request:
   push:
@@ -42,3 +44,22 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
           NEXT_PUBLIC_ENSEMBLE_API: https://api.example.com
           NEXT_PUBLIC_ENSEMBLE_APP: https://app.example.com
+
+  home:
+    name: Home server scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: ShellCheck
+        working-directory: infra/deploy/home
+        run: |
+          if ! command -v shellcheck >/dev/null; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          fi
+          shellcheck --version | head -2
+          shellcheck -x ./*.sh
+
+      - name: compose.yml
+        run: ENSEMBLE_NODE_HOST_DIR=/tmp/ensemble-node-host docker compose -f infra/deploy/home/compose.yml config --quiet

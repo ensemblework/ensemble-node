@@ -1,0 +1,22 @@
+# The Cloudflare Tunnel for the Ensemble Node website (setup.sh in this folder). Its own tunnel and
+# container, apart from Ensemble's API tunnel (ensemble-home-cloudflared), so neither project's
+# scripts rewrite the other's config. Docker starts it at boot (restart: unless-stopped) and
+# watchdog.sh starts it when it was stopped by hand. update.sh writes config.yml next to the
+# tunnel's credentials file.
+#
+# lib.sh (load_host_env) exports:
+#   ENSEMBLE_NODE_HOST_DIR             ~/ensemble-node-host
+#   ENSEMBLE_NODE_UID, ENSEMBLE_NODE_GID  its owner, who can read the 0600 credentials
+name: ensemble-node-home
+
+services:
+  # Dials out to Cloudflare, so the website needs no open port, router rule or fixed IP.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: ensemble-node-cloudflared
+    network_mode: host
+    user: "${ENSEMBLE_NODE_UID:-1000}:${ENSEMBLE_NODE_GID:-1000}"
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    volumes:
+      - ${ENSEMBLE_NODE_HOST_DIR:?set by lib.sh}/cloudflared:/etc/cloudflared:ro
+    restart: unless-stopped

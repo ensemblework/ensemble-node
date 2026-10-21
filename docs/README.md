@@ -8,7 +8,7 @@ Ensemble Node is a website for persistent AI teammates ("nodes"). You talk to th
 | [01 · Implementation guide](01_IMPLEMENTATION_GUIDE.md) | Architecture, what is reused from Ensemble, the main flows, safety rules, phases, risks |
 | [02 · Tech stack and environment](02_TECH_STACK_AND_ENVIRONMENT.md) | Stack, env vars, local development with Ensemble, commands, CI |
 | [03 · Repository structure](03_REPOSITORY_STRUCTURE.md) | Folders and where a change belongs |
-| [04 · Deployment and DNS](04_DEPLOYMENT_AND_DNS.md) | `node.ensemblework.com`: Cloudflare, Vercel, the Ensemble VM, Turnstile, checks |
+| [04 · Deployment and DNS](04_DEPLOYMENT_AND_DNS.md) | `node.ensemblework.com`: the home server, its Cloudflare Tunnel, CI and deploys, Ensemble's API settings, Turnstile, checks |
 | [05 · UI and UX](05_UI_AND_UX.md) | Screens, cards, live updates, look and feel |
 | [06 · Capabilities and roadmap](06_CAPABILITIES_AND_ROADMAP.md) | Grok Bot / ChatGPT Dots parity, where Node goes further, ideas backlog |
 

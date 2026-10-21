@@ -5,6 +5,7 @@ ensemble-node/
 ├── apps/node-web/               the website (Next.js 15)
 │   ├── app/
 │   │   ├── page.tsx             landing (signed in → /chat)
+│   │   ├── health/route.ts      /health: the commit being served (deploys, watchdog)
 │   │   ├── login/               sign in / create account (email, providers, Turnstile)
 │   │   ├── welcome/             onboarding: verify, account, first node or crew, connect a computer
 │   │   └── (app)/               signed-in shell (sidebar, activity panel, live stream)
@@ -28,7 +29,9 @@ ensemble-node/
 │   │   └── types.ts             what /api/node/* sends
 │   └── public/brand/            Ensemble mark
 ├── docs/                        these guides; research/; design/pre-v0/
-└── .github/workflows/ci.yml
+├── infra/deploy/home/           hosting on the home server: setup, update (release builds), autodeploy,
+│                                watchdog, the tunnel's compose file, systemd units, env example
+└── .github/workflows/           ci.yml (checks), deploy.yml (production → the home server)
 ```
 
 ## Where a change belongs
@@ -40,3 +43,4 @@ ensemble-node/
 | A new Hub tool nodes should have | Ensemble's assistant registry: every Hub tool is a node tool too |
 | The CLI's Node tab | Ensemble: `apps/cli/src/tui/node.ts`, `app.tsx` |
 | Sign-in behaviour | Ensemble: `routes/auth*.ts` (Node only calls them) |
+| Hosting, deploys, CI | `infra/deploy/home/`, `.github/workflows/` ([04](04_DEPLOYMENT_AND_DNS.md)) |

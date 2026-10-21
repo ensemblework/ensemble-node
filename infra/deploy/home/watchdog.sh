@@ -4,8 +4,8 @@
 #   1. The tunnel: `docker compose up -d` starts its container when it stopped.
 #   2. The website and the autodeploy timer: started when they are not active.
 #   3. Loopback /health: when it does not answer for a minute, the website restarts.
-#   4. NODE_WEB_PUBLIC_URL/health: when loopback answers, the internet is reachable and the public
-#      URL still fails, the tunnel container restarts.
+#   4. NODE_WEB_PUBLIC_URL/health, once the tunnel reports ready (or after 30 seconds): when loopback
+#      answers, the internet is reachable and the public URL still fails, the tunnel container restarts.
 # It waits for a running deploy to finish first. Log: ~/ensemble-node-host/logs/watchdog.log.
 set -uo pipefail
 
@@ -66,6 +66,11 @@ if ! $up; then
 fi
 
 public="${NODE_WEB_PUBLIC_URL%/}/health"
+# A tunnel that has just started needs a few seconds to connect before the public URL can answer.
+for _ in $(seq 1 10); do
+  if curl -fsS -o /dev/null --max-time 3 "http://$TUNNEL_METRICS/ready" 2>/dev/null; then break; fi
+  sleep 3
+done
 if $up && ! curl -fsS -o /dev/null --max-time 15 "$public" 2>/dev/null; then
   if curl -fsS -o /dev/null --max-time 10 https://www.cloudflare.com/cdn-cgi/trace 2>/dev/null; then
     log "$public failed while loopback answers; restarting the tunnel"

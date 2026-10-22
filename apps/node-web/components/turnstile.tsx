@@ -20,6 +20,8 @@ export function Turnstile({ siteKey, onToken }: { siteKey: string; onToken: (tok
       if (cancelled || !box.current || !window.turnstile) return;
       widget = window.turnstile.render(box.current, {
         sitekey: siteKey,
+        // Ensemble's API rejects a token whose action is not "signup" (hub-api lib/turnstile.ts).
+        action: "signup",
         theme: "auto",
         callback: (token: string) => onToken(token),
         "expired-callback": () => onToken(null),

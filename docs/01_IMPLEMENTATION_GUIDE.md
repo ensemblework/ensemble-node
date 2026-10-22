@@ -18,7 +18,7 @@ Rules that do not bend:
 ## 2. Architecture
 
 ```
- node.ensemblework.com (this repo, Next.js on the home server, behind a Cloudflare Tunnel)
+ node.ensemblework.com (this repo, Next.js on Vercel)
         │  fetch + EventSource, credentials: include (Ensemble session cookie, Domain=ensemblework.com)
         ▼
  api.ensemblework.com  ── Ensemble hub-api (one process, one Postgres, one Redis)
@@ -104,8 +104,8 @@ The group "Launch" has Mira, Ben, Asha and one representative node each. Each pe
 
 ## 5. Models and credits
 
-- Default chat model: included **gpt‑5‑mini**, one of the API server's `ENSEMBLE_INCLUDED_MODELS`. A node can be switched to another included model on the server. When included AI is off (local dev), the owner's own medium tier is used.
-- Every account gets **20,000 credits per UTC month** (`ENSEMBLE_INCLUDED_MONTHLY_CREDITS`, default 20000), shared by Ensemble, the CLI and Node. The operator's global ceiling (`ENSEMBLE_INCLUDED_TOTAL_MONTHLY_USD`) protects the overall budget, for example $20 per test user.
+- Chat model: any model included with Ensemble, chosen per node on its page (grouped Everyday and Step-up, with name, version and relative credits as on the Hub). The list is Ensemble's own (`ENSEMBLE_INCLUDED_MODELS`, served in `/api/node/bootstrap`), so a deployment added there shows on Node, the Hub and the CLI at once. Default: **gpt‑5‑mini**, else the first everyday model. When included AI is off (local dev), the owner's own medium tier is used.
+- Every account gets **20,000 credits per UTC month** (`ENSEMBLE_INCLUDED_MONTHLY_CREDITS`, default 20000), shared by every Ensemble app: the Hub, the desktop app, the CLI and Node. The operator's global ceiling (`ENSEMBLE_INCLUDED_TOTAL_MONTHLY_USD`) protects the overall budget.
 - Metrics show Node's spend as purposes `Ensemble Node` and `Ensemble Node routing`.
 - Work on the computer uses the run profile's engine on the person's own sign‑in (Claude Code, Codex, Cursor) or Ensemble's agent. It is not a Node chat cost.
 

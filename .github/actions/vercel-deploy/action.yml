@@ -1,0 +1,43 @@
+name: Publish on Vercel
+description: Build the Node website from this checkout and publish it to production.
+
+inputs:
+  token:
+    description: Vercel access token
+    required: true
+  org-id:
+    description: Vercel team (or personal account) id
+    required: true
+  project-id:
+    description: Vercel project id
+    required: true
+  commit:
+    description: The commit being published; /health reports it
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Pull settings, build, publish
+      shell: bash
+      env:
+        VERCEL_TOKEN: ${{ inputs.token }}
+        VERCEL_ORG_ID: ${{ inputs.org-id }}
+        VERCEL_PROJECT_ID: ${{ inputs.project-id }}
+        VERCEL_TELEMETRY_DISABLED: "1"
+        NEXT_TELEMETRY_DISABLED: "1"
+        ENSEMBLE_NODE_COMMIT: ${{ inputs.commit }}
+      run: |
+        set -euo pipefail
+        if [ -z "$VERCEL_TOKEN" ]; then
+          echo "::error::Set the VERCEL_TOKEN repository secret (docs/04_DEPLOYMENT_AND_DNS.md)."
+          exit 1
+        fi
+        # Root Directory, Node version and NEXT_PUBLIC_* values come from the Vercel project.
+        npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+        npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+        # Upload only the built output, without git metadata. On the Hobby plan Vercel
+        # refuses a deploy whose commit author is not the account owner (a merged PR).
+        rm -rf .git
+        npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN" >/dev/null
+        echo "Published."

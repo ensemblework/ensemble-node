@@ -11,6 +11,12 @@ import type { Avatar, NodeFull } from "@/lib/types";
 import { dmRoomOf } from "@/components/shell";
 import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "@/components/node-avatar";
 import { Button, Field, Input, Notice, Spinner, Textarea } from "@/components/ui";
+import { modelLabel } from "@/lib/text";
+
+const MODEL_GROUPS = [
+  { role: "everyday", label: "Everyday" },
+  { role: "step-up", label: "Step-up: harder work, more credits" },
+] as const;
 
 type Memory = { id: string; content: string; createdAt: string };
 
@@ -108,14 +114,24 @@ function NodeEditor({ node }: { node: NodeFull }) {
           <Field label="Charter" hint="How this node works: what it owns, your conventions, your style. Only you see it.">
             <Textarea value={charter} onChange={(event) => setCharter(event.target.value)} rows={9} maxLength={8000} />
           </Field>
-          <Field label="Chat model" hint="The model the node talks and plans with, paid from your Ensemble credits. Work on your computer uses your run profile's agent and model.">
+          <Field
+            label="Chat model"
+            hint="The model the node talks and plans with, from the models included with Ensemble, paid from your monthly Ensemble credits. × is a typical turn's credits compared with the 1× model. Work on your computer uses your run profile's agent and model."
+          >
             <select value={model} onChange={(event) => setModel(event.target.value)} className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm">
               <option value="">Default ({options.find((row) => row.default)?.label ?? boot.data?.models.default ?? "GPT-5 mini"})</option>
-              {options.map((row) => (
-                <option key={row.model} value={row.model}>
-                  {row.label}
-                </option>
-              ))}
+              {MODEL_GROUPS.map((group) => {
+                const rows = options.filter((row) => (row.role ?? "everyday") === group.role);
+                return rows.length ? (
+                  <optgroup key={group.role} label={group.label}>
+                    {rows.map((row) => (
+                      <option key={row.model} value={row.model}>
+                        {modelLabel(row)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null;
+              })}
             </select>
           </Field>
           <Field label="In rooms with other people" group>

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ago, insertMention, matchHandles, mergeMessage, pieces, typingMention } from "./text";
+import { ago, insertMention, matchHandles, mergeMessage, modelLabel, pieces, typingMention } from "./text";
 
 test("time ago is short", () => {
   const now = Date.parse("2026-10-19T12:00:00Z");
@@ -42,4 +42,9 @@ test("messages merge by id or clientId, in seq order", () => {
   const merged = mergeMessage(list, { id: "b", seq: 2, clientId: "c1" });
   assert.deepEqual(merged.map((row) => row.id), ["a", "b"]);
   assert.deepEqual(mergeMessage(merged, { id: "a", seq: 1, clientId: null }).length, 2);
+});
+
+test("a model shows its name, version and relative credits when the server sends them", () => {
+  assert.equal(modelLabel({ label: "GPT-6.1 Sol (2026-09-29)", relativeCost: 20 }), "GPT-6.1 Sol (2026-09-29) · 20× credits");
+  assert.equal(modelLabel({ label: "GPT-5 mini (2025-08-07)" }), "GPT-5 mini (2025-08-07)");
 });

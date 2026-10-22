@@ -8,10 +8,10 @@
 | Fonts and brand | Figtree and JetBrains Mono. Ensemble's Woven Chorus mark (`public/brand/`, copied from Ensemble's `packages/brand/assets`). Satin Gold `#D7B56F` on a near-black petrol night; Ensemble's warm paper in light mode. |
 | Backend | Ensemble hub-api (Fastify 5, Prisma 6, PostgreSQL, Redis) — module `src/node/` in the Ensemble repository |
 | Live updates | Server-sent events from `GET /api/node/events` (EventSource with credentials) |
-| Models | Ensemble's included AI (Azure AI Foundry): gpt-5-mini by default |
+| Models | Ensemble's included AI (Azure AI Foundry): every model Ensemble offers, gpt-5-mini by default |
 | Package manager / runtime | pnpm 12, Node 22 |
 
-The website has no server logic beyond `/health` (the commit it serves): every page is a client of Ensemble's API. Production runs `next start` on the home server ([04](04_DEPLOYMENT_AND_DNS.md)).
+The website has no server logic beyond `/health` (the commit it serves): every page is a client of Ensemble's API. Production is the Vercel project `ensemble-node` ([04](04_DEPLOYMENT_AND_DNS.md)).
 
 ## Environment
 
@@ -22,16 +22,16 @@ The website needs two public values, baked in at build time:
 | `NEXT_PUBLIC_ENSEMBLE_API` | `https://api.ensemblework.com` | `http://localhost:4000` (default) |
 | `NEXT_PUBLIC_ENSEMBLE_APP` | `https://app.ensemblework.com` | `http://localhost:3000` (default) |
 
-On the home server they live in `~/ensemble-node-host/node-web.env` with the website's other settings ([04 §2](04_DEPLOYMENT_AND_DNS.md#2-on-the-server)).
+In production they are the Vercel project's environment variables ([04 §1](04_DEPLOYMENT_AND_DNS.md#1-vercel)).
 
-Ensemble's API needs (in `~/ensemble-host/ensemble.env` on the home server, or `.env` locally):
+Ensemble's API needs (in its server env file, or `.env` locally):
 
 | Variable | Value | Why |
 | --- | --- | --- |
 | `ENSEMBLE_NODE_WEB_ORIGIN` | `https://node.ensemblework.com` (local: `http://localhost:3300`) | CORS allowlist and the return after a provider sign-in. Production refuses a value that is not https or cannot share the cookie. |
 | `ENSEMBLE_COOKIE_DOMAIN` | `ensemblework.com` (already set) | One session for app., node. and api. |
-| `ENSEMBLE_INCLUDED_MODELS` | Ensemble's list (includes `gpt-5-mini`) | The Azure AI Foundry deployments Ensemble offers; Node defaults to gpt-5-mini |
-| `ENSEMBLE_INCLUDED_MONTHLY_CREDITS` | `20000` (default) | Per account per month, shared by all three apps |
+| `ENSEMBLE_INCLUDED_MODELS` | Ensemble's list | The Azure AI Foundry deployments Ensemble offers; nodes can use each of them and default to gpt-5-mini |
+| `ENSEMBLE_INCLUDED_MONTHLY_CREDITS` | `20000` (default) | Per account per month, shared by every Ensemble app |
 | `ENSEMBLE_NODE` | unset (on) | `off` stops node turns and run reports |
 | `ENSEMBLE_NODE_PARALLEL` | `4` (default) | Node turns at once per API process |
 
@@ -69,6 +69,6 @@ Backend checks live in Ensemble: `pnpm --filter @ensemble/hub-api test:public` (
 
 ## CI and deploys
 
-`.github/workflows/ci.yml` runs on every pull request and push to `main`: **Typecheck, tests and build** (install, typecheck, unit tests, `next build`) and **Home server scripts** (ShellCheck on `infra/deploy/home/*.sh` and the compose file). Both are required on `main`.
+`.github/workflows/ci.yml` runs **Typecheck, tests and build** (install, typecheck, unit tests, `next build`) on every pull request and push to `main`; it is required on `main`.
 
-`.github/workflows/deploy.yml` runs when CI passes on `main`: it fast-forwards `production`, the home server builds and serves it within a couple of minutes, and the workflow waits until `https://node.ensemblework.com/health` reports the commit ([04 §3](04_DEPLOYMENT_AND_DNS.md#3-how-a-deploy-reaches-the-server)).
+`.github/workflows/deploy.yml` runs when CI passes on `main`: it builds the commit, publishes it to Vercel and waits until `https://node.ensemblework.com/health` reports it ([04 §2](04_DEPLOYMENT_AND_DNS.md#2-how-a-deploy-happens)).

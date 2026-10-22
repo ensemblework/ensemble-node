@@ -1,14 +1,12 @@
 name: deploy
 
-# Ships main to the home server after ci passes on it:
-#   1. moves the `production` branch to that commit (the server checks it every minute and builds
-#      it, see infra/deploy/home/autodeploy.sh),
-#   2. waits until node.ensemblework.com reports that commit on /health and its pages answer,
-#   3. warns when Ensemble's API does not yet allow this site (CORS), without failing.
+# Publishes main to node.ensemblework.com (Vercel project "ensemble-node") after ci passes on it,
+# then waits until the site reports that commit on /health and checks that Ensemble's API allows it.
 # Does nothing until the repository variable DEPLOY_ENABLED is "true".
 #
-# Repository variables: DEPLOY_ENABLED, and optionally ENSEMBLE_NODE_URL and ENSEMBLE_API_URL
-# (defaults https://node.ensemblework.com and https://api.ensemblework.com). No secrets.
+# Repository secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID. Optional repository variables:
+# ENSEMBLE_NODE_URL and ENSEMBLE_API_URL (defaults https://node.ensemblework.com and
+# https://api.ensemblework.com).
 on:
   workflow_run:
     workflows: [ci]
@@ -17,7 +15,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 # One deploy at a time. A newer run waits; it never cancels a deploy halfway.
 concurrency:
@@ -25,8 +23,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  promote:
-    name: Move production to this commit
+  website:
+    name: Publish the website (Vercel)
     if: >-
       vars.DEPLOY_ENABLED == 'true' && (
         (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
@@ -36,74 +34,74 @@ jobs:
          github.event.workflow_run.head_repository.full_name == github.repository)
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      sha: ${{ steps.plan.outputs.sha }}
-      current: ${{ steps.plan.outputs.current }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-          fetch-depth: 0
-
-      - name: Plan
-        id: plan
-        env:
-          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-        run: |
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-          # CI runs can finish out of order. Only main's newest commit ships;
-          # an older one would roll the website back.
-          if [ "$(git rev-parse origin/main)" = "$SHA" ]; then
-            echo "current=true" >> "$GITHUB_OUTPUT"
-            echo "Deploying $SHA."
-          else
-            echo "current=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::$SHA is no longer the tip of main. The newer commit's run deploys instead."
-          fi
-
-      - name: Fast-forward production
-        if: steps.plan.outputs.current == 'true'
-        env:
-          SHA: ${{ steps.plan.outputs.sha }}
-        # No --force: production only moves forward.
-        run: git push origin "$SHA:refs/heads/production"
-
-  website:
-    name: Wait for the home server
-    needs: promote
-    if: needs.promote.outputs.current == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     environment:
       name: production
       url: ${{ vars.ENSEMBLE_NODE_URL || 'https://node.ensemblework.com' }}
     env:
       NODE_URL: ${{ vars.ENSEMBLE_NODE_URL || 'https://node.ensemblework.com' }}
       API_URL: ${{ vars.ENSEMBLE_API_URL || 'https://api.ensemblework.com' }}
-      SHA: ${{ needs.promote.outputs.sha }}
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - name: Wait until /health reports this commit
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SHA }}
+          fetch-depth: 0
+
+      - name: Plan
+        id: plan
         run: |
-          # The server checks every minute; install and build take a few more.
-          deadline=$((SECONDS + 20 * 60))
+          # CI runs can finish out of order. Only main's newest commit ships;
+          # an older one would roll the website back.
+          if [ "$(git rev-parse origin/main)" = "$SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+            echo "Publishing $SHA."
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$SHA is no longer the tip of main. The newer commit's run publishes instead."
+          fi
+
+      - uses: pnpm/action-setup@v5
+        if: steps.plan.outputs.current == 'true'
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v5
+        if: steps.plan.outputs.current == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - if: steps.plan.outputs.current == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - uses: ./.github/actions/vercel-deploy
+        if: steps.plan.outputs.current == 'true'
+        with:
+          token: ${{ secrets.VERCEL_TOKEN }}
+          org-id: ${{ secrets.VERCEL_ORG_ID }}
+          project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          commit: ${{ env.SHA }}
+
+      - name: Wait until /health reports this commit
+        if: steps.plan.outputs.current == 'true'
+        run: |
+          deadline=$((SECONDS + 5 * 60))
           until [ "$(curl -fsS --max-time 10 "$NODE_URL/health" 2>/dev/null | jq -r '.commit // empty' 2>/dev/null)" = "$SHA" ]; do
             if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "::error::$NODE_URL did not report $SHA within 20 minutes. On the server: journalctl --user -u ensemble-node-autodeploy -n 200 --no-pager, and cat ~/ensemble-node-host/state/autodeploy.failed"
+              echo "::error::$NODE_URL did not report $SHA within 5 minutes. Check the deployment in Vercel (project ensemble-node) and the node DNS record (docs/04)."
               exit 1
             fi
-            sleep 15
+            sleep 10
           done
-          echo "$NODE_URL serves $SHA."
-
-      - name: Pages answer
-        run: |
           for path in / /login /chat /manifest.webmanifest; do
             curl -fsS --max-time 15 -o /dev/null "$NODE_URL$path"
             echo "$path: 200"
           done
+          echo "$NODE_URL serves $SHA."
 
       - name: Ensemble's API allows this site
+        if: steps.plan.outputs.current == 'true'
         run: |
           headers="$(curl -sS -o /dev/null -D - --max-time 15 -X OPTIONS "$API_URL/api/node/bootstrap" \
             -H "Origin: $NODE_URL" -H 'Access-Control-Request-Method: GET' || true)"
@@ -111,5 +109,5 @@ jobs:
           if [ "$allowed" = "$NODE_URL" ]; then
             echo "$API_URL allows $NODE_URL."
           else
-            echo "::warning::$API_URL does not allow $NODE_URL yet, so sign-in on Node fails. Ship Ensemble's Node module and set ENSEMBLE_NODE_WEB_ORIGIN=$NODE_URL in ~/ensemble-host/ensemble.env (docs/04)."
+            echo "::warning::$API_URL does not allow $NODE_URL, so sign-in on Node fails. ENSEMBLE_NODE_WEB_ORIGIN=$NODE_URL must be set for Ensemble's API (docs/04)."
           fi

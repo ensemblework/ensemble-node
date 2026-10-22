@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The commit this build is published from (set by .github/actions/vercel-deploy); /health reports it.
+  env: { ENSEMBLE_NODE_COMMIT: process.env.ENSEMBLE_NODE_COMMIT ?? "" },
   devIndicators: false,
   poweredByHeader: false,
   async headers() {

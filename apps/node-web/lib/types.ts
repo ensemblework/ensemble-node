@@ -63,7 +63,18 @@ export type Credits = { available: boolean; limit: number; used: number; remaini
 
 export type NodeTemplate = { id: string; name: string; slug: string; role: string; summary: string; avatar: Avatar; charter: string };
 export type CrewTemplate = { id: string; title: string; summary: string; nodes: string[]; lead: string };
-export type ModelOption = { provider: string; model: string; label: string; default: boolean };
+/** One of the included models Ensemble's server offers (the same list as the Hub and the CLI). */
+export type ModelOption = {
+  provider: string;
+  model: string;
+  /** Name and version: "GPT-6 Luna (2026-09-22)". */
+  label: string;
+  vendor?: string;
+  role?: "everyday" | "step-up";
+  /** A typical turn's credits relative to the 1× model, as on the Hub's cost badge. */
+  relativeCost?: number;
+  default: boolean;
+};
 
 export type Bootstrap = {
   me: { id: string; name: string | null; email: string; verified: boolean };

@@ -83,3 +83,8 @@ export const TOOL_LABEL = (name: string): string =>
     .replace(/^(hub|node|apps)_/, "")
     .replace(/_/g, " ")
     .replace(/^./, (first) => first.toUpperCase());
+
+/** A model as the chat model menu shows it: "GPT-6.1 Sol (2026-09-29) · 20× credits". */
+export function modelLabel(option: { label: string; relativeCost?: number }): string {
+  return option.relativeCost ? `${option.label} · ${option.relativeCost}× credits` : option.label;
+}

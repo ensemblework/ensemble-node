@@ -20,7 +20,7 @@ Inspired by Grok Bot and ChatGPT Dots: a chat-first app with characterful agents
 | Home `/chat` | "What should your nodes do?" composer with a node picker (sends to that node's DM), waiting-approvals banner, the node grid, recent rooms. |
 | Room `/r/:id` | Header (node face or room icon, members, settings); messages; live "thinking/writing" rows; composer with @-mention menu and Only me (rooms with other people); Stop while your nodes work. Empty rooms show suggestions. |
 | Room settings (drawer) | Rename and pick the lead (creator); members with lead/represents badges; add your nodes; invite by email and "what you handle here" (groups); leave or remove; delete room. |
-| Node `/n/:id` | Look (shape, colour, eyes), name, role, charter, chat model (included models), "in rooms with other people" (ask first / post on its own), memory list (add, forget), pause/resume, delete. |
+| Node `/n/:id` | Look (shape, colour, eyes), name, role, charter, chat model (every included model, grouped Everyday and Step-up, with relative credits), "in rooms with other people" (ask first / post on its own), memory list (add, forget), pause/resume, delete. |
 | New `/new` | Node (templates), crew (Software team, Research desk), room (group or crew; pick nodes). |
 | Activity (panel on wide screens, `/activity` on phones) | Waiting for you, computer runs (open the task in Ensemble), recent turns with credits, computers, credits meter. |
 | Settings `/settings` | Account, credits (link to Ensemble Metrics), computers and how to pair one, links to Ensemble's assistant settings / Needs me / board, sign out. |

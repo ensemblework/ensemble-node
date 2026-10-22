@@ -21,7 +21,7 @@ People who already organise work in Ensemble and want teammates that take a requ
 - Approvals: held Ensemble writes and every computer job wait for an owner‑only card. Shared‑room posts are drafted for the owner unless the owner lets the node post on its own.
 - Computer runs are shown as cards, followed until they end, and reported back by the node.
 - Live updates: messages, cards, "thinking…", and the reply being written.
-- Credits: the included GPT‑5 mini by default, drawing on the account's shared 20,000 monthly credits.
+- Models and credits: every model included with Ensemble (its Azure AI Foundry deployments), GPT‑5 mini by default, drawing on the account's 20,000 monthly Ensemble credits, which every Ensemble app shares.
 - The Ensemble CLI has a third, read‑only **Node** tab.
 
 What is not in v0: scheduled routines, push notifications, native phone apps, invite links, voice, and using your own model keys for nodes (see [06](06_CAPABILITIES_AND_ROADMAP.md)).

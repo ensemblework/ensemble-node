@@ -72,7 +72,7 @@ GitHub settings: the repository variable `DEPLOY_ENABLED=true` (anything else an
 | apex, `www`, `app` | Vercel records | | DNS only | Ensemble |
 
 - Keep `node` **proxied**: a tunnel record works only through Cloudflare's proxy. Cloudflare's Universal SSL certificate covers `node.ensemblework.com`, so there is no certificate on the server.
-- **Turnstile:** Cloudflare → Turnstile → the Ensemble widget → **Hostname management** → add `node.ensemblework.com`. Without it the human check on Node's email sign-up fails. The site key is the same; Node reads it from `/api/auth/status`.
+- **Turnstile:** use the existing **Ensemble signup** widget; do not create another. Node has no Turnstile keys of its own: it shows the widget with the site key from `/api/auth/status`, and Ensemble's API checks the answer with that widget's secret, so a second widget's keys would fail every check. In the widget → **Settings** → **Hostname Management**: if it lists `ensemblework.com`, every subdomain is already allowed and nothing changes; if it lists `app.ensemblework.com`, add `node.ensemblework.com`. Ensemble's API must also accept answers solved on `node.ensemblework.com` (§5).
 - **Google, Microsoft, GitHub sign-in:** nothing to change. Their callbacks are on `api.ensemblework.com`; Node starts them with `?return=node`.
 - **Email (Resend):** nothing to change.
 
@@ -97,6 +97,8 @@ curl -s https://api.ensemblework.com/api/node/bootstrap   # → 401 {"error":"Si
 ```
 
 Until then, `node.ensemblework.com` loads but cannot sign in, and the `deploy` workflow says so in a warning.
+
+The Node module must also let Turnstile answers from `ENSEMBLE_NODE_WEB_ORIGIN`'s host through. Today `apps/hub-api/src/lib/turnstile.ts` accepts only `HUB_WEB_ORIGIN`'s host (`app.ensemblework.com`), so email sign-up on Node fails until it does. Signing in, and signing up with Google, Microsoft or GitHub, do not use Turnstile.
 
 ## 6. A new machine
 
@@ -128,7 +130,7 @@ bash ~/ensemble-node-host/bin/watchdog.sh                          # the 15-minu
 - [x] The website on the home server, deployed from `production` by the timer.
 - [x] CI, the `deploy` workflow, `DEPLOY_ENABLED=true` and branch protection.
 - [x] `ENSEMBLE_NODE_WEB_ORIGIN` in `~/ensemble-host/ensemble.env`.
-- [ ] Turnstile hostname `node.ensemblework.com` (Cloudflare dashboard, §4).
+- [ ] Turnstile: `node.ensemblework.com` allowed on the existing Ensemble signup widget (§4), and Ensemble's API accepts answers solved there (§5).
 - [ ] Ensemble's Node module merged and deployed; the check in §5 passes and the `deploy` workflow stops warning.
 - [ ] Create an account on Node, verify the code, make a node, ask it to add a task; the task shows on `app.ensemblework.com`.
 - [ ] Sign in on the Hub in the same browser: same account, no second sign-in.
@@ -145,7 +147,7 @@ bash ~/ensemble-node-host/bin/watchdog.sh                          # the 15-minu
 | Browser console: CORS error on `api.ensemblework.com` | The API does not have the Node module yet, or `ENSEMBLE_NODE_WEB_ORIGIN` is missing, has a trailing slash, or the API was not restarted |
 | Sign-in succeeds but Node shows the landing page again | The cookie is not shared: check `ENSEMBLE_COOKIE_DOMAIN=ensemblework.com` |
 | Provider sign-in lands on the Hub, not Node | `ENSEMBLE_NODE_WEB_ORIGIN` unset on the API |
-| The human check fails on Node's sign-up | `node.ensemblework.com` is missing from the Turnstile widget's hostnames |
+| The human check fails on Node's sign-up | `node.ensemblework.com` is not allowed on the Ensemble signup widget, or Ensemble's API does not yet accept answers solved there (§5) |
 | "Verify your email to talk to nodes" | The account has not entered its code yet (`/welcome`) |
 | Nodes answer "You've used this month's Ensemble credits" | The account's 20,000 are spent, or the global ceiling paused included AI |
 | Nodes never answer | `ENSEMBLE_NODE=off`, or included AI not configured and no personal model; the owner sees an error notice in the room |

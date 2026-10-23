@@ -66,3 +66,7 @@ Links that leave Node (Ensemble, ensemblework.com, vendors, links in messages) o
 ## Responsive and installable
 
 Phones get a top bar with the menu (sidebar as a sheet, with a dot when requests or Needs me wait), Search, and an Activity button with a dot when something waits. From 768 px the sidebar is fixed; from 1024 px the Activity panel sits on the right and can be hidden. The web manifest makes it installable to a Home Screen (start URL `/chat`). `public/sw.js` is ready for web push (v1).
+
+## The testing website
+
+`node-test.ensemblework.com` looks the same, with a **Testing** label next to the wordmark (`components/brand.tsx`), "Ensemble Node Testing" as the page title and installed app name, and a no-index robots tag (`lib/config.ts`, `NEXT_PUBLIC_ENSEMBLE_NODE_ENV=testing`). Its links into Ensemble open the testing Hub, "Download Ensemble" opens the testing CLI's `cli-testing-latest` release, and the computer commands it shows name the testing CLI (`ensemble-test browse on`; `CLI_COMMAND` and `ENSEMBLE_LINKS` in `lib/config.ts`). Its accounts are the testing Ensemble's ([04](04_DEPLOYMENT_AND_DNS.md#hosting-data-and-accounts)).

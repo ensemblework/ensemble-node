@@ -21,7 +21,23 @@ Nothing crosses over. An account, a session, a node or a paired computer of one 
                                                           └► api.ensemblework.com      ─► Ensemble's production API (home server)
 ```
 
-Each website has no server secrets and makes no server-side calls. Node keeps no files of its own: nodes, rooms and messages are rows in that Ensemble's Postgres. Node's backend is the `node` module of Ensemble's API, so each Node environment needs its Ensemble to have the matching module: Node `testing` follows Ensemble `testing`, and Node `main` follows Ensemble `main`.
+Each website has no server secrets and makes no server-side calls. Node's backend is the `node` module of Ensemble's API, so each Node environment needs its Ensemble to have the matching module: Node `testing` follows Ensemble `testing`, and Node `main` follows Ensemble `main`.
+
+## Hosting, data and accounts
+
+| | Testing | Production |
+| --- | --- | --- |
+| Website (pages and `/health`) | Vercel `ensemble-node-test` | Vercel `ensemble-node` |
+| Node's backend: routes, node turns, routing, the run watcher | Ensemble's testing API, on the home server | Ensemble's production API, on the home server |
+| Node's data | Tables in Ensemble's testing Postgres | Tables in Ensemble's production Postgres |
+| Backups | Ensemble's testing backups (a dump before each deploy) | Ensemble's production backups (nightly and before each deploy) |
+| Accounts | Ensemble testing accounts (`test.ensemblework.com`) | Ensemble accounts (`app.ensemblework.com`) |
+
+- **No server of its own.** The website is static pages plus `/health`, served by Vercel. Nothing of Node is installed on the home server apart from Ensemble's API, which has the `node` module built in: Ensemble's production install and its testing install (each with its own checkout, env file, Postgres and Redis) serve Node as part of their API. There is no Node directory, service, port or tunnel on the home server.
+- **No database of its own.** Node's tables (`node_*`: nodes, rooms, members, messages, turns, runs, memories and, where Ensemble has them, requests to join rooms; Ensemble's `docs/35_ENSEMBLE_NODE.md` lists them) are created by Ensemble's migrations in that environment's Ensemble database, next to tasks and pages. Every row belongs to an account, so Ensemble's account export and deletion cover Node. A node's work in the workspace (tasks, pages, files) is ordinary Ensemble data; its model calls are Ensemble's included models and credits.
+- **A Node account is an Ensemble account.** Signing up on Node creates the Ensemble account; signing in to Node with an Ensemble account shows that account's workspace, connected apps, paired computers and credits.
+- **Testing and production accounts are separate.** They are two sets of accounts in two databases. The same email can have an account in each, and the two share nothing: not the password, nodes, rooms, messages, memories, connected apps, paired computers or credits. The testing API's cookies have their own names, so a browser can be signed in to both at once, and a session from one API is refused by the other (401).
+- **Nothing is copied between them.** Promotion moves code from `testing` to `main`, never data.
 
 ## 1. Daily development (testing)
 
@@ -29,7 +45,7 @@ Each website has no server secrets and makes no server-side calls. Node keeps no
 2. Every push to `testing` runs the checks, then builds that commit on Vercel (`vercel build` is a full production build of the site), publishes it to `ensemble-node-test`, waits until `https://node-test.ensemblework.com/health` reports the commit with `environment: testing`, and checks that Ensemble's testing API allows the site. Only the newest `testing` commit publishes.
 3. Ensemble changes Node needs go to Ensemble's `testing` branch first (Ensemble's `docs/36_WEB_TESTING.md`); the testing API runs them within minutes.
 
-Testing is shared integration work: a push can briefly interrupt the testing site. Sign in there with an account of `test.ensemblework.com`; the testing API offers email sign-up (Turnstile and a code by email) and no Google, Microsoft or GitHub sign-in.
+Testing is shared integration work: a push can briefly interrupt the testing site. Sign in there with an account of `test.ensemblework.com`; the testing API offers email sign-up (Turnstile and a code by email) and no Google, Microsoft or GitHub sign-in. The testing site is labelled **Testing** (next to the wordmark, in the page title and in the installed app's name), asks search engines not to index it, and its links for pairing a computer lead to the testing Hub and the testing CLI (`ensemble-test`, Ensemble's `docs/36_WEB_TESTING.md`).
 
 ## 2. Promotion to production
 

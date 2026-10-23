@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { Cpu, ShieldQuestion } from "lucide-react";
 import { useActivity, useBootstrap, nodesById } from "@/lib/hooks";
+import { requestJump } from "@/lib/jump";
 import { ago, RUN_LABEL } from "@/lib/text";
 import { CreditsMeter } from "./credits";
 import { ComputerList } from "./connect-computer";
 import { NodeAvatar } from "./node-avatar";
-import { Pill, Spinner } from "./ui";
-import { ENSEMBLE_APP } from "@/lib/config";
+import { External, Pill, Spinner } from "./ui";
+import { ENSEMBLE_LINKS } from "@/lib/config";
 
 const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "accent" | "muted"> = {
   succeeded: "ok",
@@ -38,7 +39,7 @@ export function ActivityPanel() {
           approvals.map((card) => {
             const node = card.authorNodeId ? nodes.get(card.authorNodeId) : undefined;
             return (
-              <Link key={card.id} href={`/r/${card.roomId}#m-${card.id}`} className="flex gap-2 rounded-xl border border-warn/30 bg-warn/5 p-2.5 text-sm hover:border-warn/60">
+              <Link key={card.id} href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="flex gap-2 rounded-xl border border-warn/30 bg-warn/5 p-2.5 text-sm hover:border-warn/60">
                 <NodeAvatar avatar={node?.avatar} size={24} />
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{card.data.type === "post" ? `@${node?.slug ?? "node"} wants to post` : `@${node?.slug ?? "node"} wants to act`}</span>
@@ -59,7 +60,7 @@ export function ActivityPanel() {
         </h3>
         {runs.length ? (
           runs.slice(0, 8).map((run) => (
-            <a key={run.id} href={`${ENSEMBLE_APP}/tasks/${run.taskId}`} target="_blank" rel="noreferrer" className="block rounded-xl border border-line bg-bg p-2.5 text-sm hover:border-muted">
+            <External key={run.id} href={ENSEMBLE_LINKS.task(run.taskId)} className="block rounded-xl border border-line bg-bg p-2.5 text-sm hover:border-muted">
               <span className="flex items-center justify-between gap-2">
                 <span className="truncate font-medium">{run.title}</span>
                 <Pill tone={RUN_TONE[run.status] ?? "muted"}>{RUN_LABEL[run.status] ?? run.status}</Pill>
@@ -68,7 +69,7 @@ export function ActivityPanel() {
                 {run.computer ? `${run.computer} · ` : ""}
                 {run.progress ?? run.summary ?? ago(run.createdAt)}
               </span>
-            </a>
+            </External>
           ))
         ) : (
           <p className="text-sm text-muted">No runs yet. Ask a node to do something on your computer.</p>
@@ -94,11 +95,9 @@ export function ActivityPanel() {
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Computers</h3>
         <ComputerList computers={computers} />
-        {!computers.length ? (
-          <Link href="/settings#computers" className="text-sm text-accent hover:underline">
-            Connect one
-          </Link>
-        ) : null}
+        <Link href="/computers" className="text-sm text-accent hover:underline">
+          {computers.length ? "Computers & Needs me" : "Connect one"}
+        </Link>
       </section>
 
       <section>

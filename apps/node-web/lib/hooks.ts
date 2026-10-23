@@ -1,20 +1,60 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, ApiError, eventsUrl } from "./api";
+import { keepOlder, matchesAuthor, reactionsOf, toggleReaction } from "./chat";
 import { live } from "./live";
 import { mergeMessage } from "./text";
-import type { Activity, AuthStatus, Bootstrap, Me, Message, NodePublic, Room } from "./types";
+import { toastError } from "./toast";
+import type {
+  Activity,
+  AgentDecision,
+  ApprovalRecord,
+  AuthStatus,
+  Bootstrap,
+  ConnectorEntry,
+  Device,
+  IncomingInvite,
+  Limits,
+  McpConnection,
+  Me,
+  Message,
+  ModelList,
+  NodePublic,
+  ReplyTo,
+  Room,
+  SearchResult,
+} from "./types";
+
+export type Author = "all" | "people" | "nodes";
 
 export const keys = {
   me: ["me"] as const,
   status: ["auth-status"] as const,
   bootstrap: ["bootstrap"] as const,
   activity: ["activity"] as const,
-  messages: (roomId: string) => ["messages", roomId] as const,
+  /** Every loaded list of a room's messages (all, people only, nodes only). */
+  roomMessages: (roomId: string) => ["messages", roomId] as const,
+  messages: (roomId: string, author: Author = "all") => ["messages", roomId, author] as const,
   memory: (nodeId: string) => ["memory", nodeId] as const,
+  models: ["models"] as const,
+  invites: ["invites"] as const,
+  pins: (roomId: string) => ["pins", roomId] as const,
+  search: (q: string, roomId: string | null, author: Author) => ["search", q, roomId ?? "", author] as const,
+  devices: ["devices"] as const,
+  approvals: ["approvals"] as const,
+  decisions: ["decisions"] as const,
+  connectors: ["connectors"] as const,
+  mcp: ["mcp-connections"] as const,
 };
+
+/** Messages per page of a room. */
+export const PAGE = 100;
+
+export const DEFAULT_LIMITS: Limits = { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍", "❤️", "😂", "🎉", "👀", "✅", "🙏", "🔥"], declineBlockDays: 30 };
+
+export const limitsOf = (boot: Bootstrap | undefined): Limits => ({ ...DEFAULT_LIMITS, ...(boot?.limits ?? {}) });
 
 export function useMe() {
   return useQuery({
@@ -37,16 +77,64 @@ export function useActivity() {
   return useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), refetchInterval: 30_000 });
 }
 
-export function useMessages(roomId: string) {
-  return useQuery({
-    queryKey: keys.messages(roomId),
-    queryFn: () => api<{ messages: Message[] }>(`/api/node/rooms/${roomId}/messages?limit=150`).then((result) => result.messages),
-  });
+const messagesPath = (roomId: string, author: Author, extra = "") => `/api/node/rooms/${roomId}/messages?limit=${PAGE}${author === "all" ? "" : `&author=${author}`}${extra}`;
+
+async function fetchMessages(client: QueryClient, roomId: string, author: Author): Promise<Message[]> {
+  const fresh = (await api<{ messages: Message[] }>(messagesPath(roomId, author))).messages;
+  return keepOlder(client.getQueryData<Message[]>(keys.messages(roomId, author)) ?? [], fresh, PAGE);
+}
+
+/** A room's newest messages; earlier pages loaded with `loadOlder` stay through refetches. */
+export function useMessages(roomId: string, author: Author = "all") {
+  const client = useQueryClient();
+  return useQuery({ queryKey: keys.messages(roomId, author), queryFn: () => fetchMessages(client, roomId, author) });
+}
+
+/** The room's loaded messages, fetching the newest page first when nothing is loaded yet. */
+export function ensureMessages(client: QueryClient, roomId: string, author: Author): Promise<Message[]> {
+  return client.ensureQueryData({ queryKey: keys.messages(roomId, author), queryFn: () => fetchMessages(client, roomId, author) });
+}
+
+/** Loads the page before the oldest loaded message; returns how many came back. */
+export async function loadOlder(client: QueryClient, roomId: string, author: Author): Promise<number> {
+  const list = client.getQueryData<Message[]>(keys.messages(roomId, author)) ?? [];
+  const oldest = list.find((row) => !row.id.startsWith("local-"))?.seq;
+  if (!oldest || oldest <= 1) return 0;
+  const { messages } = await api<{ messages: Message[] }>(messagesPath(roomId, author, `&before=${oldest}`));
+  client.setQueryData<Message[]>(keys.messages(roomId, author), (current) => messages.reduce((acc, row) => mergeMessage(acc, row), current ?? []));
+  return messages.length;
+}
+
+/** Applies a change to every loaded list of a room's messages. */
+export function updateMessages(client: QueryClient, roomId: string, change: (list: Message[], author: Author) => Message[]) {
+  for (const [key, list] of client.getQueriesData<Message[]>({ queryKey: keys.roomMessages(roomId) })) {
+    if (!list) continue;
+    client.setQueryData<Message[]>(key, change(list, (key[2] as Author | undefined) ?? "all"));
+  }
+}
+
+/** Puts a message (new or changed) into every loaded list it belongs in. */
+export function putMessage(client: QueryClient, message: Message) {
+  updateMessages(client, message.roomId, (list, author) => (matchesAuthor(message, author) ? mergeMessage(list, message) : list));
 }
 
 export function useRoom(roomId: string): Room | undefined {
   const boot = useBootstrap();
   return boot.data?.rooms.find((room) => room.id === roomId);
+}
+
+/** Replaces a room in the bootstrap with a fresh room view, keeping its list fields (unread, last). */
+export function putRoom(client: QueryClient, room: Room) {
+  client.setQueryData<Bootstrap>(keys.bootstrap, (current) =>
+    current
+      ? {
+          ...current,
+          rooms: current.rooms.some((row) => row.id === room.id)
+            ? current.rooms.map((row) => (row.id === room.id ? { ...row, ...room, unread: row.unread, readSeq: row.readSeq, last: row.last } : row))
+            : [room, ...current.rooms],
+        }
+      : current,
+  );
 }
 
 export function nodesById(boot: Bootstrap | undefined, room?: Room): Map<string, NodePublic> {
@@ -61,8 +149,10 @@ export function nodesById(boot: Bootstrap | undefined, room?: Room): Map<string,
 export function useSend(roomId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { body: string; private: boolean; clientId: string }) =>
-      api<{ message: Message }>(`/api/node/rooms/${roomId}/messages`, { body: input }).then((result) => result.message),
+    mutationFn: (input: { body: string; private: boolean; clientId: string; replyTo?: ReplyTo }) =>
+      api<{ message: Message }>(`/api/node/rooms/${roomId}/messages`, {
+        body: { body: input.body, private: input.private, clientId: input.clientId, ...(input.replyTo ? { replyToId: input.replyTo.id } : {}) },
+      }).then((result) => result.message),
     onMutate: (input) => {
       const boot = client.getQueryData<Bootstrap>(keys.bootstrap);
       const optimistic: Message = {
@@ -74,7 +164,7 @@ export function useSend(roomId: string) {
         authorNodeId: null,
         kind: "text",
         body: input.body,
-        data: {},
+        data: input.replyTo ? { replyTo: input.replyTo } : {},
         private: input.private,
         mentions: [],
         rootMessageId: null,
@@ -82,16 +172,14 @@ export function useSend(roomId: string) {
         createdAt: new Date().toISOString(),
         sending: true,
       };
-      client.setQueryData<Message[]>(keys.messages(roomId), (list) => mergeMessage(list ?? [], optimistic));
+      putMessage(client, optimistic);
     },
     onSuccess: (message) => {
-      client.setQueryData<Message[]>(keys.messages(roomId), (list) => mergeMessage(list ?? [], message));
+      putMessage(client, message);
       void client.invalidateQueries({ queryKey: keys.bootstrap });
     },
     onError: (error, input) => {
-      client.setQueryData<Message[]>(keys.messages(roomId), (list) =>
-        (list ?? []).map((row) => (row.clientId === input.clientId ? { ...row, sending: false, failed: error instanceof Error ? error.message : String(error) } : row)),
-      );
+      updateMessages(client, roomId, (list) => list.map((row) => (row.clientId === input.clientId ? { ...row, sending: false, failed: error instanceof Error ? error.message : String(error) } : row)));
     },
   });
 }
@@ -102,10 +190,101 @@ export function useSettle() {
     mutationFn: (input: { messageId: string; decision: "approve" | "discard"; callIds?: string[]; body?: string }) =>
       api<{ message: Message }>(`/api/node/approvals/${input.messageId}`, { body: { decision: input.decision, callIds: input.callIds, body: input.body } }).then((result) => result.message),
     onSuccess: (message) => {
-      client.setQueryData<Message[]>(keys.messages(message.roomId), (list) => mergeMessage(list ?? [], message));
+      putMessage(client, message);
       void client.invalidateQueries({ queryKey: keys.activity });
     },
   });
+}
+
+/** Adds or takes back my reaction; the change shows at once and is undone if the server refuses. */
+export function useReact() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { message: Message; emoji: string }) => api<{ message: Message }>(`/api/node/messages/${input.message.id}/reactions`, { body: { emoji: input.emoji } }).then((result) => result.message),
+    onMutate: ({ message, emoji }) => {
+      const meId = client.getQueryData<Bootstrap>(keys.bootstrap)?.me.id ?? "";
+      putMessage(client, { ...message, data: { ...message.data, reactions: toggleReaction(reactionsOf(message), emoji, meId) } });
+    },
+    onSuccess: (message) => putMessage(client, message),
+    onError: (error, { message }) => {
+      putMessage(client, message);
+      toastError(error);
+    },
+  });
+}
+
+export function useDeleteMessage() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (message: Message) => api<void>(`/api/node/messages/${message.id}`, { method: "DELETE" }),
+    onMutate: (message) => putMessage(client, { ...message, body: "", mentions: [], data: { ...message.data, deleted: true, reactions: undefined } }),
+    onError: (error, message) => {
+      putMessage(client, message);
+      toastError(error);
+    },
+  });
+}
+
+export function usePin(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { messageId: string; pinned: boolean }) => api<{ room: Room }>(`/api/node/rooms/${roomId}/pins`, { body: input }).then((result) => result.room),
+    onSuccess: (room) => {
+      putRoom(client, room);
+      void client.invalidateQueries({ queryKey: keys.pins(roomId) });
+    },
+    onError: toastError,
+  });
+}
+
+export function usePins(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.pins(roomId), queryFn: () => api<{ messages: Message[] }>(`/api/node/rooms/${roomId}/pins`).then((result) => result.messages), enabled });
+}
+
+/** Every model a node can use. Own keys and AI plans take a moment, so this is asked for only when a picker opens. */
+export function useModels(enabled: boolean) {
+  return useQuery({ queryKey: keys.models, queryFn: () => api<ModelList>("/api/node/models"), enabled, staleTime: 60_000 });
+}
+
+export function useInvites() {
+  return useQuery({ queryKey: keys.invites, queryFn: () => api<{ invites: IncomingInvite[] }>("/api/node/invites").then((result) => result.invites) });
+}
+
+export function useSearch(q: string, roomId: string | null, author: Author) {
+  const query = q.trim();
+  return useQuery({
+    queryKey: keys.search(query, roomId, author),
+    queryFn: () => {
+      const params = new URLSearchParams({ q: query, author });
+      if (roomId) params.set("roomId", roomId);
+      return api<{ results: SearchResult[] }>(`/api/node/search?${params}`).then((result) => result.results);
+    },
+    enabled: query.length >= 2,
+    placeholderData: keepPreviousData,
+    staleTime: 10_000,
+  });
+}
+
+/** Ensemble's paired computers, with the folders each shares. */
+export function useDevices() {
+  return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), refetchInterval: 30_000 });
+}
+
+/** Ensemble's Needs me: run approvals and questions from agents. */
+export function useApprovals() {
+  return useQuery({ queryKey: keys.approvals, queryFn: () => api<{ approvals: ApprovalRecord[] }>("/api/approvals").then((result) => result.approvals), refetchInterval: 60_000 });
+}
+
+export function useDecisions() {
+  return useQuery({ queryKey: keys.decisions, queryFn: () => api<{ decisions: AgentDecision[] }>("/api/decisions?status=pending").then((result) => result.decisions), refetchInterval: 60_000 });
+}
+
+export function useConnectors() {
+  return useQuery({ queryKey: keys.connectors, queryFn: () => api<{ entries: ConnectorEntry[] }>("/api/connectors/catalog").then((result) => result.entries), staleTime: 60_000 });
+}
+
+export function useMcpConnections() {
+  return useQuery({ queryKey: keys.mcp, queryFn: () => api<{ connections: McpConnection[] }>("/api/mcp-connections").then((result) => result.connections), staleTime: 60_000 });
 }
 
 let readTimer: ReturnType<typeof setTimeout> | null = null;
@@ -122,7 +301,7 @@ export function markRead(client: QueryClient, roomId: string, seq: number) {
   readTimer = setTimeout(() => void api(`/api/node/rooms/${roomId}/read`, { body: { seq } }).catch(() => undefined), 800);
 }
 
-/** The account's live stream: messages, card updates, who is thinking, room changes. Reconnects by itself. */
+/** The account's live stream: messages, card updates, who is thinking, room changes, requests to join. Reconnects by itself. */
 export function useNodeEvents(enabled: boolean) {
   const client = useQueryClient();
   const refresh = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -138,7 +317,7 @@ export function useNodeEvents(enabled: boolean) {
     const source = new EventSource(eventsUrl(), { withCredentials: true });
     const onMessage = (event: MessageEvent<string>) => {
       const message = JSON.parse(event.data) as Message;
-      client.setQueryData<Message[]>(keys.messages(message.roomId), (list) => (list ? mergeMessage(list, message) : list));
+      putMessage(client, message);
       if (message.authorNodeId) live.posted(message.roomId, message.authorNodeId);
       if (message.kind === "approval" || message.kind === "run") void client.invalidateQueries({ queryKey: keys.activity });
       later();
@@ -155,12 +334,21 @@ export function useNodeEvents(enabled: boolean) {
       if (data.frame.type === "delta" && data.frame.text) live.delta(data.roomId, data.nodeId, data.frame.text);
       else if (data.frame.call) live.tool(data.roomId, data.nodeId, data.frame.call);
     }) as EventListener);
-    source.addEventListener("node.room", later as EventListener);
+    source.addEventListener("node.room", ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { roomId?: string };
+      if (data.roomId) void client.invalidateQueries({ queryKey: keys.pins(data.roomId) });
+      later();
+    }) as EventListener);
+    source.addEventListener("node.invite", () => {
+      void client.invalidateQueries({ queryKey: keys.invites });
+      later();
+    });
     // After a reconnect, fetch what was said while the stream was down.
     let opened = false;
     source.onopen = () => {
       if (opened) {
         void client.invalidateQueries({ queryKey: ["messages"] });
+        void client.invalidateQueries({ queryKey: keys.invites });
         later();
       }
       opened = true;

@@ -6,9 +6,8 @@ import { useEffect } from "react";
 import { ArrowRight, Cpu, MessagesSquare, Network, Sparkles } from "lucide-react";
 import { Wordmark } from "@/components/brand";
 import { NodeAvatar } from "@/components/node-avatar";
-import { External } from "@/components/ui";
 import { useMe } from "@/lib/hooks";
-import { ENSEMBLE_LINKS } from "@/lib/config";
+import { ENSEMBLE_APP } from "@/lib/config";
 import type { Avatar } from "@/lib/types";
 
 const CAST: Array<{ avatar: Avatar; name: string; x: string; y: string; size: number; delay: string }> = [
@@ -20,10 +19,10 @@ const CAST: Array<{ avatar: Avatar; name: string; x: string; y: string; size: nu
 ];
 
 const FEATURES = [
-  { icon: MessagesSquare, title: "Talk to your nodes", body: "Direct chats, crews of your own nodes, and rooms with other people, each bringing their own nodes. @mention anyone." },
+  { icon: MessagesSquare, title: "Talk to your nodes", body: "Direct chats, a crew room for your own team of nodes, and group rooms with your people. @mention anyone." },
   { icon: Network, title: "They delegate", body: "Ask your manager. It plans in Ensemble, hands each piece to the right node, follows up and reports back." },
   { icon: Cpu, title: "On your own computer", body: "Real work runs on your paired computer through the Ensemble CLI or desktop app — no cloud VM, your tools, your rules." },
-  { icon: Sparkles, title: "One Ensemble account", body: "Same sign-in, workspace, connected apps, computers and 20,000 monthly credits across Ensemble, the CLI and Node." },
+  { icon: Sparkles, title: "One Ensemble account", body: "Same sign-in, workspace and 20,000 monthly credits across Ensemble, the CLI and Node." },
 ];
 
 export default function Landing() {
@@ -39,9 +38,9 @@ export default function Landing() {
       <header className="relative z-10 mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
         <Wordmark />
         <nav className="flex items-center gap-2 text-sm">
-          <External href={ENSEMBLE_LINKS.app} className="hidden rounded-xl px-3 py-2 text-muted hover:text-ink sm:inline">
+          <a href={ENSEMBLE_APP} className="hidden rounded-xl px-3 py-2 text-muted hover:text-ink sm:inline">
             Ensemble app
-          </External>
+          </a>
           <Link href="/login" className="rounded-xl px-3 py-2 text-muted hover:text-ink">
             Sign in
           </Link>
@@ -70,9 +69,6 @@ export default function Landing() {
               I have an Ensemble account
             </Link>
           </div>
-          <p className="max-w-xl text-sm text-muted">
-            Already use Ensemble? Sign in with the same account: Node uses its connected apps, paired computers, trusted folders and credits as they are. New here? Signing up on Node creates your Ensemble account.
-          </p>
         </div>
         <div className="relative mx-auto aspect-square w-full max-w-[460px]" aria-hidden>
           <div className="absolute inset-[12%] rounded-full border border-line/60" />
@@ -100,15 +96,15 @@ export default function Landing() {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-sm text-muted">
           <span>© Ensemble Work</span>
           <span className="flex gap-4">
-            <External href={ENSEMBLE_LINKS.app} className="hover:text-ink">
+            <a href={`${ENSEMBLE_APP}`} className="hover:text-ink">
               Ensemble
-            </External>
-            <External href={ENSEMBLE_LINKS.privacy} className="hover:text-ink">
+            </a>
+            <a href="https://ensemblework.com/privacy" className="hover:text-ink">
               Privacy
-            </External>
-            <External href={ENSEMBLE_LINKS.terms} className="hover:text-ink">
+            </a>
+            <a href="https://ensemblework.com/terms" className="hover:text-ink">
               Terms
-            </External>
+            </a>
           </span>
         </div>
       </footer>

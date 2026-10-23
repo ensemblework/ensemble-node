@@ -87,9 +87,9 @@ jobs:
         if: steps.plan.outputs.current == 'true'
         run: |
           deadline=$((SECONDS + 5 * 60))
-          until [ "$(curl -fsS --max-time 10 "$NODE_URL/health" 2>/dev/null | jq -r '.commit // empty' 2>/dev/null)" = "$SHA" ]; do
+          until [ "$(curl -fsS --max-time 10 "$NODE_URL/health" 2>/dev/null | jq -r '"\(.commit // "")/\(.environment // "")"' 2>/dev/null)" = "$SHA/production" ]; do
             if [ "$SECONDS" -ge "$deadline" ]; then
-              echo "::error::$NODE_URL did not report $SHA within 5 minutes. Check the deployment in Vercel (project ensemble-node) and the node DNS record (docs/04)."
+              echo "::error::$NODE_URL did not report $SHA (production) within 5 minutes. Check the deployment in Vercel (project ensemble-node) and the node DNS record (docs/04)."
               exit 1
             fi
             sleep 10

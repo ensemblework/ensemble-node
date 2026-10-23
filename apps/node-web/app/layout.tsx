@@ -2,14 +2,17 @@ import type { Metadata, Viewport } from "next";
 import { Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { PRODUCT_NAME, TESTING } from "@/lib/config";
 
 const sans = Figtree({ subsets: ["latin"], display: "swap", variable: "--font-sans" });
 const mono = JetBrains_Mono({ subsets: ["latin"], display: "swap", variable: "--font-mono" });
 
 export const metadata: Metadata = {
-  title: { default: "Ensemble Node", template: "%s · Ensemble Node" },
+  title: { default: PRODUCT_NAME, template: `%s · ${PRODUCT_NAME}` },
   description: "Your AI teammates, working on your own computer, in rooms with your people.",
-  applicationName: "Ensemble Node",
+  applicationName: PRODUCT_NAME,
+  // The testing website is for the team, not for search engines.
+  ...(TESTING ? { robots: { index: false, follow: false } } : {}),
   icons: { icon: "/brand/woven-micro.svg", apple: "/brand/woven-satin.svg" },
 };
 

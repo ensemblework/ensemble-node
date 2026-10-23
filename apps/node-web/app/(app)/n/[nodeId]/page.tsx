@@ -4,16 +4,19 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, FolderOpen, Trash2 } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
-import { keys, useBootstrap, useDevices } from "@/lib/hooks";
-import { liveDevices } from "@/lib/ensemble";
-import { toast, toastError } from "@/lib/toast";
+import { ArrowLeft, Trash2 } from "lucide-react";
+import { api } from "@/lib/api";
+import { keys, useBootstrap } from "@/lib/hooks";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { dmRoomOf } from "@/components/shell";
-import { ModelPicker } from "@/components/model-picker";
 import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "@/components/node-avatar";
-import { Button, Field, Input, Notice, Spinner, Switch, Textarea } from "@/components/ui";
+import { Button, Field, Input, Notice, Spinner, Textarea } from "@/components/ui";
+import { modelLabel } from "@/lib/text";
+
+const MODEL_GROUPS = [
+  { role: "everyday", label: "Everyday" },
+  { role: "step-up", label: "Step-up: harder work, more credits" },
+] as const;
 
 type Memory = { id: string; content: string; createdAt: string };
 
@@ -34,43 +37,31 @@ function NodeEditor({ node }: { node: NodeFull }) {
   const [role, setRole] = useState(node.role);
   const [charter, setCharter] = useState(node.charter);
   const [avatar, setAvatar] = useState<Avatar>(node.avatar);
+  const [model, setModel] = useState(node.model ?? "");
+  const [sharedRooms, setSharedRooms] = useState(node.autonomy.sharedRooms ?? "ask");
   const [memoryText, setMemoryText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [nameError, setNameError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
   const memory = useQuery({ queryKey: keys.memory(node.id), queryFn: () => api<{ memories: Memory[] }>(`/api/node/nodes/${node.id}/memory`).then((result) => result.memories) });
-  const devices = useDevices();
   const dm = dmRoomOf(boot.data, node.id);
-  const sharedRooms = node.autonomy?.sharedRooms ?? "ask";
-  const computerFiles = node.autonomy?.computerFiles === true;
-  const folders = liveDevices(devices.data ?? []).flatMap((device) => device.folders.map((folder) => `${folder} (${device.name})`));
-  useEffect(() => setSaved(false), [name, role, charter, avatar]);
+  const options = boot.data?.models.options ?? [];
+  useEffect(() => setSaved(false), [name, role, charter, avatar, model, sharedRooms]);
 
   const save = async (patch?: Partial<NodeFull>) => {
     setError(null);
-    setNameError(null);
     setBusy(true);
     try {
-      await api(`/api/node/nodes/${node.id}`, { method: "PATCH", body: patch ?? { name: name.trim(), role: role.trim(), charter, avatar } });
+      await api(`/api/node/nodes/${node.id}`, {
+        method: "PATCH",
+        body: patch ?? { name: name.trim(), role: role.trim(), charter, avatar, model: model || null, autonomy: { sharedRooms } },
+      });
       await client.invalidateQueries({ queryKey: keys.bootstrap });
       setSaved(true);
     } catch (failure) {
-      if (failure instanceof ApiError && failure.status === 409) setNameError(failure.message);
-      else setError(failure instanceof Error ? failure.message : String(failure));
+      setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
       setBusy(false);
-    }
-  };
-
-  /** Model and what the node may do save as soon as they change. */
-  const change = async (body: Record<string, unknown>, done: string) => {
-    try {
-      await api(`/api/node/nodes/${node.id}`, { method: "PATCH", body });
-      await client.invalidateQueries({ queryKey: keys.bootstrap });
-      toast(done, "ok");
-    } catch (failure) {
-      toastError(failure);
     }
   };
 
@@ -94,8 +85,8 @@ function NodeEditor({ node }: { node: NodeFull }) {
 
         <section className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name" error={nameError} hint="Unique among your nodes.">
-              <Input value={name} onChange={(event) => (setName(event.target.value), setNameError(null))} maxLength={60} />
+            <Field label="Name">
+              <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} />
             </Field>
             <Field label="Role">
               <Input value={role} onChange={(event) => setRole(event.target.value)} maxLength={40} />
@@ -123,60 +114,45 @@ function NodeEditor({ node }: { node: NodeFull }) {
           <Field label="Charter" hint="How this node works: what it owns, your conventions, your style. Only you see it.">
             <Textarea value={charter} onChange={(event) => setCharter(event.target.value)} rows={9} maxLength={8000} />
           </Field>
-          <Button onClick={() => void save()} busy={busy} disabled={!name.trim() || !role.trim()}>
-            Save
-          </Button>
-        </section>
-
-        <section className="space-y-5 rounded-2xl border border-line bg-panel p-5">
-          <div>
-            <h2 className="font-semibold">Model and what {node.name} may do</h2>
-            <p className="text-xs text-muted">These save as soon as you change them.</p>
-          </div>
           <Field
             label="Chat model"
-            group
-            hint="What the node talks and plans with: a model included with Ensemble (paid from your monthly credits; × is a typical turn's credits next to the 1× model), one on your own API key, or an AI plan on a paired computer. Work on your computer uses your run profile's agent."
+            hint="The model the node talks and plans with, from the models included with Ensemble, paid from your monthly Ensemble credits. × is a typical turn's credits compared with the 1× model. Work on your computer uses your run profile's agent and model."
           >
-            <ModelPicker value={{ provider: node.provider, model: node.model }} onChange={(next) => change({ provider: next.provider, model: next.model }, "Model saved.")} />
+            <select value={model} onChange={(event) => setModel(event.target.value)} className="w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm">
+              <option value="">Default ({options.find((row) => row.default)?.label ?? boot.data?.models.default ?? "GPT-5 mini"})</option>
+              {MODEL_GROUPS.map((group) => {
+                const rows = options.filter((row) => (row.role ?? "everyday") === group.role);
+                return rows.length ? (
+                  <optgroup key={group.role} label={group.label}>
+                    {rows.map((row) => (
+                      <option key={row.model} value={row.model}>
+                        {modelLabel(row)}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null;
+              })}
+            </select>
           </Field>
-          <Switch
-            label="Read files on my computer"
-            checked={computerFiles}
-            onChange={(next) => void change({ autonomy: { computerFiles: next } }, next ? `${node.name} may read your shared folders now.` : `${node.name} no longer reads files on your computer.`)}
-            hint={
-              <>
-                Off by default. When on, {node.name} may look at files on your paired computer: read-only, and only inside the folders that computer shares with Ensemble. It does this only in chats with just you (this direct chat, your crews, Only me), never in a room with other people, and it never reads keys, secrets or <code className="rounded bg-raised px-1">.git</code>. The computer must allow it: run <code className="rounded bg-raised px-1">ensemble browse on</code> there. Anything outside those folders becomes a task for an agent, which you approve.
-              </>
-            }
-          />
-          {computerFiles ? (
-            <p className="flex items-start gap-2 rounded-xl border border-line bg-bg px-3 py-2 text-xs text-muted">
-              <FolderOpen size={14} className="mt-0.5 shrink-0 text-accent" />
-              <span>
-                {folders.length ? `Shared now: ${folders.join(", ")}.` : devices.isLoading ? "Looking for your computers…" : "No paired computer shares a folder yet."}{" "}
-                <Link href="/computers" className="text-accent hover:underline">
-                  Computers
-                </Link>
-              </span>
-            </p>
-          ) : null}
           <Field label="In rooms with other people" group>
             <div className="flex flex-col gap-2 text-sm">
               <label className="flex items-start gap-2">
-                <input type="radio" name="shared-rooms" checked={sharedRooms === "ask"} onChange={() => void change({ autonomy: { sharedRooms: "ask" } }, "Saved: it asks you before posting.")} className="mt-1 accent-[rgb(var(--accent))]" />
+                <input type="radio" checked={sharedRooms === "ask"} onChange={() => setSharedRooms("ask")} className="mt-1" />
                 <span>
                   <strong>Ask me before posting</strong> <span className="text-muted">— recommended. You approve every message it sends for you.</span>
                 </span>
               </label>
               <label className="flex items-start gap-2">
-                <input type="radio" name="shared-rooms" checked={sharedRooms === "auto"} onChange={() => void change({ autonomy: { sharedRooms: "auto" } }, "Saved: it posts on its own.")} className="mt-1 accent-[rgb(var(--accent))]" />
+                <input type="radio" checked={sharedRooms === "auto"} onChange={() => setSharedRooms("auto")} className="mt-1" />
                 <span>
                   <strong>Post on its own</strong> <span className="text-muted">— changes to your workspace and computer work still wait for you.</span>
                 </span>
               </label>
             </div>
           </Field>
+          <Button onClick={() => void save()} busy={busy} disabled={!name.trim() || !role.trim()}>
+            Save
+          </Button>
         </section>
 
         <section className="space-y-3">

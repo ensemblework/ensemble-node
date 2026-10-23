@@ -11,18 +11,19 @@
 | Models | Ensemble's included AI (Azure AI Foundry): every model Ensemble offers, gpt-5-mini by default |
 | Package manager / runtime | pnpm 12, Node 22 |
 
-The website has no server logic beyond `/health` (the commit it serves): every page is a client of Ensemble's API. Production is the Vercel project `ensemble-node` ([04](04_DEPLOYMENT_AND_DNS.md)).
+The website has no server logic beyond `/health` (the commit and environment it serves): every page is a client of Ensemble's API. Production is the Vercel project `ensemble-node`, testing is `ensemble-node-test` ([04](04_DEPLOYMENT_AND_DNS.md)).
 
 ## Environment
 
-The website needs two public values, baked in at build time:
+The website reads public values baked in at build time:
 
-| Variable | Production | Local |
-| --- | --- | --- |
-| `NEXT_PUBLIC_ENSEMBLE_API` | `https://api.ensemblework.com` | `http://localhost:4000` (default) |
-| `NEXT_PUBLIC_ENSEMBLE_APP` | `https://app.ensemblework.com` | `http://localhost:3000` (default) |
+| Variable | Production | Testing | Local |
+| --- | --- | --- | --- |
+| `NEXT_PUBLIC_ENSEMBLE_NODE_ENV` | unset | `testing` | unset |
+| `NEXT_PUBLIC_ENSEMBLE_API` | `https://api.ensemblework.com` | `https://api-test.ensemblework.com` | `http://localhost:4000` (default) |
+| `NEXT_PUBLIC_ENSEMBLE_APP` | `https://app.ensemblework.com` | `https://test.ensemblework.com` | `http://localhost:3000` (default) |
 
-In production they are the Vercel project's environment variables ([04 §1](04_DEPLOYMENT_AND_DNS.md#1-vercel)).
+They are each Vercel project's environment variables ([04 §3](04_DEPLOYMENT_AND_DNS.md#3-vercel)). A build that would connect one environment to the other's Ensemble fails (`lib/environment.ts`).
 
 Ensemble's API needs (in its server env file, or `.env` locally):
 
@@ -69,6 +70,8 @@ Backend checks live in Ensemble: `pnpm --filter @ensemble/hub-api test:public` (
 
 ## CI and deploys
 
-`.github/workflows/ci.yml` runs **Typecheck, tests and build** (install, typecheck, unit tests, `next build`) on every pull request and push to `main`; it is required on `main`.
-
-`.github/workflows/deploy.yml` runs when CI passes on `main`: it builds the commit, publishes it to Vercel and waits until `https://node.ensemblework.com/health` reports it ([04 §2](04_DEPLOYMENT_AND_DNS.md#2-how-a-deploy-happens)).
+| Workflow | When | What |
+| --- | --- | --- |
+| `test-web.yml` | Pull requests into `testing` and pushes to `testing` | **Testing checks** (typecheck, unit tests); on a push, publishes the testing website and waits for its `/health` ([04 §1](04_DEPLOYMENT_AND_DNS.md#1-daily-development-testing)) |
+| `ci.yml` | Pull requests into `main` (the promotion from `testing`) and pushes to `main` | **Typecheck, tests and build**, required on `main` |
+| `deploy.yml` | When `ci.yml` passes on `main` | Publishes the production website and waits for its `/health` ([04 §2](04_DEPLOYMENT_AND_DNS.md#2-promotion-to-production)) |

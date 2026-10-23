@@ -1,0 +1,122 @@
+name: test-web
+
+# The testing website, node-test.ensemblework.com (Vercel project "ensemble-node-test"), connected only
+# to Ensemble's testing environment. Fast on purpose: typecheck and unit tests, then the Vercel build
+# (a real production build of the site) and publication. A pull request into testing runs the checks
+# only. The full ci.yml runs when testing is promoted to main (docs/04).
+#
+# Repository variables: TEST_DEPLOY_ENABLED ("true"), and optionally ENSEMBLE_NODE_TEST_URL and
+# ENSEMBLE_TEST_API_URL (defaults https://node-test.ensemblework.com, https://api-test.ensemblework.com).
+# Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID_TEST.
+on:
+  push:
+    branches: [testing]
+  pull_request:
+    branches: [testing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The newest push wins; testing is not production.
+concurrency:
+  group: test-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Testing checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm test
+
+  publish:
+    name: Publish the testing website (Vercel)
+    needs: checks
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/testing' && vars.TEST_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: testing
+      url: ${{ vars.ENSEMBLE_NODE_TEST_URL || 'https://node-test.ensemblework.com' }}
+    env:
+      NODE_URL: ${{ vars.ENSEMBLE_NODE_TEST_URL || 'https://node-test.ensemblework.com' }}
+      API_URL: ${{ vars.ENSEMBLE_TEST_API_URL || 'https://api-test.ensemblework.com' }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Only the newest testing commit publishes
+        id: plan
+        run: |
+          if [ "$(git rev-parse origin/testing)" = "$SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::A newer testing commit publishes instead."
+          fi
+
+      - uses: pnpm/action-setup@v5
+        if: steps.plan.outputs.current == 'true'
+        with:
+          version: 12.6.0
+
+      - uses: actions/setup-node@v5
+        if: steps.plan.outputs.current == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - if: steps.plan.outputs.current == 'true'
+        run: pnpm install --frozen-lockfile
+
+      - uses: ./.github/actions/vercel-deploy
+        if: steps.plan.outputs.current == 'true'
+        with:
+          token: ${{ secrets.VERCEL_TOKEN }}
+          org-id: ${{ secrets.VERCEL_ORG_ID }}
+          project-id: ${{ secrets.VERCEL_PROJECT_ID_TEST }}
+          commit: ${{ env.SHA }}
+
+      - name: Wait until /health reports this commit
+        if: steps.plan.outputs.current == 'true'
+        run: |
+          deadline=$((SECONDS + 5 * 60))
+          until [ "$(curl -fsS --max-time 10 "$NODE_URL/health" 2>/dev/null | jq -r '"\(.commit // "")/\(.environment // "")"' 2>/dev/null)" = "$SHA/testing" ]; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "::error::$NODE_URL did not report $SHA (testing) within 5 minutes. Check the deployment in Vercel (project ensemble-node-test)."
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "$NODE_URL serves $SHA."
+
+      - name: Ensemble's testing API allows this site
+        if: steps.plan.outputs.current == 'true'
+        run: |
+          headers="$(curl -sS -o /dev/null -D - --max-time 15 -X OPTIONS "$API_URL/api/node/bootstrap" \
+            -H "Origin: $NODE_URL" -H 'Access-Control-Request-Method: GET' || true)"
+          allowed="$(printf '%s\n' "$headers" | tr -d '\r' | awk 'tolower($0) ~ /^access-control-allow-origin:/ { sub(/^[^:]*:[ \t]*/, ""); print }')"
+          if [ "$allowed" = "$NODE_URL" ]; then
+            echo "$API_URL allows $NODE_URL."
+          else
+            echo "::warning::$API_URL does not allow $NODE_URL, so sign-in fails there. Set ENSEMBLE_NODE_WEB_ORIGIN=$NODE_URL for Ensemble's testing API (docs/04)."
+          fi

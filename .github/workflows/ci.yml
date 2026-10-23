@@ -1,9 +1,11 @@
 name: ci
 
-# Every pull request and every push to main. deploy.yml waits for this workflow to pass on main
-# before it publishes the website on Vercel (docs/04).
+# Pull requests into main (including the promotion from testing) and every push to main. deploy.yml
+# waits for this workflow to pass on main before it publishes the website on Vercel (docs/04). Work on
+# the testing branch runs the faster test-web.yml instead.
 on:
   pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:

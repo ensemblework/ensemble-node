@@ -1,10 +1,30 @@
 "use client";
 
-import { Folder, Laptop, Monitor } from "lucide-react";
-import { ENSEMBLE_LINKS } from "@/lib/config";
-import { ago } from "@/lib/text";
-import type { Computer, Device } from "@/lib/types";
-import { External, Pill } from "./ui";
+import { Check, Copy, Laptop, Monitor } from "lucide-react";
+import { useState } from "react";
+import { ENSEMBLE_APP } from "@/lib/config";
+import type { Computer } from "@/lib/types";
+import { Pill } from "./ui";
+
+const INSTALLS = [
+  { os: "macOS / Linux", command: "curl -fsSL https://ensemblework.com/install.sh | sh" },
+  { os: "Homebrew", command: "brew install ensemblework/tap/ensemble" },
+  { os: "Windows", command: "irm https://ensemblework.com/install.ps1 | iex" },
+];
+
+function CopyLine({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => void navigator.clipboard.writeText(command).then(() => (setCopied(true), setTimeout(() => setCopied(false), 1500)))}
+      className="group flex w-full items-center justify-between gap-2 rounded-lg border border-line bg-bg px-3 py-2 text-left font-mono text-xs hover:border-accent"
+    >
+      <span className="truncate">{command}</span>
+      {copied ? <Check size={14} className="text-ok" /> : <Copy size={14} className="text-muted group-hover:text-ink" />}
+    </button>
+  );
+}
 
 export function ComputerList({ computers }: { computers: Computer[] }) {
   if (!computers.length) return <p className="text-sm text-muted">No computer is paired yet.</p>;
@@ -12,8 +32,8 @@ export function ComputerList({ computers }: { computers: Computer[] }) {
     <ul className="space-y-2">
       {computers.map((computer) => (
         <li key={computer.id} className="flex items-center justify-between rounded-xl border border-line bg-bg px-3 py-2 text-sm">
-          <span className="flex min-w-0 items-center gap-2">
-            <Laptop size={16} className="shrink-0 text-muted" /> <span className="truncate">{computer.name}</span>
+          <span className="flex items-center gap-2">
+            <Laptop size={16} className="text-muted" /> {computer.name}
           </span>
           {computer.online ? <Pill tone="ok">online</Pill> : <Pill>offline</Pill>}
         </li>
@@ -22,67 +42,38 @@ export function ComputerList({ computers }: { computers: Computer[] }) {
   );
 }
 
-/** Ensemble's paired computers with the folders each shares with Ensemble. */
-export function DeviceList({ devices }: { devices: Device[] }) {
-  if (!devices.length) return <p className="text-sm text-muted">No computer is paired yet.</p>;
+/** How to pair a computer: the Ensemble CLI or the signed-in desktop app. Nodes start work there. */
+export function ConnectComputer({ computers }: { computers: Computer[] }) {
   return (
-    <ul className="space-y-2">
-      {devices.map((device) => (
-        <li key={device.id} className="rounded-xl border border-line bg-bg p-3 text-sm">
-          <div className="flex items-center justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-2 font-medium">
-              <Laptop size={16} className="shrink-0 text-muted" /> <span className="truncate">{device.name}</span>
-            </span>
-            {device.online ? <Pill tone="ok">online</Pill> : <Pill>offline</Pill>}
+    <div className="space-y-4">
+      <ComputerList computers={computers} />
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="space-y-2 rounded-2xl border border-line bg-panel p-4">
+          <div className="flex items-center gap-2 font-medium">
+            <span className="font-mono text-accent">&gt;_</span> Ensemble CLI
           </div>
-          <p className="mt-0.5 text-xs text-muted">
-            {[device.platform, device.appVersion ? `Ensemble ${device.appVersion}` : null, device.online ? null : device.lastSeenAt ? `last seen ${ago(device.lastSeenAt)} ago` : "not seen yet"].filter(Boolean).join(" · ")}
+          <p className="text-sm text-muted">Install it, then run <code className="rounded bg-raised px-1">ensemble login</code> and approve in the browser. The computer is paired and keeps running tasks in the background.</p>
+          {INSTALLS.map((row) => (
+            <div key={row.os} className="space-y-1">
+              <div className="text-xs text-muted">{row.os}</div>
+              <CopyLine command={row.command} />
+            </div>
+          ))}
+          <CopyLine command="ensemble login" />
+        </div>
+        <div className="space-y-2 rounded-2xl border border-line bg-panel p-4">
+          <div className="flex items-center gap-2 font-medium">
+            <Monitor size={16} className="text-accent" /> Ensemble desktop app
+          </div>
+          <p className="text-sm text-muted">Download it and sign in with this account (synced, not local-only). It pairs this computer the same way.</p>
+          <a href="https://ensemblework.com/download" className="inline-flex rounded-xl border border-line bg-bg px-3 py-2 text-sm hover:bg-raised">
+            Download Ensemble
+          </a>
+          <p className="text-xs text-muted">
+            Run profiles (which agent, what it may do, which computer) live in <a className="underline" href={`${ENSEMBLE_APP}/settings`}>Ensemble → Settings</a>.
           </p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {device.folders.length ? (
-              device.folders.map((folder) => (
-                <span key={folder} className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-0.5 text-xs">
-                  <Folder size={12} className="text-accent" /> {folder}
-                </span>
-              ))
-            ) : (
-              <span className="text-xs text-muted">Shares no folders with Ensemble yet.</span>
-            )}
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** Pairing happens in Ensemble: one sentence and the links, in a new tab. */
-export function PairComputer({ paired = false }: { paired?: boolean }) {
-  return (
-    <div className="space-y-3 rounded-2xl border border-line bg-panel p-4">
-      <div className="flex items-start gap-3">
-        <Monitor size={20} className="mt-0.5 shrink-0 text-accent" />
-        <p className="text-sm text-muted">
-          {paired
-            ? "Pair another computer, or change the folders a computer shares, in Ensemble."
-            : "Pair a computer in Ensemble: sign in to the Ensemble desktop app or the CLI with this account, and it shows up here."}{" "}
-          Nodes start work there only after you approve it.
-        </p>
+        </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <External href={ENSEMBLE_LINKS.pairComputer} icon className="inline-flex items-center rounded-xl bg-accent px-3 py-2 text-sm font-medium text-accent-ink hover:brightness-110">
-          Connect a computer in Ensemble
-        </External>
-        <External href={ENSEMBLE_LINKS.download} icon className="inline-flex items-center rounded-xl border border-line bg-bg px-3 py-2 text-sm hover:bg-raised">
-          Download Ensemble
-        </External>
-      </div>
-      <p className="text-xs text-muted">
-        Run profiles (which agent, what it may do, which computer) are in{" "}
-        <External href={ENSEMBLE_LINKS.runProfiles} icon className="underline hover:text-ink">
-          Ensemble settings
-        </External>
-        .
-      </p>
     </div>
   );
 }

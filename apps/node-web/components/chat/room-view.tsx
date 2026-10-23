@@ -1,78 +1,38 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, AtSign, Bot, Download, Ellipsis, Hash, Lock, MessagesSquare, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
-import { api, download } from "@/lib/api";
-import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, plainPreview, serverAuthor, type ViewFilter } from "@/lib/chat";
-import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, useBootstrap, useMessages, useSend, type Author } from "@/lib/hooks";
-import { clearJump, useJump } from "@/lib/jump";
+import { Lock, Settings2, Users } from "lucide-react";
+import { api } from "@/lib/api";
+import { keys, markRead, nodesById, useBootstrap, useMessages, useSend } from "@/lib/hooks";
 import { useLiveRoom } from "@/lib/live";
 import { TOOL_LABEL } from "@/lib/text";
-import { toast, toastError } from "@/lib/toast";
-import type { Member, Message, NodeFull, Room } from "@/lib/types";
-import { ModelPicker } from "../model-picker";
+import type { Member, Message, Room } from "@/lib/types";
 import { NodeAvatar } from "../node-avatar";
-import { IconButton, MenuItem, Pill, Spinner, useDismiss } from "../ui";
+import { IconButton, Pill, Spinner } from "../ui";
 import { Composer, type MentionOption } from "./composer";
-import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
-import { PinnedBar, PinsDrawer } from "./pins";
+import { MessageItem, type MessageContext } from "./message";
 import { RichText } from "./rich-text";
 import { RoomSettings } from "./room-settings";
-import { SearchPanel } from "./search";
 
 const SUGGESTIONS: Record<Room["kind"], string[]> = {
   dm: ["What's on my plate today?", "Add a task to review the onboarding flow next Monday", "Make a page with notes from what I tell you next", "Fix the failing tests in my repo on my laptop"],
   crew: ["Plan the login page and hand out the work", "@tester check the signup flow and file bugs", "@docs update the README for the new release"],
-  room: ["Who can take the API changes this week?", "Here's what the client asked for: …"],
+  group: ["Who can take the API changes this week?", "Here's what the client asked for: …"],
 };
-
-const FILTERS: Array<{ id: ViewFilter; label: string; icon: typeof Users; empty: string }> = [
-  { id: "all", label: "Everything", icon: MessagesSquare, empty: "" },
-  { id: "people", label: "People only", icon: UserRound, empty: "Nobody has written here yet." },
-  { id: "nodes", label: "Nodes only", icon: Bot, empty: "No node has written here yet." },
-  { id: "mentions", label: "Mentions of me", icon: AtSign, empty: "Nobody has mentioned you in what is loaded." },
-];
-
-type NodeMember = Extract<Member, { kind: "node" }>;
-type PersonMember = Extract<Member, { kind: "person" }>;
 
 export function RoomView({ roomId }: { roomId: string }) {
   const client = useQueryClient();
   const boot = useBootstrap();
   const room = boot.data?.rooms.find((row) => row.id === roomId);
-  const [filter, setFilter] = useState<ViewFilter>("all");
-  const author: Author = serverAuthor(filter);
-  const messages = useMessages(roomId, author);
+  const messages = useMessages(roomId);
   const send = useSend(roomId);
   const live = useLiveRoom(roomId);
-  const [panel, setPanel] = useState<null | "settings" | "pins">(null);
-  const [menu, setMenu] = useState(false);
-  const [searching, setSearching] = useState(false);
-  const [reply, setReply] = useState<Message | null>(null);
-  const [highlight, setHighlight] = useState<string | null>(null);
-  const [olderDone, setOlderDone] = useState(false);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-  const [atBottom, setAtBottom] = useState(true);
+  const [settings, setSettings] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
-  const menuBox = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
-  const positioned = useRef(false);
-  const anchor = useRef<number | null>(null);
-  const pendingJump = useRef<string | null>(null);
-  const seenSeq = useRef(0);
   const missingChecked = useRef(false);
-  const opened = useRef<{ read: number; last: number } | null>(null);
-  if (room && !opened.current) {
-    opened.current = { read: room.readSeq ?? room.lastSeq, last: room.lastSeq };
-    seenSeq.current = opened.current.read;
-  }
-  const jump = useJump(roomId);
-  const handledJump = useRef<number | null>(null);
-  const lastFilter = useRef(filter);
-  const closeMenu = useCallback(() => setMenu(false), []);
-  useDismiss(menu, closeMenu, menuBox);
 
   useEffect(() => {
     if (boot.data && !room && !missingChecked.current) {
@@ -81,179 +41,35 @@ export function RoomView({ roomId }: { roomId: string }) {
     }
   }, [boot.data, room, client]);
 
-  const loaded = messages.data ?? [];
-  const meId = boot.data?.me.id ?? "";
-  const list = filter === "mentions" ? loaded.filter((row) => mentionsMe(row, meId)) : loaded;
-  const lastSeq = loaded.reduce((max, row) => (row.sending ? max : Math.max(max, row.seq)), 0);
-  const firstReal = loaded.find((row) => !row.id.startsWith("local-"));
-  const hasOlder = !olderDone && loaded.length >= PAGE && (firstReal?.seq ?? 0) > 1;
-  const unreadId = useMemo(
-    () => (filter === "all" && opened.current ? firstUnread(loaded.filter((row) => row.seq <= opened.current!.last), opened.current.read, meId) : null),
-    [filter, loaded, meId],
-  );
-  if (atBottom && lastSeq > seenSeq.current) seenSeq.current = lastSeq;
-  const newBelow = atBottom ? 0 : loaded.filter((row) => row.seq > seenSeq.current && !row.sending && row.kind !== "status" && !(row.authorKind === "human" && row.authorAccountId === meId)).length;
-  const liveKey = live.map((row) => row.text.length + row.tools.length).join(",");
-  const days = useMemo(() => {
-    const out: Array<{ key: string; label: string; items: Message[] }> = [];
-    for (const message of list) {
-      const key = dayKey(message.createdAt);
-      if (out[out.length - 1]?.key !== key) out.push({ key, label: dayLabel(message.createdAt), items: [] });
-      out[out.length - 1]!.items.push(message);
-    }
-    return out;
-  }, [list]);
-
-  const reveal = useCallback((messageId: string) => {
-    const element = document.getElementById(`m-${messageId}`);
-    if (!element) return false;
-    element.scrollIntoView({ block: "center", behavior: "smooth" });
-    stuck.current = false;
-    setAtBottom(false);
-    setHighlight(messageId);
-    setTimeout(() => setHighlight((current) => (current === messageId ? null : current)), 2600);
-    return true;
-  }, []);
-
-  /** Scrolls to a message, loading earlier pages first when it is not loaded yet. */
-  const jumpTo = useCallback(
-    async (messageId: string) => {
-      if (reveal(messageId)) return;
-      pendingJump.current = messageId;
-      try {
-        const { message } = await api<{ message: Message }>(`/api/node/messages/${messageId}`);
-        if (message.roomId !== roomId) return;
-        let target: Author = author;
-        if (!(filter === "mentions" ? mentionsMe(message, meId) : matchesAuthor(message, author))) {
-          target = "all";
-          setFilter("all");
-        }
-        let current = await ensureMessages(client, roomId, target);
-        for (let page = 0; page < 40 && !current.some((row) => row.id === messageId); page += 1) {
-          const oldest = current.find((row) => !row.id.startsWith("local-"))?.seq ?? 0;
-          if (oldest <= message.seq || !(await loadOlder(client, roomId, target))) break;
-          current = client.getQueryData<Message[]>(keys.messages(roomId, target)) ?? [];
-        }
-        if (!current.some((row) => row.id === messageId)) {
-          pendingJump.current = null;
-          toast("That message is not in this conversation any more.");
-        }
-      } catch (error) {
-        pendingJump.current = null;
-        toastError(error);
-      }
-    },
-    [author, client, filter, meId, reveal, roomId],
-  );
-
-  // Once a pending jump's message is on screen, go to it.
-  useEffect(() => {
-    if (pendingJump.current && reveal(pendingJump.current)) pendingJump.current = null;
-  });
-
-  /** The message a search result, pin or link asked for, once. */
-  const takeJump = useCallback((): string | null => {
-    if (!jump || handledJump.current === jump.nonce) return null;
-    handledJump.current = jump.nonce;
-    clearJump(jump.nonce);
-    return jump.messageId;
-  }, [jump]);
-
-  useEffect(() => {
-    if (!positioned.current || messages.isLoading || !room) return;
-    const target = takeJump();
-    if (target) void jumpTo(target);
-  }, [takeJump, messages.isLoading, room, jumpTo]);
-
-  // First view: a linked message, else the first unread one, else the newest.
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    if (positioned.current || messages.isLoading || !element || !room) return;
-    positioned.current = true;
-    const hash = window.location.hash;
-    const target = takeJump() ?? (hash.startsWith("#m-") ? hash.slice(3) : null);
-    if (target) {
-      void jumpTo(target);
-      return;
-    }
-    const divider = unreadId ? document.getElementById("unread-divider") : null;
-    if (divider) {
-      divider.scrollIntoView({ block: "start" });
-      stuck.current = element.scrollHeight - element.scrollTop - element.clientHeight < 160;
-      setAtBottom(stuck.current);
-    } else {
-      element.scrollTop = element.scrollHeight;
-    }
-  }, [messages.isLoading, room, unreadId, jumpTo, takeJump]);
-
-  // Keep the place when earlier messages are added above.
-  useLayoutEffect(() => {
-    const element = scroller.current;
-    if (anchor.current !== null && element) {
-      element.scrollTop = element.scrollHeight - anchor.current;
-      anchor.current = null;
-    }
-  }, [firstReal?.id]);
+  const list = messages.data ?? [];
+  const lastSeq = list.reduce((max, row) => (row.sending ? max : Math.max(max, row.seq)), 0);
 
   useEffect(() => {
     const element = scroller.current;
-    if (!element || !positioned.current) return;
+    if (!element) return;
     if (stuck.current) element.scrollTop = element.scrollHeight;
-  }, [list.length, liveKey, filter]);
-
+  }, [list.length, live.map((row) => row.text.length + row.tools.length).join(",")]);
+  useEffect(() => {
+    stuck.current = true;
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    if (hash.startsWith("#m-")) setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ block: "center" }), 300);
+  }, [roomId]);
   useEffect(() => {
     if (lastSeq && stuck.current && document.visibilityState === "visible") markRead(client, roomId, lastSeq);
   }, [client, roomId, lastSeq]);
 
-  useEffect(() => {
-    if (lastFilter.current === filter) return;
-    lastFilter.current = filter;
-    setOlderDone(false);
-    if (!pendingJump.current) {
-      stuck.current = true;
-      setAtBottom(true);
-    }
-  }, [filter]);
-
-  const older = useCallback(async () => {
-    if (loadingOlder) return;
-    setLoadingOlder(true);
-    const element = scroller.current;
-    anchor.current = element ? element.scrollHeight - element.scrollTop : null;
-    try {
-      if ((await loadOlder(client, roomId, author)) < PAGE) setOlderDone(true);
-    } catch (error) {
-      anchor.current = null;
-      toastError(error);
-    } finally {
-      setLoadingOlder(false);
-    }
-  }, [author, client, loadingOlder, roomId]);
-
   const ctx: MessageContext | null = useMemo(() => {
     if (!boot.data || !room) return null;
     const people = new Map(room.members.flatMap((row) => (row.kind === "person" ? [[row.accountId, row] as const] : [])));
-    return {
-      meId: boot.data.me.id,
-      roomId: room.id,
-      roomTitle: room.title,
-      roomKind: room.kind,
-      handles: new Set(room.members.map((row) => row.handle)),
-      nodes: nodesById(boot.data, room),
-      people,
-      reactions: limitsOf(boot.data).reactions,
-      pinned: new Set(room.pinned ?? []),
-      onReply: (message: Message) => setReply(message),
-      onJump: (messageId: string) => void jumpTo(messageId),
-    };
-  }, [boot.data, room, jumpTo]);
+    return { meId: boot.data.me.id, roomTitle: room.title, handles: new Set(room.members.map((row) => row.handle)), nodes: nodesById(boot.data, room), people };
+  }, [boot.data, room]);
 
-  if (!boot.data || !ctx || !room) {
+  if (!boot.data || !ctx) {
     return (
       <div className="flex h-full items-center justify-center text-muted">
         {boot.data && missingChecked.current && !boot.isFetching ? (
           <div className="text-center text-sm">
-            This conversation is not available. <Link href="/chat" className="text-accent">Go back</Link>
+            This room is not available. <Link href="/chat" className="text-accent">Go back</Link>
           </div>
         ) : (
           <Spinner />
@@ -261,15 +77,14 @@ export function RoomView({ roomId }: { roomId: string }) {
       </div>
     );
   }
+  const theRoom = room!;
   const me = boot.data.me;
-  const limits = limitsOf(boot.data);
-  const nodeMembers = room.members.filter((row): row is NodeMember => row.kind === "node");
-  const people = room.members.filter((row): row is PersonMember => row.kind === "person");
+  const nodeMembers = theRoom.members.filter((row): row is Extract<Member, { kind: "node" }> => row.kind === "node");
+  const people = theRoom.members.filter((row): row is Extract<Member, { kind: "person" }> => row.kind === "person");
   const others = people.filter((row) => row.accountId !== me.id);
-  const dmNode: NodeFull | undefined = room.kind === "dm" ? boot.data.nodes.find((node) => node.id === nodeMembers[0]?.node.id) : undefined;
-  const lead = nodeMembers.find((row) => row.lead)?.node;
+  const dmNode = theRoom.kind === "dm" ? nodeMembers[0]?.node : undefined;
+  const lead = nodeMembers.find((row) => theRoom.leadNodeIds.includes(row.node.id))?.node;
   const myBusy = live.some((row) => ctx.nodes.get(row.nodeId)?.ownerId === me.id);
-  const showLive = filter === "all" || filter === "nodes";
   const options: MentionOption[] = [
     ...nodeMembers.map((row) => ({
       handle: row.handle,
@@ -278,187 +93,92 @@ export function RoomView({ roomId }: { roomId: string }) {
       avatar: row.node.avatar,
     })),
     ...others.map((row) => ({ handle: row.handle, label: row.name, detail: row.responsibility ?? "person", person: true })),
-    ...(nodeMembers.length > 1 ? [{ handle: "everyone", label: "Everyone", detail: "Every node in this conversation" }] : []),
+    ...(nodeMembers.length > 1 ? [{ handle: "everyone", label: "Everyone", detail: "Every node in this room" }] : []),
   ];
-  const placeholder = dmNode ? `Message ${dmNode.name}` : room.kind === "crew" ? `Message your crew${lead ? ` — @${lead.slug} takes it unless you @mention a node` : ""}` : `Message ${room.title}`;
-  const filterInfo = FILTERS.find((row) => row.id === filter)!;
+  const placeholder = dmNode ? `Message ${dmNode.name}` : theRoom.kind === "crew" ? `Message your crew${lead ? ` — @${lead.slug} takes it unless you @mention someone` : ""}` : `Message ${theRoom.title}`;
 
   const grouped = (message: Message, previous: Message | undefined) =>
     Boolean(
       previous &&
         previous.kind !== "status" &&
         message.kind === "text" &&
-        !message.data?.replyTo &&
         previous.authorKind === message.authorKind &&
         previous.authorNodeId === message.authorNodeId &&
         previous.authorAccountId === message.authorAccountId &&
         Date.parse(message.createdAt) - Date.parse(previous.createdAt) < 5 * 60_000,
     );
 
-  const saveModel = async (next: { provider: string | null; model: string | null }) => {
-    if (!dmNode) return;
-    try {
-      await api(`/api/node/nodes/${dmNode.id}`, { method: "PATCH", body: { provider: next.provider, model: next.model } });
-      await client.invalidateQueries({ queryKey: keys.bootstrap });
-      toast(`${dmNode.name} now talks with ${next.model ? "the model you picked" : "the default model"}.`, "ok");
-    } catch (error) {
-      toastError(error);
-    }
-  };
-
-  const exportRoom = () => {
-    setMenu(false);
-    void download(`/api/node/rooms/${room.id}/export`, `${room.title.replace(/[^\w.-]+/g, "-") || "conversation"}.md`).then(() => toast("Exported as Markdown.", "ok"), toastError);
-  };
-
   return (
-    <div className="relative flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b border-line px-3 py-2.5 md:px-5 lg:pr-14">
-        {dmNode ? (
-          <NodeAvatar avatar={dmNode.avatar} size={34} thinking={live.some((row) => row.nodeId === dmNode.id)} dim={dmNode.status === "paused"} />
-        ) : (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-raised text-muted">{room.kind === "crew" ? <Users size={17} /> : <Hash size={17} />}</span>
+    <div className="flex h-full flex-col">
+      <header className="flex items-center gap-3 border-b border-line px-4 py-2.5 pr-14 md:px-6">
+        {dmNode ? <NodeAvatar avatar={dmNode.avatar} size={34} thinking={live.some((row) => row.nodeId === dmNode.id)} /> : (
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-raised text-muted">
+            <Users size={17} />
+          </span>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="truncate font-semibold">{room.title}</h1>
-            {dmNode ? <span className="hidden font-mono text-xs text-muted sm:inline">@{dmNode.slug}</span> : <Pill>{room.kind === "crew" ? "crew" : "room"}</Pill>}
+            <h1 className="truncate font-semibold">{theRoom.title}</h1>
+            {dmNode ? <span className="font-mono text-xs text-muted">@{dmNode.slug}</span> : <Pill>{theRoom.kind}</Pill>}
           </div>
-          <div className="flex min-w-0 items-center gap-1 text-xs text-muted">
+          <div className="flex items-center gap-1 text-xs text-muted">
             {dmNode ? (
-              <>
-                <ModelPicker variant="compact" label={`${dmNode.name}'s model`} value={{ provider: dmNode.provider, model: dmNode.model }} onChange={saveModel} />
-                <span aria-hidden>·</span>
-                <Link href={`/n/${dmNode.id}`} className="truncate hover:text-ink">
-                  {dmNode.status === "paused" ? "paused · " : ""}
-                  {dmNode.role} · settings
-                </Link>
-              </>
+              <Link href={`/n/${dmNode.id}`} className="hover:text-ink">
+                {dmNode.role} · settings
+              </Link>
             ) : (
               <>
-                <span className="flex shrink-0 -space-x-1.5">
+                <span className="flex -space-x-1.5">
                   {nodeMembers.slice(0, 6).map((row) => (
                     <NodeAvatar key={row.id} avatar={row.node.avatar} size={18} />
                   ))}
                 </span>
                 <span className="ml-1 truncate">
-                  {room.kind === "room"
-                    ? `${people.length} ${people.length === 1 ? "person" : "people"} · ${nodeMembers.length} node${nodeMembers.length === 1 ? "" : "s"} · ${people.map((row) => (row.accountId === me.id ? "you" : row.name)).join(", ")}`
-                    : `${nodeMembers.length} node${nodeMembers.length === 1 ? "" : "s"}${lead ? ` · @${lead.slug} leads` : ""}`}
+                  {nodeMembers.length} node{nodeMembers.length === 1 ? "" : "s"}
+                  {others.length ? ` · ${people.map((row) => (row.accountId === me.id ? "you" : row.name)).join(", ")}` : ""}
                 </span>
               </>
             )}
           </div>
         </div>
-        <IconButton label="Search this conversation" onClick={() => setSearching(!searching)} className={searching ? "bg-raised text-ink" : ""}>
-          <Search size={18} />
+        <IconButton label="Room settings" onClick={() => setSettings(true)}>
+          <Settings2 size={18} />
         </IconButton>
-        <div ref={menuBox} className="relative">
-          <IconButton label="More" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)} className={`relative ${menu ? "bg-raised text-ink" : ""}`}>
-            <Ellipsis size={18} />
-            {filter !== "all" ? <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-accent" /> : null}
-          </IconButton>
-          {menu ? (
-            <div role="menu" className="absolute right-0 z-40 mt-1 w-60 rounded-2xl border border-line bg-panel p-1.5 shadow-2xl">
-              <div className="px-2.5 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Show</div>
-              {FILTERS.map((row) => (
-                <MenuItem key={row.id} checked={filter === row.id} onClick={() => (setFilter(row.id), setMenu(false))}>
-                  <row.icon size={15} /> {row.label}
-                </MenuItem>
-              ))}
-              <div className="my-1 border-t border-line" />
-              <MenuItem onClick={() => (setPanel("pins"), setMenu(false))}>
-                <Pin size={15} /> Pinned messages{room.pinned.length ? ` (${room.pinned.length})` : ""}
-              </MenuItem>
-              <MenuItem onClick={exportRoom}>
-                <Download size={15} /> Export as Markdown
-              </MenuItem>
-              <MenuItem onClick={() => (setPanel("settings"), setMenu(false))}>
-                <Settings2 size={15} /> {room.kind === "dm" ? "Chat settings" : room.kind === "crew" ? "Crew settings" : "Room settings"}
-              </MenuItem>
-            </div>
-          ) : null}
-        </div>
       </header>
-
-      {searching ? (
-        <div className="scroll-thin max-h-[55vh] overflow-y-auto border-b border-line bg-panel/80 px-3 py-3 md:px-5">
-          <SearchPanel
-            roomId={room.id}
-            onClose={() => setSearching(false)}
-            onPick={(result) => {
-              setSearching(false);
-              void jumpTo(result.message.id);
-            }}
-          />
-        </div>
-      ) : null}
-      <PinnedBar room={room} ctx={ctx} onAll={() => setPanel("pins")} />
-      {filter !== "all" ? (
-        <div className="flex items-center justify-center gap-2 border-b border-line bg-accent/5 px-3 py-1.5 text-xs">
-          <filterInfo.icon size={13} className="text-accent" /> Showing {filterInfo.label.toLowerCase()}
-          <button type="button" className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-muted hover:bg-raised hover:text-ink" onClick={() => setFilter("all")}>
-            <X size={12} /> Show everything
-          </button>
-        </div>
-      ) : null}
 
       <div
         ref={scroller}
         onScroll={(event) => {
           const element = event.currentTarget;
-          const near = element.scrollHeight - element.scrollTop - element.clientHeight < 160;
-          stuck.current = near;
-          if (near !== atBottom) setAtBottom(near);
-          if (near && lastSeq) markRead(client, roomId, lastSeq);
-          if (element.scrollTop < 40 && hasOlder && positioned.current && !pendingJump.current) void older();
+          stuck.current = element.scrollHeight - element.scrollTop - element.clientHeight < 160;
+          if (stuck.current && lastSeq) markRead(client, roomId, lastSeq);
         }}
         className="scroll-thin min-h-0 flex-1 overflow-y-auto"
-        aria-live="polite"
-        aria-relevant="additions"
       >
         <div className="mx-auto w-full max-w-3xl px-3 pb-6 pt-4 md:px-6">
-          {hasOlder ? (
-            <div className="flex justify-center pb-2">
-              <button type="button" onClick={() => void older()} disabled={loadingOlder} className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-60">
-                {loadingOlder ? <Spinner className="h-3 w-3" /> : null} Load earlier messages
-              </button>
-            </div>
-          ) : null}
           {messages.isLoading ? (
             <div className="flex justify-center py-10 text-muted">
               <Spinner />
             </div>
-          ) : messages.error && !loaded.length ? (
-            <div className="py-10 text-center text-sm text-muted">
-              {messages.error.message}{" "}
-              <button className="text-accent" onClick={() => void messages.refetch()}>
-                Try again
-              </button>
-            </div>
-          ) : !list.length && filter !== "all" ? (
-            <p className="py-16 text-center text-sm text-muted">{filterInfo.empty}</p>
           ) : !list.length ? (
             <div className="flex flex-col items-center py-16 text-center">
-              {dmNode ? (
-                <NodeAvatar avatar={dmNode.avatar} size={84} />
-              ) : (
+              {dmNode ? <NodeAvatar avatar={dmNode.avatar} size={84} /> : (
                 <span className="flex -space-x-3">
                   {nodeMembers.slice(0, 5).map((row) => (
                     <NodeAvatar key={row.id} avatar={row.node.avatar} size={56} />
                   ))}
                 </span>
               )}
-              <h2 className="mt-4 text-xl font-semibold">{dmNode ? `Say hi to ${dmNode.name}` : `Welcome to ${room.title}`}</h2>
+              <h2 className="mt-4 text-xl font-semibold">{dmNode ? `Say hi to ${dmNode.name}` : `Welcome to ${theRoom.title}`}</h2>
               <p className="mt-1 max-w-md text-sm text-muted">
                 {dmNode
                   ? `${dmNode.name} works in your Ensemble workspace, and asks before starting anything on your computer.`
-                  : room.kind === "crew"
+                  : theRoom.kind === "crew"
                     ? "Your nodes, together. The lead plans and hands out work; @mention a node to ask it directly."
-                    : "People and their nodes. Each person's lead node answers for them and asks them before it posts."}
+                    : "People and their nodes. Each node answers for its own person and asks them before it posts."}
               </p>
               <div className="mt-5 flex max-w-xl flex-wrap justify-center gap-2">
-                {SUGGESTIONS[room.kind].map((text) => (
+                {SUGGESTIONS[theRoom.kind].map((text) => (
                   <button key={text} onClick={() => send.mutate({ body: text, private: false, clientId: crypto.randomUUID() })} disabled={!me.verified} className="rounded-full border border-line bg-panel px-3 py-1.5 text-sm text-muted hover:border-accent hover:text-ink disabled:opacity-50">
                     {text}
                   </button>
@@ -466,84 +186,45 @@ export function RoomView({ roomId }: { roomId: string }) {
               </div>
             </div>
           ) : (
-            days.map((day) => (
-              <section key={day.key} aria-label={day.label}>
-                <div className="sticky top-1 z-10 my-3 flex justify-center" role="separator">
-                  <span className="rounded-full border border-line bg-panel/90 px-3 py-0.5 text-[11px] font-medium text-muted shadow-sm backdrop-blur">{day.label}</span>
-                </div>
-                {day.items.map((message, index) => {
-                  const previous = day.items[index - 1];
-                  const divider = message.id === unreadId;
-                  return (
-                    <Fragment key={message.id}>
-                      {divider ? (
-                        <div id="unread-divider" className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-accent" role="separator">
-                          <span className="h-px flex-1 bg-accent/40" /> New messages <span className="h-px flex-1 bg-accent/40" />
-                        </div>
-                      ) : null}
-                      <MessageItem message={message} ctx={ctx} grouped={!divider && grouped(message, previous)} highlighted={highlight === message.id} />
-                    </Fragment>
-                  );
-                })}
-              </section>
-            ))
+            list.map((message, index) => <MessageItem key={message.id} message={message} ctx={ctx} grouped={grouped(message, list[index - 1])} />)
           )}
 
-          {showLive
-            ? live.map((row) => {
-                const node = ctx.nodes.get(row.nodeId);
-                return (
-                  <div key={row.nodeId} className="mt-4 flex gap-3">
-                    <NodeAvatar avatar={node?.avatar} size={36} thinking />
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-0.5 text-sm">
-                        <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="text-xs text-muted">{row.text ? "is writing…" : "is thinking…"}</span>
-                      </div>
-                      {row.tools.length ? (
-                        <div className="mb-1 flex flex-wrap gap-1.5">
-                          {row.tools.map((tool, at) => (
-                            <span key={at} className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg px-2 py-0.5 text-xs text-muted">
-                              {TOOL_LABEL(tool.name)}
-                              {tool.state === "awaiting_approval" ? " · needs you" : ""}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null}
-                      {row.text ? (
-                        <div className="opacity-80">
-                          <RichText text={row.text} handles={ctx.handles} />
-                        </div>
-                      ) : (
-                        <span className="inline-flex gap-1 py-2">
-                          {[0, 1, 2].map((dot) => (
-                            <span key={dot} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" style={{ animationDelay: `${dot * 150}ms` }} />
-                          ))}
-                        </span>
-                      )}
-                    </div>
+          {live.map((row) => {
+            const node = ctx.nodes.get(row.nodeId);
+            return (
+              <div key={row.nodeId} className="mt-4 flex gap-3">
+                <NodeAvatar avatar={node?.avatar} size={36} thinking />
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 text-sm">
+                    <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="text-xs text-muted">{row.text ? "is writing…" : "is thinking…"}</span>
                   </div>
-                );
-              })
-            : null}
+                  {row.tools.length ? (
+                    <div className="mb-1 flex flex-wrap gap-1.5">
+                      {row.tools.map((tool, at) => (
+                        <span key={at} className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg px-2 py-0.5 text-xs text-muted">
+                          {TOOL_LABEL(tool.name)}
+                          {tool.state === "awaiting_approval" ? " · needs you" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  {row.text ? (
+                    <div className="opacity-80">
+                      <RichText text={row.text} handles={ctx.handles} />
+                    </div>
+                  ) : (
+                    <span className="inline-flex gap-1 py-2">
+                      {[0, 1, 2].map((dot) => (
+                        <span key={dot} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" style={{ animationDelay: `${dot * 150}ms` }} />
+                      ))}
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
-
-      <div className="relative">
-      {!atBottom ? (
-        <button
-          type="button"
-          onClick={() => {
-            stuck.current = true;
-            setAtBottom(true);
-            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
-          }}
-          className="absolute -top-12 right-5 z-20 inline-flex h-10 items-center gap-1.5 rounded-full border border-line bg-panel px-3 text-sm shadow-xl hover:bg-raised md:right-8"
-          aria-label={newBelow ? `Jump to the latest: ${newBelow} new` : "Jump to the latest"}
-        >
-          <ArrowDown size={16} />
-          {newBelow ? <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold text-accent-ink">{newBelow}</span> : null}
-        </button>
-      ) : null}
 
       <Composer
         options={options}
@@ -557,20 +238,13 @@ export function RoomView({ roomId }: { roomId: string }) {
             Verify your email to talk to nodes. <Link href="/welcome" className="text-accent">Verify now</Link>
           </span>
         }
-        reply={reply ? { id: reply.id, author: authorLabel(reply, ctx), excerpt: plainPreview(reply.body).slice(0, 160), private: reply.private } : null}
-        onCancelReply={() => setReply(null)}
         onSend={(body, isPrivate) => {
           stuck.current = true;
-          setAtBottom(true);
-          if (filter !== "all" && filter !== "people") setFilter("all");
-          send.mutate({ body, private: isPrivate, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}) });
-          setReply(null);
+          send.mutate({ body, private: isPrivate, clientId: crypto.randomUUID() });
         }}
-        onStop={() => void api(`/api/node/rooms/${roomId}/stop`, { body: {} }).catch(toastError)}
+        onStop={() => void api(`/api/node/rooms/${roomId}/stop`, { body: {} }).catch(() => undefined)}
       />
-      </div>
-      <RoomSettings key={room.id + room.title} room={room} boot={boot.data} open={panel === "settings"} onClose={() => setPanel(null)} onExport={exportRoom} />
-      <PinsDrawer room={room} ctx={ctx} open={panel === "pins"} onClose={() => setPanel(null)} max={limits.pins} />
+      <RoomSettings key={theRoom.id + theRoom.title} room={theRoom} boot={boot.data} open={settings} onClose={() => setSettings(false)} />
     </div>
   );
 }

@@ -1,15 +1,12 @@
 "use client";
 
-import { ArrowUp, CornerUpLeft, Lock, Square, X } from "lucide-react";
+import { ArrowUp, Lock, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { insertMention, matchHandles, typingMention } from "@/lib/text";
 import type { Avatar } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 
 export type MentionOption = { handle: string; label: string; detail: string; avatar?: Avatar; person?: boolean };
-
-/** The message being replied to, shown above the composer. */
-export type ComposerReply = { id: string; author: string; excerpt: string; private: boolean };
 
 export function Composer({
   options,
@@ -18,8 +15,6 @@ export function Composer({
   busy,
   disabled,
   disabledReason,
-  reply,
-  onCancelReply,
   onSend,
   onStop,
 }: {
@@ -29,8 +24,6 @@ export function Composer({
   busy: boolean;
   disabled?: boolean;
   disabledReason?: React.ReactNode;
-  reply?: ComposerReply | null;
-  onCancelReply?: () => void;
   onSend: (body: string, isPrivate: boolean) => void;
   onStop: () => void;
 }) {
@@ -41,14 +34,6 @@ export function Composer({
   const area = useRef<HTMLTextAreaElement>(null);
   const typing = typingMention(value, cursor);
   const matches = typing ? matchHandles(options, typing.query) : [];
-  // A public reply may not quote a private message, so a reply to one is private too.
-  const lockedPrivate = Boolean(reply?.private) && canBePrivate;
-  const privateNow = canBePrivate && (isPrivate || lockedPrivate);
-
-  const replyId = reply?.id;
-  useEffect(() => {
-    if (replyId) area.current?.focus();
-  }, [replyId]);
 
   useEffect(() => {
     const element = area.current;
@@ -72,7 +57,7 @@ export function Composer({
   const send = () => {
     const body = value.trim();
     if (!body || disabled) return;
-    onSend(body, privateNow);
+    onSend(body, canBePrivate && isPrivate);
     setValue("");
     setCursor(0);
   };
@@ -101,26 +86,7 @@ export function Composer({
         </ul>
       ) : null}
       {disabled && disabledReason ? <div className="mb-2 text-center text-sm text-muted">{disabledReason}</div> : null}
-      <div className={`rounded-3xl border bg-panel p-2 shadow-lg transition focus-within:border-accent/60 ${privateNow ? "border-private/50" : "border-line"}`}>
-        {reply ? (
-          <div className="mx-1 mb-1 flex items-start gap-2 rounded-2xl bg-bg/70 px-3 py-2 text-sm">
-            <CornerUpLeft size={14} className="mt-0.5 shrink-0 text-accent" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-xs font-medium text-accent">
-                Replying to {reply.author}
-                {reply.private ? (
-                  <span className="ml-1.5 inline-flex items-center gap-1 text-private">
-                    <Lock size={10} /> private, so your reply is too
-                  </span>
-                ) : null}
-              </span>
-              <span className="line-clamp-1 text-muted">{reply.excerpt || "Deleted message"}</span>
-            </span>
-            <button type="button" onClick={onCancelReply} className="rounded-lg p-1 text-muted hover:bg-raised hover:text-ink" aria-label="Cancel reply">
-              <X size={14} />
-            </button>
-          </div>
-        ) : null}
+      <div className={`rounded-3xl border bg-panel p-2 shadow-lg transition focus-within:border-accent/60 ${isPrivate && canBePrivate ? "border-private/50" : "border-line"}`}>
         <textarea
           ref={area}
           value={value}
@@ -139,17 +105,11 @@ export function Composer({
               if (event.key === "Enter" || event.key === "Tab") return (event.preventDefault(), choose(matches[index]!.handle));
               if (event.key === "Escape") return setCursor(-1);
             }
-            if (event.key === "Escape" && reply) {
-              event.preventDefault();
-              onCancelReply?.();
-              return;
-            }
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               send();
             }
           }}
-          aria-label={placeholder}
           className="max-h-[220px] w-full resize-none bg-transparent px-3 py-2 text-[15px] outline-none placeholder:text-muted disabled:opacity-60"
         />
         <div className="flex items-center justify-between gap-2 px-1">
@@ -158,15 +118,14 @@ export function Composer({
               <button
                 type="button"
                 onClick={() => setPrivate(!isPrivate)}
-                disabled={lockedPrivate}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition disabled:cursor-not-allowed ${privateNow ? "bg-private/15 text-private" : "text-muted hover:bg-raised"}`}
-                aria-pressed={privateNow}
-                title={lockedPrivate ? "A reply to a private message stays private" : "Only you and your own nodes see it"}
+                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition ${isPrivate ? "bg-private/15 text-private" : "text-muted hover:bg-raised"}`}
+                aria-pressed={isPrivate}
+                title="Only you and your own nodes see it"
               >
                 <Lock size={12} /> Only me
               </button>
             ) : null}
-            <span className="hidden text-xs text-muted sm:inline">@ to mention · Shift+Enter for a new line{reply ? " · Esc to cancel the reply" : ""}</span>
+            <span className="hidden text-xs text-muted sm:inline">@ to mention · Shift+Enter for a new line</span>
           </div>
           {busy && !value.trim() ? (
             <button type="button" onClick={onStop} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-raised text-ink hover:bg-line" aria-label="Stop">

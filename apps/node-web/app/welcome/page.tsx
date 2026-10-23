@@ -3,17 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import Link from "next/link";
-import { ArrowRight, Check, Inbox, Users } from "lucide-react";
+import { ArrowRight, Check, Users } from "lucide-react";
 import { Wordmark } from "@/components/brand";
-import { ComputerList, PairComputer } from "@/components/connect-computer";
+import { ConnectComputer } from "@/components/connect-computer";
 import { NodeAvatar } from "@/components/node-avatar";
-import { Button, External, Field, Input, Notice, Spinner } from "@/components/ui";
+import { Button, Field, Input, Notice, Spinner } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
-import { ENSEMBLE_LINKS } from "@/lib/config";
-import { uniqueName } from "@/lib/crew";
+import { ENSEMBLE_APP } from "@/lib/config";
 import { keys, useMe } from "@/lib/hooks";
-import type { Bootstrap, NodeFull, Room } from "@/lib/types";
+import type { Bootstrap, Room } from "@/lib/types";
 
 type Step = "verify" | "account" | "node" | "computer";
 
@@ -79,12 +77,7 @@ export default function Welcome() {
   const create = () =>
     run(async () => {
       if (chosenCrew) {
-        // A crew suggestion: make its nodes (the server numbers names already taken), then the crew.
-        const made: NodeFull[] = [];
-        for (const id of chosenCrew.nodes) made.push((await api<{ node: NodeFull }>("/api/node/nodes", { body: { templateId: id } })).node);
-        const lead = made.find((node) => node.templateId === chosenCrew.lead) ?? made[0];
-        const taken = new Set(boot.data.rooms.filter((room) => room.kind !== "dm").map((room) => room.title.toLowerCase()));
-        const result = await api<{ room: Room }>("/api/node/crews", { body: { title: uniqueName(chosenCrew.title, taken, 80), nodeIds: made.map((node) => node.id), ...(lead ? { leadNodeId: lead.id } : {}) } });
+        const result = await api<{ room: Room }>("/api/node/crews", { body: { templateId: chosenCrew.id } });
         setCreated(result.room.id);
       } else {
         const result = await api<{ room: Room }>("/api/node/nodes", { body: { templateId: pick, ...(name.trim() ? { name: name.trim() } : {}) } });
@@ -141,21 +134,21 @@ export default function Welcome() {
           <section className="space-y-5 rounded-2xl border border-line bg-panel p-6">
             <h1 className="text-2xl font-semibold">Welcome{me.data.user.name ? `, ${me.data.user.name.split(" ")[0]}` : ""}. You&apos;re in Ensemble.</h1>
             <p className="text-muted">
-              Node runs on your <strong className="text-ink">Ensemble account</strong> ({me.data.user.email}). If you just signed up here, that made the account. If you already used Ensemble, Node uses it as it is: your connected apps, paired computers, trusted folders and credits come along, and nothing is copied. One account everywhere:
+              Signing up here created your <strong className="text-ink">Ensemble account</strong> ({me.data.user.email}). It is one account everywhere:
             </p>
             <ul className="grid gap-3 sm:grid-cols-3">
               {[
-                ["Ensemble", "Your workspace: tasks, pages, projects, people, connected apps. Your nodes read and write it.", ENSEMBLE_LINKS.app],
-                ["Ensemble desktop app and CLI", "Pair your computer and run the work nodes hand to agents.", ENSEMBLE_LINKS.download],
-                ["Ensemble Node", "Here: talk to your nodes, alone, in a crew, or in rooms with other people.", null],
+                ["Ensemble", "Your workspace: tasks, pages, projects, people. Your nodes read and write it.", ENSEMBLE_APP],
+                ["Ensemble CLI", "Pairs your computer and runs the work nodes hand to agents.", "https://ensemblework.com/download"],
+                ["Ensemble Node", "Here: talk to your nodes, alone or with your people.", null],
               ].map(([title, body, link]) => (
                 <li key={title} className="rounded-xl border border-line bg-bg p-4">
                   <div className="font-medium">{title}</div>
                   <p className="mt-1 text-sm text-muted">{body}</p>
                   {link ? (
-                    <External href={link} icon className="mt-2 inline-block text-sm text-accent hover:underline">
+                    <a href={link} className="mt-2 inline-block text-sm text-accent hover:underline">
                       Open
-                    </External>
+                    </a>
                   ) : null}
                 </li>
               ))}
@@ -210,15 +203,9 @@ export default function Welcome() {
           <section className="space-y-5 rounded-2xl border border-line bg-panel p-6">
             <h1 className="text-2xl font-semibold">Connect a computer</h1>
             <p className="text-muted">
-              Nodes plan and manage your Ensemble workspace from here. For real work (code, files, tests), they assign tasks to an agent on <strong className="text-ink">your</strong> computer, and you approve each one. A computer you already paired with Ensemble is ready; this page notices when one connects.
+              Nodes plan and manage your Ensemble workspace from here. For real work (code, files, tests), they assign tasks to an agent on <strong className="text-ink">your</strong> computer — you approve each one. Pair a computer with the Ensemble CLI or the desktop app; this page notices when it&apos;s connected.
             </p>
-            <ComputerList computers={boot.data.computers} />
-            <PairComputer paired={boot.data.computers.length > 0} />
-            {boot.data.invites?.length ? (
-              <Link href="/requests" className="flex items-center gap-2 rounded-xl border border-accent/40 bg-accent/5 px-3 py-2 text-sm hover:border-accent">
-                <Inbox size={16} className="text-accent" /> {boot.data.invites.length} request{boot.data.invites.length === 1 ? "" : "s"} to join a room wait{boot.data.invites.length === 1 ? "s" : ""} for you
-              </Link>
-            ) : null}
+            <ConnectComputer computers={boot.data.computers} />
             <div className="flex flex-wrap gap-2">
               <Button onClick={finish}>
                 {boot.data.computers.some((row) => row.online) ? "Start chatting" : "Continue without a computer"} <ArrowRight size={16} />

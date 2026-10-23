@@ -80,7 +80,7 @@ The environment variables apply to Production and Preview, and are baked into th
 | Variables `DEPLOY_ENABLED`, `TEST_DEPLOY_ENABLED` | `true`; anything else and that workflow does not publish |
 | Variables `ENSEMBLE_API_URL`, `ENSEMBLE_TEST_API_URL` | `https://api.ensemblework.com`, `https://api-test.ensemblework.com`: the APIs each workflow checks |
 | Variables `ENSEMBLE_NODE_URL`, `ENSEMBLE_NODE_TEST_URL` | Optional; default `https://node.ensemblework.com`, `https://node-test.ensemblework.com` |
-| Branch protection | `main`: **Typecheck, tests and build** required, no force push or deletion. `testing`: no force push or deletion, no required checks |
+| Branch protection | `main`: changes only through a merged pull request (ruleset "main: changes only through pull requests", no bypass, admins included), **Typecheck, tests and build** required, no force push or deletion. `testing`: no force push or deletion, no required checks |
 
 To replace the token: Vercel → Account Settings → **Tokens** → Create (scope: the account above), then `gh secret set VERCEL_TOKEN -R ensemblework/ensemble-node`. Vercel's CLI cannot create tokens.
 

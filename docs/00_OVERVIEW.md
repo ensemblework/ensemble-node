@@ -29,3 +29,7 @@ What is not in v0: scheduled routines, push notifications, native phone apps, in
 ## How it is built (one paragraph)
 
 The website (this repository, Next.js) talks to Ensemble's API at `api.ensemblework.com` with the shared Ensemble session cookie. Node's backend is a module of Ensemble's hub‑api (`apps/hub-api/src/node/`). A node's turn is Ensemble's own assistant loop with the node's persona and three extra tools. Computer work is Ensemble's existing assign‑to‑agent job, run by the paired computer's existing runner. Details: [01](01_IMPLEMENTATION_GUIDE.md).
+
+## Environments
+
+Node runs twice, like Ensemble: a **testing** website (`node-test.ensemblework.com`, where Node is developed) on Ensemble's testing environment, and the **production** website (`node.ensemblework.com`) on production Ensemble. Each has its own accounts and data in its Ensemble's database; Node has no server or database of its own. Details: [04](04_DEPLOYMENT_AND_DNS.md#hosting-data-and-accounts).

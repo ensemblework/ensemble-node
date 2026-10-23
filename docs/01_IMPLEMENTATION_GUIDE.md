@@ -21,7 +21,7 @@ Rules that do not bend:
  node.ensemblework.com (this repo, Next.js on Vercel; node-test.ensemblework.com talks to Ensemble's testing API the same way)
         │  fetch + EventSource, credentials: include (Ensemble session cookie, Domain=ensemblework.com)
         ▼
- api.ensemblework.com  ── Ensemble hub-api (one process, one Postgres, one Redis)
+ api.ensemblework.com  ── Ensemble hub-api (one process, one Postgres, one Redis; Node's tables live in that Postgres)
         ├─ /api/auth/*            existing sign-in, sign-up, verification, OAuth (?return=node)
         ├─ /api/node/*            Node module: nodes, rooms, messages, approvals, runs, SSE   (hub-api src/node)
         │     └─ node turn  ──►  runAssistantTurn (assistant/agent.ts): every Hub tool + node tools

@@ -23,13 +23,15 @@ ensemble-node/
 │   │   ├── brand.tsx, ui.tsx
 │   ├── lib/
 │   │   ├── api.ts, config.ts    Ensemble API client (credentials: include) and URLs
+│   │   ├── environment.ts       testing or production; refuses a build that mixes them (tested)
 │   │   ├── hooks.ts             queries, mutations, the event stream
 │   │   ├── live.ts              who is thinking / writing right now
 │   │   ├── text.ts, markdown.ts pure helpers (tested)
 │   │   └── types.ts             what /api/node/* sends
 │   └── public/brand/            Ensemble mark
 ├── docs/                        these guides; research/; design/pre-v0/
-└── .github/                     workflows/ci.yml (checks), workflows/deploy.yml and
+└── .github/                     workflows/test-web.yml (testing: checks, publish node-test),
+                                 workflows/ci.yml (checks for main), workflows/deploy.yml and
                                  actions/vercel-deploy (publish main on Vercel)
 ```
 
@@ -42,4 +44,4 @@ ensemble-node/
 | A new Hub tool nodes should have | Ensemble's assistant registry: every Hub tool is a node tool too |
 | The CLI's Node tab | Ensemble: `apps/cli/src/tui/node.ts`, `app.tsx` |
 | Sign-in behaviour | Ensemble: `routes/auth*.ts` (Node only calls them) |
-| Hosting, deploys, CI | `.github/workflows/`, `.github/actions/vercel-deploy/`, the Vercel project ([04](04_DEPLOYMENT_AND_DNS.md)) |
+| Hosting, environments, deploys, CI | `.github/workflows/`, `.github/actions/vercel-deploy/`, `apps/node-web/lib/environment.ts`, the Vercel projects ([04](04_DEPLOYMENT_AND_DNS.md)) |

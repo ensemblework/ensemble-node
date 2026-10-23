@@ -18,7 +18,7 @@ Rules that do not bend:
 ## 2. Architecture
 
 ```
- node.ensemblework.com (this repo, Next.js on Vercel)
+ node.ensemblework.com (this repo, Next.js on Vercel; node-test.ensemblework.com talks to Ensemble's testing API the same way)
         │  fetch + EventSource, credentials: include (Ensemble session cookie, Domain=ensemblework.com)
         ▼
  api.ensemblework.com  ── Ensemble hub-api (one process, one Postgres, one Redis)

@@ -1,123 +1,134 @@
-# 04 · Deployment and DNS
+# 04 · Environments, deployment and DNS
 
-Ensemble Node is two deploys, in the same shape as Ensemble itself: the API on the home server, the Next.js website on Vercel.
+Ensemble Node has two environments, each tied to the matching Ensemble and never to the other one:
 
-| What | Repository | Runs on | Ships through |
-| --- | --- | --- | --- |
-| Node's backend, a module of Ensemble's API (`apps/hub-api/src/node`) | `ensemblework/ensemble` | Ensemble's home server, as part of `api.ensemblework.com` | Ensemble's pipeline. No new service, port or database. |
-| The website (`apps/node-web`) at `https://node.ensemblework.com` | this one | Vercel project `ensemble-node`, next to Ensemble's `ensemble-app` (the Hub) and `ensemble-landing` | This repo's `deploy` workflow, after CI passes on `main` |
+| | Testing | Production |
+| --- | --- | --- |
+| Branch | `testing`: where Node is developed | `main`: what people use |
+| Website | `https://node-test.ensemblework.com`, Vercel project `ensemble-node-test`, marked **Testing** | `https://node.ensemblework.com`, Vercel project `ensemble-node` |
+| Ensemble it uses | `api-test.ensemblework.com` and `test.ensemblework.com` (Ensemble's `testing` branch) | `api.ensemblework.com` and `app.ensemblework.com` (Ensemble's `main`) |
+| CLI whose Node tab links here | `ensemble-test` | `ensemble` |
+| Accounts, nodes, rooms, connections, computers, credits | Ensemble's testing database | Ensemble's production database |
+| Workflow | `test-web.yml`: typecheck and unit tests, then publish (a few minutes) | `ci.yml` (typecheck, tests, build) then `deploy.yml` |
+| Search engines | Not indexed | Indexed |
+
+Nothing crosses over. An account, a session, a node or a paired computer of one environment does not exist in the other; the testing API's cookies have their own names (Ensemble's `ENSEMBLE_COOKIE_NAMESPACE=testing`). Each build checks its own settings: `next.config.ts` refuses a production build that names the testing API or Hub, and a testing build (`NEXT_PUBLIC_ENSEMBLE_NODE_ENV=testing`) that names anything else (`lib/environment.ts`). `/health` reports `environment`, and each workflow waits for its own.
 
 ```
- browser ─► node.ensemblework.com ─► Vercel (project ensemble-node; pages, and /health in bom1)
-    │
-    └───► api.ensemblework.com ─► Cloudflare Tunnel ─► Ensemble's API on the home server
-          sign-in and all data; one session cookie on Domain=ensemblework.com
+ node-test.ensemblework.com ─► Vercel ensemble-node-test ─┐ browser calls, credentials: include
+                                                          └► api-test.ensemblework.com ─► Ensemble's testing API (home server)
+ node.ensemblework.com      ─► Vercel ensemble-node      ─┐
+                                                          └► api.ensemblework.com      ─► Ensemble's production API (home server)
 ```
 
-The website has no server secrets and makes no server-side calls. The browser loads it from `node.` and talks to `api.` directly. Node keeps no files of its own: nodes, rooms and messages are rows in Ensemble's Postgres.
+Each website has no server secrets and makes no server-side calls. Node keeps no files of its own: nodes, rooms and messages are rows in that Ensemble's Postgres. Node's backend is the `node` module of Ensemble's API, so each Node environment needs its Ensemble to have the matching module: Node `testing` follows Ensemble `testing`, and Node `main` follows Ensemble `main`.
 
-## 1. Vercel
+## 1. Daily development (testing)
 
-| Setting | Value |
-| --- | --- |
-| Account | The one that owns `ensemble-app`, `ensemble-landing` and the domain `ensemblework.com` |
-| Project | `ensemble-node` |
-| Root Directory | `apps/node-web`, with files outside it included (the pnpm workspace is at the repository root) |
-| Framework, Node.js | Next.js, 22.x |
-| Functions region | `bom1` (Mumbai), the same as the Hub. Only `/health` runs as a function; every other page is static. |
-| Environment variables (Production and Preview) | `NEXT_PUBLIC_ENSEMBLE_API=https://api.ensemblework.com`, `NEXT_PUBLIC_ENSEMBLE_APP=https://app.ensemblework.com` |
-| Deployment protection | Vercel Authentication on every URL except the custom domain |
-| Domain | `node.ensemblework.com` |
-| Git integration | Not connected. GitHub Actions publishes prebuilt output, as for the Hub. |
+1. Branch from `testing`, open a pull request into `testing`: `test-web.yml` runs **Testing checks** (typecheck and unit tests). Or push to `testing` directly.
+2. Every push to `testing` runs the checks, then builds that commit on Vercel (`vercel build` is a full production build of the site), publishes it to `ensemble-node-test`, waits until `https://node-test.ensemblework.com/health` reports the commit with `environment: testing`, and checks that Ensemble's testing API allows the site. Only the newest `testing` commit publishes.
+3. Ensemble changes Node needs go to Ensemble's `testing` branch first (Ensemble's `docs/36_WEB_TESTING.md`); the testing API runs them within minutes.
 
-The `NEXT_PUBLIC_*` values are baked into the browser bundle at build time: after changing them in the Vercel project, run the `deploy` workflow (Actions → deploy → Run workflow on `main`).
+Testing is shared integration work: a push can briefly interrupt the testing site. Sign in there with an account of `test.ensemblework.com`; the testing API offers email sign-up (Turnstile and a code by email) and no Google, Microsoft or GitHub sign-in.
 
-Preview URLs (`*.vercel.app`) cannot sign in: the session cookie belongs to `ensemblework.com`, and Ensemble's API allows only `node.ensemblework.com`. Test sign-in on the real domain or locally.
+## 2. Promotion to production
 
-## 2. How a deploy happens
+1. Promote Ensemble first: its `testing` → `main` pull request, merged and deployed, so the production API has every route the website needs.
+2. Then open a pull request from Node's `testing` to `main`. It runs the full `ci.yml` (**Typecheck, tests and build**, required on `main`).
+3. Merge. CI runs on `main`, then `deploy.yml` builds the commit, publishes it to `ensemble-node` (`vercel deploy --prebuilt --prod`, `.github/actions/vercel-deploy`), waits until `https://node.ensemblework.com/health` reports it with `environment: production` and `/`, `/login`, `/chat` and the manifest answer 200, and checks that the production API allows the site (a warning, never a failure). It skips a commit that is no longer the tip of `main`.
+4. Merge `main` back into `testing`, so the next cycle starts from what was released. A production fix made on `main` is merged back into `testing` the same way.
 
-1. A pull request runs CI: **Typecheck, tests and build**. It is required on `main`.
-2. Merge. CI runs again on `main`; when it passes, the `deploy` workflow builds that commit with `vercel build`, publishes it with `vercel deploy --prebuilt --prod` (`.github/actions/vercel-deploy`), and waits until `https://node.ensemblework.com/health` reports the commit and `/`, `/login`, `/chat` and the manifest answer 200. It skips a commit that is no longer the tip of `main`, so an older run never rolls the site back.
-3. It then checks that Ensemble's API allows this site (CORS). That is a warning, never a failure.
+Data never moves: testing accounts stay in testing and production accounts in production. To roll production back at once: Vercel → `ensemble-node` → Deployments → an earlier production deployment → **Instant Rollback**, then revert the change on `main` with a pull request.
 
-Each deploy appears under the repository's **production** environment and in Vercel. To roll back at once: Vercel → `ensemble-node` → Deployments → an earlier production deployment → **Instant Rollback**. Then revert the change on `main` with a pull request, so the next deploy does not bring it back.
+## 3. Vercel
+
+Both projects live in the account that owns `ensemble-app`, `ensemble-landing` and the domain `ensemblework.com`.
+
+| Setting | `ensemble-node-test` | `ensemble-node` |
+| --- | --- | --- |
+| Root Directory | `apps/node-web`, files outside it included (the pnpm workspace is at the repository root) | same |
+| Framework, Node.js, functions region | Next.js, 22.x, `bom1` (only `/health` is a function) | same |
+| `NEXT_PUBLIC_ENSEMBLE_NODE_ENV` | `testing` | unset |
+| `NEXT_PUBLIC_ENSEMBLE_API` | `https://api-test.ensemblework.com` | `https://api.ensemblework.com` |
+| `NEXT_PUBLIC_ENSEMBLE_APP` | `https://test.ensemblework.com` | `https://app.ensemblework.com` |
+| Domain | `node-test.ensemblework.com` | `node.ensemblework.com` |
+| Deployment protection | Vercel Authentication except the custom domain | same |
+| Git integration | Not connected; GitHub Actions publishes prebuilt output | same |
+
+The environment variables apply to Production and Preview, and are baked into the browser bundle at build time: after changing one, run the project's workflow again (Actions → test-web on `testing`, or deploy on `main`). Preview URLs (`*.vercel.app`) cannot sign in, because Ensemble's APIs allow only the two domains.
 
 | GitHub setting | Value |
 | --- | --- |
-| Secret `VERCEL_TOKEN` | A Vercel access token of the account above |
-| Secrets `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | The account's team id and the `ensemble-node` project id |
-| Variable `DEPLOY_ENABLED` | `true`; anything else and the `deploy` workflow does nothing |
-| Variables `ENSEMBLE_NODE_URL`, `ENSEMBLE_API_URL` | Optional; default `https://node.ensemblework.com`, `https://api.ensemblework.com` |
-| Branch protection on `main` | **Typecheck, tests and build** required; no force push or deletion |
+| Secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID` | A Vercel access token of that account, and its team id |
+| Secrets `VERCEL_PROJECT_ID`, `VERCEL_PROJECT_ID_TEST` | The `ensemble-node` and `ensemble-node-test` project ids |
+| Variables `DEPLOY_ENABLED`, `TEST_DEPLOY_ENABLED` | `true`; anything else and that workflow does not publish |
+| Variables `ENSEMBLE_API_URL`, `ENSEMBLE_TEST_API_URL` | `https://api.ensemblework.com`, `https://api-test.ensemblework.com`: the APIs each workflow checks |
+| Variables `ENSEMBLE_NODE_URL`, `ENSEMBLE_NODE_TEST_URL` | Optional; default `https://node.ensemblework.com`, `https://node-test.ensemblework.com` |
+| Branch protection | `main`: **Typecheck, tests and build** required, no force push or deletion. `testing`: no force push or deletion, no required checks |
 
-To replace the token: Vercel → Account Settings → **Tokens** → Create (scope: the account above), then `gh secret set VERCEL_TOKEN -R ensemblework/ensemble-node` and paste it. Vercel's CLI cannot create tokens.
+To replace the token: Vercel → Account Settings → **Tokens** → Create (scope: the account above), then `gh secret set VERCEL_TOKEN -R ensemblework/ensemble-node`. Vercel's CLI cannot create tokens.
 
-## 3. Cloudflare
+## 4. Cloudflare
 
 | Name | Type | Target | Proxy |
 | --- | --- | --- | --- |
-| `node` | CNAME | `41da7d0c36baf7e2.vercel-dns-017.com` (from Vercel → `ensemble-node` → Settings → Domains) | **DNS only** |
-| `app`, `www`, apex | Vercel records | | DNS only (Ensemble) |
-| `api` | Tunnel `ensemble-home` | | Proxied (Ensemble) |
+| `node` | CNAME | `41da7d0c36baf7e2.vercel-dns-017.com` (Vercel → `ensemble-node` → Settings → Domains) | **DNS only** |
+| `node-test` | CNAME | `57f2e0da5403081e.vercel-dns-017.com` (Vercel → `ensemble-node-test` → Settings → Domains) | **DNS only** |
+| `app`, `test`, `www`, apex | Vercel records | | DNS only (Ensemble) |
+| `api`, `api-test` | Tunnels `ensemble-home`, `ensemble-test` | | Proxied (Ensemble) |
 
-Keep `node` **DNS only**, like `app`: Vercel issues and renews the certificate itself (Let's Encrypt), and Cloudflare's proxy in front of Vercel would add a second cache and break issuance.
+Keep both Node records **DNS only**: Vercel issues and renews each certificate itself, and Cloudflare's proxy in front of Vercel would add a second cache and break issuance.
 
-**Turnstile:** Node's sign-up uses Ensemble's existing widget, **Ensemble signup**. Node has no Turnstile keys of its own: it shows the widget with the site key from `/api/auth/status`, and Ensemble's API checks the answer with that widget's secret. The widget's hostname `ensemblework.com` covers `node.ensemblework.com` (a hostname covers its subdomains), so nothing needs adding there.
+**Turnstile:** both websites use Ensemble's widget **Ensemble signup** through the API they talk to (the site key comes from `/api/auth/status`; the API checks the answer). The widget's hostname `ensemblework.com` covers `node.` and `node-test.`, so nothing needs adding.
 
-**Google, Microsoft, GitHub sign-in:** nothing to change. Their callbacks are on `api.ensemblework.com`; Node starts them with `?return=node`, and the API sends the person back to Node.
+**Google, Microsoft, GitHub sign-in:** production's callbacks are on `api.ensemblework.com`; Node starts them with `?return=node` and the API sends the person back to Node. The testing API has no provider sign-in.
 
-## 4. Ensemble's API
+## 5. Ensemble's APIs
 
-Ensemble's server env file has:
+Each API's env file names its own website:
 
-```bash
-ENSEMBLE_NODE_WEB_ORIGIN=https://node.ensemblework.com
-```
+| API | Env file on the home server | Value |
+| --- | --- | --- |
+| Testing | `~/ensemble-test/ensemble.env` | `ENSEMBLE_NODE_WEB_ORIGIN="https://node-test.ensemblework.com"` |
+| Production | `~/ensemble-host/ensemble.env` | `ENSEMBLE_NODE_WEB_ORIGIN=https://node.ensemblework.com` |
 
-With it, the API:
+With it, the API allows that origin for CORS with credentials, sends a provider sign-in started on Node back to it, accepts a Turnstile answer solved there for email sign-up (still checked with Cloudflare: success, the `signup` action and the host), and links the verification email of an account created there to its `/welcome`. Production refuses to start when the value is not one https origin that shares the session cookie (`ENSEMBLE_COOKIE_DOMAIN=ensemblework.com`).
 
-- allows `https://node.ensemblework.com` for CORS with credentials;
-- sends a provider sign-in started on Node back to Node;
-- accepts a Turnstile answer solved on `node.ensemblework.com` for email sign-up (still checked with Cloudflare: success, the `signup` action and the host);
-- links the verification email of an account created on Node to Node's `/welcome`.
+Models and credits come from that Ensemble, so its Hub, CLI and Node always agree: a node can use every model in its `ENSEMBLE_INCLUDED_MODELS` (default `gpt-5-mini`), and every call spends the account's monthly Ensemble credits (20,000 by default), shared by every app of that environment. Ensemble's `docs/33_INCLUDED_AI.md` owns the details.
 
-Production refuses to start when the value is not one https origin that shares the session cookie (`ENSEMBLE_COOKIE_DOMAIN=ensemblework.com`).
-
-Models and credits come from Ensemble, so the Hub, the desktop app, the CLI and Node always agree:
-
-- A node can use every model in `ENSEMBLE_INCLUDED_MODELS`, Ensemble's list of Azure AI Foundry deployments, by its name and version. A model added to or removed from that list shows on Node at once. A node's default is `gpt-5-mini`.
-- Every call spends the account's monthly Ensemble credits (20,000 by default, `ENSEMBLE_INCLUDED_MONTHLY_CREDITS`), shared by every Ensemble app, under the operator's ceiling (`ENSEMBLE_INCLUDED_TOTAL_MONTHLY_USD`). Ensemble's `docs/33_INCLUDED_AI.md` owns the details.
-
-Check:
+Check (replace `-test` with nothing for production):
 
 ```bash
-curl -si -X OPTIONS https://api.ensemblework.com/api/node/bootstrap \
-  -H 'Origin: https://node.ensemblework.com' -H 'Access-Control-Request-Method: GET' \
+curl -si -X OPTIONS https://api-test.ensemblework.com/api/node/bootstrap \
+  -H 'Origin: https://node-test.ensemblework.com' -H 'Access-Control-Request-Method: GET' \
   | grep -i 'access-control-allow-origin'
-# → access-control-allow-origin: https://node.ensemblework.com
-curl -s https://api.ensemblework.com/api/node/bootstrap   # → 401 {"error":"Sign in to Ensemble first."}
+# → access-control-allow-origin: https://node-test.ensemblework.com
+curl -s https://api-test.ensemblework.com/api/node/bootstrap   # → 401 {"error":"Sign in to Ensemble first."}
 ```
 
-## 5. Everyday checks
+## 6. Everyday checks
 
 ```bash
-curl -s https://node.ensemblework.com/health            # the commit being served
-vercel ls ensemble-node                                  # recent deployments
-gh run list -R ensemblework/ensemble-node -w deploy -L 5
+curl -s https://node-test.ensemblework.com/health        # commit, environment: testing
+curl -s https://node.ensemblework.com/health             # commit, environment: production
+gh run list -R ensemblework/ensemble-node -L 5           # test-web, ci, deploy
+vercel ls ensemble-node-test; vercel ls ensemble-node
 ```
 
-## 6. When something is off
+## 7. When something is off
 
 | Symptom | Cause |
 | --- | --- |
-| `deploy` workflow: "Set the VERCEL_TOKEN repository secret" | The secret is missing (§2) |
-| `deploy` workflow: "did not report <commit> within 5 minutes" | The Vercel build or publish failed (Vercel → `ensemble-node` → Deployments), or the `node` record no longer points at Vercel (§3) |
-| Certificate error on `node.ensemblework.com` | The `node` record is proxied, or points somewhere other than Vercel's target |
-| Browser console: CORS error on `api.ensemblework.com` | `ENSEMBLE_NODE_WEB_ORIGIN` missing or with a trailing slash on the API, or the API was not restarted |
+| A workflow: "Set the VERCEL_TOKEN repository secret" | The secret is missing (§3) |
+| Vercel build: "Ensemble Node build settings: A … build …" | The project's `NEXT_PUBLIC_*` values name the other environment's Ensemble (§3) |
+| A workflow: "did not report <commit> (testing/production) within 5 minutes" | The Vercel build or publish failed, or that domain's record no longer points at Vercel (§4) |
+| Certificate error on `node.` or `node-test.` | The record is proxied, or points somewhere other than Vercel's target |
+| Browser console: CORS error on Ensemble's API | That API's `ENSEMBLE_NODE_WEB_ORIGIN` is missing, names the other website, or has a trailing slash; or the API was not restarted |
 | Sign-in succeeds but Node shows the landing page again | The cookie is not shared: check `ENSEMBLE_COOKIE_DOMAIN=ensemblework.com` |
-| Provider sign-in lands on the Hub, not Node | `ENSEMBLE_NODE_WEB_ORIGIN` unset on the API |
-| "Signup verification failed" on Node | The API does not have `ENSEMBLE_NODE_WEB_ORIGIN`, or the page was open too long (solve the check again) |
+| Provider sign-in lands on the Hub, not Node | `ENSEMBLE_NODE_WEB_ORIGIN` unset on that API |
+| "Signup verification failed" on Node | The API does not have `ENSEMBLE_NODE_WEB_ORIGIN` for this website, or the page was open too long (solve the check again) |
+| A route answers 404 on one website only | Node and Ensemble of that environment are not at matching branches (§2: promote Ensemble first) |
 | "Verify your email to talk to nodes" | The account has not entered its code yet (`/welcome`) |
 | Nodes answer "You've used this month's Ensemble credits" | The account's credits are spent, or the operator's ceiling paused included AI |
 | Nodes never answer | `ENSEMBLE_NODE=off` on the API, or included AI is off and the account has no model of its own; the owner sees an error notice in the room |
-| Run cards stay "Queued" | The paired computer is offline or its runner is stopped (`ensemble` → status) |
+| Run cards stay "Queued" | The paired computer is offline or its runner is stopped (`ensemble` or `ensemble-test` → status) |

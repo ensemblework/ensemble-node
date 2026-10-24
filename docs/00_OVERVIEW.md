@@ -6,7 +6,7 @@ Ensemble Node is Ensemble's take on Grok Bot and ChatGPT Dots: AI teammates you 
 
 1. **Work happens on your own computer.** There is no cloud VM per person. A node plans in your Ensemble workspace. When something needs a terminal, files or a repository, it assigns an Ensemble task to an agent on the computer you paired (Ensemble CLI or the signed-in desktop app), under your run profile, after you approve. Then it reports what came back.
 2. **It is Ensemble.** Nodes have every tool the Ensemble assistant has: tasks, projects, pages, people, skills, notes, connected apps and assigning work to agents. One account, one workspace and one credit allowance cover Ensemble, the CLI and Node.
-3. **People and their nodes, together.** A group room holds several people, each with a node that represents them. A node answers what concerns its person, keeps that person's private context private, and asks them before it posts. Under the hood, each person's crew (manager, builder, tester, docs writer…) does the work.
+3. **People and their nodes, together.** A room holds up to 10 people, each bringing 1–3 of their own nodes, one of them their lead. A lead answers what concerns its person, keeps that person's private context private, and asks them before it posts. Under the hood, each person's crew (manager, builder, tester, docs writer…) does the work.
 
 ## Who it is for
 
@@ -14,21 +14,23 @@ People who already organise work in Ensemble and want teammates that take a requ
 
 ## v0 (19 Oct 2026)
 
-- Website at `node.ensemblework.com`: landing page, sign-in and sign-up with Ensemble (email, Google, Microsoft, GitHub), onboarding, the app.
-- Nodes from templates (Assistant, Manager, Feature engineer, Tester, Docs writer, Researcher), and crews (Software team, Research desk). Name, look, charter, chat model, memory and pause are editable.
-- Rooms: a DM per node, crew rooms with a lead, group rooms with other people (invite by email), @mentions, `@everyone`, and **Only me** private messages inside a group.
+- Website at `node.ensemblework.com`: landing page, sign-in and sign-up with Ensemble (email, Google, Microsoft, GitHub), onboarding, the app. It runs on the Ensemble account as it is: its connected apps, paired computers, trusted folders and credits. Signing up on Node creates the Ensemble account.
+- Nodes from templates (Assistant, Manager, Feature engineer, Tester, Docs writer, Researcher). Name (unique per account), look, charter, chat model, memory and pause are editable. A node may read files in the folders its owner's paired computer shares with Ensemble, read-only and only when the owner turns it on.
+- Three kinds of conversation: a **DM** per node; a **crew** (you and nodes you pick, with a lead; suggestions such as Software team fill in new nodes you can rename, drop or add to); a **room** with other people, who answer a request to join and bring 1–3 of their own nodes, one of them their lead. @mentions, `@everyone`, and **Only me** private messages in rooms.
+- Chat tools: search in one conversation or all of them (⌘K), people only / nodes only / mentions of me, pins, reactions, replies, deleting your own messages, copy, and export as Markdown.
 - Nodes delegate to each other (`node_delegate`), report in other rooms (`node_post`), and remember facts (`node_remember`).
 - Approvals: held Ensemble writes and every computer job wait for an owner‑only card. Shared‑room posts are drafted for the owner unless the owner lets the node post on its own.
 - Computer runs are shown as cards, followed until they end, and reported back by the node.
 - Live updates: messages, cards, "thinking…", and the reply being written.
-- Models and credits: every model included with Ensemble (its Azure AI Foundry deployments), GPT‑5 mini by default, drawing on the account's 20,000 monthly Ensemble credits, which every Ensemble app shares.
+- Models and credits: every model a node can use, in one picker: those included with Ensemble (its Azure AI Foundry deployments, drawing on the account's 20,000 monthly credits, which every Ensemble app shares), models on the account's own API keys, and AI plans on a paired computer. GPT‑5 mini by default.
+- Ensemble from Node: Needs me (answer run approvals and agents' questions), paired computers with their shared folders, and connected apps. Pairing a computer and connecting an app open Ensemble in a new tab.
 - The Ensemble CLI has a third, read‑only **Node** tab.
 
-What is not in v0: scheduled routines, push notifications, native phone apps, invite links, voice, and using your own model keys for nodes (see [06](06_CAPABILITIES_AND_ROADMAP.md)).
+What is not in v0: scheduled routines, push notifications, native phone apps, invite links, threads and voice (see [06](06_CAPABILITIES_AND_ROADMAP.md)).
 
 ## How it is built (one paragraph)
 
-The website (this repository, Next.js) talks to Ensemble's API at `api.ensemblework.com` with the shared Ensemble session cookie. Node's backend is a module of Ensemble's hub‑api (`apps/hub-api/src/node/`). A node's turn is Ensemble's own assistant loop with the node's persona and three extra tools. Computer work is Ensemble's existing assign‑to‑agent job, run by the paired computer's existing runner. Details: [01](01_IMPLEMENTATION_GUIDE.md).
+The website (this repository, Next.js) talks to Ensemble's API at `api.ensemblework.com` with the shared Ensemble session cookie. Node's backend is a module of Ensemble's hub‑api (`apps/hub-api/src/node/`). A node's turn is Ensemble's own assistant loop with the node's persona and Node's own tools (delegate, post, remember, read shared files). Computer work is Ensemble's existing assign‑to‑agent job, run by the paired computer's existing runner. Details: [01](01_IMPLEMENTATION_GUIDE.md).
 
 ## Environments
 

@@ -6,9 +6,9 @@ import { Suspense, useCallback, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wordmark } from "@/components/brand";
 import { Turnstile } from "@/components/turnstile";
-import { Button, Field, Input, Notice } from "@/components/ui";
+import { Button, External, Field, Input, Notice } from "@/components/ui";
 import { api, oauthStartUrl } from "@/lib/api";
-import { ENSEMBLE_APP } from "@/lib/config";
+import { ENSEMBLE_LINKS } from "@/lib/config";
 import { keys, useAuthStatus } from "@/lib/hooks";
 
 const PROVIDER_LABEL: Record<string, string> = { google: "Google", microsoft: "Microsoft", github: "GitHub" };
@@ -89,7 +89,9 @@ function LoginForm() {
         <div className="rounded-2xl border border-line bg-panel p-6 shadow-xl">
           <h1 className="text-xl font-semibold">{mode === "signin" ? "Sign in" : "Create your Ensemble account"}</h1>
           <p className="mt-1 text-sm text-muted">
-            {mode === "signin" ? "Use your Ensemble account. It is the same on Ensemble, the CLI and Node." : "One account for Ensemble, the CLI and Node, with 20,000 free credits every month."}
+            {mode === "signin"
+              ? "Use your Ensemble account. Node uses it as it is: its connected apps, computers, trusted folders and credits."
+              : "This creates your Ensemble account: one account for Ensemble, the CLI and Node, with 20,000 free credits every month. Already have one? Sign in instead."}
           </p>
 
           {error ? (
@@ -140,14 +142,22 @@ function LoginForm() {
               {mode === "signin" ? "New here? Create an account" : "Have an account? Sign in"}
             </button>
             {mode === "signin" ? (
-              <a href={`${ENSEMBLE_APP}/forgot`} className="text-muted hover:text-ink">
+              <External href={ENSEMBLE_LINKS.forgot} className="text-muted hover:text-ink">
                 Forgot password?
-              </a>
+              </External>
             ) : null}
           </div>
         </div>
         <p className="text-center text-xs text-muted">
-          By continuing you agree to Ensemble&apos;s <a className="underline" href="https://ensemblework.com/terms">Terms</a> and <a className="underline" href="https://ensemblework.com/privacy">Privacy policy</a>.
+          By continuing you agree to Ensemble&apos;s{" "}
+          <External className="underline" href={ENSEMBLE_LINKS.terms}>
+            Terms
+          </External>{" "}
+          and{" "}
+          <External className="underline" href={ENSEMBLE_LINKS.privacy}>
+            Privacy policy
+          </External>
+          .
         </p>
       </div>
     </main>

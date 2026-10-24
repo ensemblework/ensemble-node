@@ -12,7 +12,7 @@ function Inline({ text, handles }: { text: string; handles: ReadonlySet<string> 
               {piece.text}
             </code>
           ) : piece.link ? (
-            <a key={at} href={piece.link} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-2">
+            <a key={at} href={piece.link} target="_blank" rel="noopener noreferrer" className="text-accent underline underline-offset-2">
               {piece.text}
             </a>
           ) : piece.mention ? (

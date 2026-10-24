@@ -1,21 +1,30 @@
 "use client";
 
-import { AlertTriangle, Check, CircleSlash, Cpu, ExternalLink, Lock, Wrench, X } from "lucide-react";
-import { useState } from "react";
-import { ENSEMBLE_APP } from "@/lib/config";
-import { useSettle } from "@/lib/hooks";
+import { AlertTriangle, Check, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Lock, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { canDelete, canPin, canReact, isDeleted, plainPreview, reactionRows, reactionsOf } from "@/lib/chat";
+import { ENSEMBLE_APP, ENSEMBLE_LINKS } from "@/lib/config";
+import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, RUN_LABEL, TOOL_LABEL } from "@/lib/text";
-import type { HeldCall, Member, Message, NodePublic, ToolChip } from "@/lib/types";
+import { toast, toastError } from "@/lib/toast";
+import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
-import { Button, Pill, Textarea } from "../ui";
+import { Button, External, Pill, Textarea } from "../ui";
 import { RichText } from "./rich-text";
 
 export type MessageContext = {
   meId: string;
+  roomId: string;
   roomTitle: string;
+  roomKind: RoomKind;
   handles: ReadonlySet<string>;
   nodes: Map<string, NodePublic>;
   people: Map<string, Extract<Member, { kind: "person" }>>;
+  /** The eight reactions this server offers. */
+  reactions: readonly string[];
+  pinned: ReadonlySet<string>;
+  onReply: (message: Message) => void;
+  onJump: (messageId: string) => void;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -37,9 +46,9 @@ function ToolChips({ tools }: { tools: ToolChip[] }) {
         );
         const style = `inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-xs ${failed ? "border-danger/30 bg-danger/5" : "border-line bg-bg"}`;
         return link ? (
-          <a key={tool.id} href={link} target="_blank" rel="noreferrer" className={`${style} hover:border-accent`} title={tool.summary ?? undefined}>
+          <External key={tool.id} href={link} className={`${style} hover:border-accent`} title={tool.summary ?? undefined}>
             {content}
-          </a>
+          </External>
         ) : (
           <span key={tool.id} className={style} title={tool.summary ?? undefined}>
             {content}
@@ -166,36 +175,235 @@ function RunCard({ message }: { message: Message }) {
       {data.summary ? <p className="mt-2 text-sm">{data.summary}</p> : null}
       {data.error ? <p className="mt-2 text-sm text-danger">{data.error}</p> : null}
       <div className="mt-2 flex flex-wrap gap-3 text-xs">
-        <a href={`${ENSEMBLE_APP}/tasks/${data.taskId}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent hover:underline">
+        <External href={ENSEMBLE_LINKS.task(data.taskId)} className="inline-flex items-center gap-1 text-accent hover:underline">
           Open the task in Ensemble <ExternalLink size={11} />
-        </a>
+        </External>
         {data.status === "waiting_approval" ? (
-          <a href={`${ENSEMBLE_APP}/needs-me`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-warn hover:underline">
+          <External href={ENSEMBLE_LINKS.needsMe} className="inline-flex items-center gap-1 text-warn hover:underline">
             Answer it in Needs me <ExternalLink size={11} />
-          </a>
+          </External>
         ) : null}
       </div>
     </div>
   );
 }
 
-export function MessageItem({ message, ctx, grouped }: { message: Message; ctx: MessageContext; grouped: boolean }) {
+
+/** Who wrote a message, as a short label for quotes and search results. */
+export function authorLabel(message: Pick<Message, "authorKind" | "authorAccountId" | "authorNodeId">, ctx: Pick<MessageContext, "meId" | "nodes" | "people">): string {
+  if (message.authorKind === "system") return "Ensemble";
+  if (message.authorNodeId) return ctx.nodes.get(message.authorNodeId)?.name ?? "A node";
+  if (message.authorAccountId === ctx.meId) return "You";
+  return ctx.people.get(message.authorAccountId)?.name ?? "Someone";
+}
+
+/** What a reply quotes: shown above the reply, and above the composer while writing one. */
+export function replyOf(message: Message, ctx: Pick<MessageContext, "meId" | "nodes" | "people">): ReplyTo {
+  return {
+    id: message.id,
+    seq: message.seq,
+    authorKind: message.authorKind,
+    handle: message.authorNodeId ? (ctx.nodes.get(message.authorNodeId)?.slug ?? null) : (ctx.people.get(message.authorAccountId)?.handle ?? null),
+    excerpt: plainPreview(message.body).slice(0, 160),
+  };
+}
+
+function ReplyQuote({ reply, onJump, mine }: { reply: ReplyTo; onJump: (id: string) => void; mine: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onJump(reply.id)}
+      className={`mb-1 flex max-w-full items-start gap-1.5 rounded-lg border-l-2 border-accent/60 bg-bg/60 px-2 py-1 text-left text-xs text-muted hover:text-ink ${mine ? "ml-auto" : ""}`}
+      title="Go to the message"
+    >
+      <CornerUpLeft size={12} className="mt-0.5 shrink-0 text-accent" />
+      <span className="min-w-0">
+        <span className="font-medium text-ink">{reply.handle ? `@${reply.handle}` : reply.authorKind === "node" ? "A node" : "Someone"}</span>{" "}
+        <span className="line-clamp-2 break-words">{reply.excerpt || "Deleted message"}</span>
+      </span>
+    </button>
+  );
+}
+
+function Reactions({ message, ctx, mine }: { message: Message; ctx: MessageContext; mine: boolean }) {
+  const react = useReact();
+  const rows = reactionRows(reactionsOf(message), ctx.reactions, ctx.meId, (id) => ctx.people.get(id)?.name ?? "Someone");
+  if (!rows.length) return null;
+  return (
+    <div className={`mt-1 flex flex-wrap gap-1 ${mine ? "justify-end" : ""}`}>
+      {rows.map((row) => (
+        <button
+          key={row.emoji}
+          type="button"
+          title={row.names}
+          aria-label={`${row.emoji} ${row.count}: ${row.names}. ${row.mine ? "Take back yours" : "Add yours"}`}
+          aria-pressed={row.mine}
+          onClick={() => react.mutate({ message, emoji: row.emoji })}
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition ${row.mine ? "border-accent/60 bg-accent/15 text-ink" : "border-line bg-panel text-muted hover:border-muted"}`}
+        >
+          <span className="text-sm leading-none">{row.emoji}</span>
+          <span className="tabular-nums">{row.count}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ActionButton({ label, onClick, children, tone }: { label: string; onClick: () => void; children: ReactNode; tone?: "danger" }) {
+  return (
+    <button type="button" aria-label={label} title={label} onClick={onClick} className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-muted transition hover:bg-raised ${tone === "danger" ? "hover:text-danger" : "hover:text-ink"}`}>
+      {children}
+    </button>
+  );
+}
+
+/** Reply, react, copy, pin and delete: on hover or focus on a computer, after a long press on a phone. */
+function MessageActions({ message, ctx, mine, open, setOpen }: { message: Message; ctx: MessageContext; mine: boolean; open: boolean; setOpen: (open: boolean) => void }) {
+  const react = useReact();
+  const pin = usePin(ctx.roomId);
+  const remove = useDeleteMessage();
+  const [emoji, setEmoji] = useState(false);
+  const pinned = ctx.pinned.has(message.id);
+  const close = () => {
+    setEmoji(false);
+    setOpen(false);
+  };
+  if (!canReact(message)) return null;
+  return (
+    <div
+      className={`absolute -top-4 z-20 flex items-center gap-0.5 rounded-xl border border-line bg-panel p-0.5 shadow-lg transition ${mine ? "right-1" : "right-1 md:right-4"} ${open || emoji ? "opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"}`}
+      role="toolbar"
+      aria-label="Message actions"
+    >
+      {emoji ? (
+        ctx.reactions.map((value) => (
+          <button
+            key={value}
+            type="button"
+            aria-label={`React with ${value}`}
+            onClick={() => {
+              react.mutate({ message, emoji: value });
+              close();
+            }}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-base transition hover:scale-110 hover:bg-raised"
+          >
+            {value}
+          </button>
+        ))
+      ) : (
+        <>
+          <ActionButton label="Add a reaction" onClick={() => setEmoji(true)}>
+            <SmilePlus size={15} />
+          </ActionButton>
+          <ActionButton label="Reply" onClick={() => (ctx.onReply(message), close())}>
+            <Reply size={15} />
+          </ActionButton>
+          {message.body ? (
+            <ActionButton label="Copy text" onClick={() => void navigator.clipboard.writeText(message.body).then(() => toast("Copied.", "ok"), toastError).finally(close)}>
+              <Copy size={14} />
+            </ActionButton>
+          ) : null}
+          {pinned || canPin(message) ? (
+            <ActionButton label={pinned ? "Unpin" : "Pin for everyone here"} onClick={() => (pin.mutate({ messageId: message.id, pinned: !pinned }, { onSuccess: () => toast(pinned ? "Unpinned." : "Pinned.", "ok") }), close())}>
+              {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+            </ActionButton>
+          ) : null}
+          {canDelete(message, ctx.meId) ? (
+            <ActionButton
+              label="Delete"
+              tone="danger"
+              onClick={() => {
+                close();
+                if (confirm("Delete this message? Its text goes for everyone; a “Message deleted” line stays.")) remove.mutate(message);
+              }}
+            >
+              <Trash2 size={14} />
+            </ActionButton>
+          ) : null}
+        </>
+      )}
+      {emoji ? (
+        <ActionButton label="Close reactions" onClick={() => setEmoji(false)}>
+          <X size={14} />
+        </ActionButton>
+      ) : null}
+    </div>
+  );
+}
+
+/** Opens the action bar after a long press (phones), and closes it on a tap elsewhere. */
+function useLongPress(): { open: boolean; setOpen: (open: boolean) => void; bind: Record<string, unknown>; ref: React.RefObject<HTMLDivElement | null> } {
+  const [open, setOpen] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: Event) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  const cancel = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  };
+  return {
+    open,
+    setOpen,
+    ref,
+    bind: {
+      onTouchStart: () => {
+        cancel();
+        timer.current = setTimeout(() => setOpen(true), 450);
+      },
+      onTouchEnd: cancel,
+      onTouchMove: cancel,
+      onContextMenu: (event: React.MouseEvent) => {
+        if (window.matchMedia("(pointer: coarse)").matches) event.preventDefault();
+      },
+    },
+  };
+}
+
+function Deleted() {
+  return <span className="text-sm italic text-muted">Message deleted</span>;
+}
+
+export function MessageItem({ message, ctx, grouped, highlighted }: { message: Message; ctx: MessageContext; grouped: boolean; highlighted?: boolean }) {
+  const press = useLongPress();
   if (message.kind === "status") {
-    return <div className="py-2 text-center text-xs text-muted">{message.body}</div>;
+    return (
+      <div id={`m-${message.id}`} className={`py-2 text-center text-xs text-muted ${highlighted ? "rounded-lg bg-accent/10" : ""}`}>
+        {message.body}
+      </div>
+    );
   }
   const mine = message.authorKind === "human" && message.authorAccountId === ctx.meId;
   const node = message.authorNodeId ? ctx.nodes.get(message.authorNodeId) : undefined;
   const person = message.authorKind === "human" ? ctx.people.get(message.authorAccountId) : undefined;
   const ownerName = node && node.ownerId !== ctx.meId ? ctx.people.get(node.ownerId)?.name : null;
+  const deleted = isDeleted(message);
+  const reply = message.data?.replyTo as ReplyTo | undefined;
+  const pinned = ctx.pinned.has(message.id);
+  const ring = highlighted ? "ring-2 ring-accent/70 ring-offset-2 ring-offset-bg" : "";
 
   if (mine && message.kind === "text") {
     return (
-      <div id={`m-${message.id}`} className={`flex justify-end ${grouped ? "mt-1" : "mt-4"}`}>
+      <div id={`m-${message.id}`} ref={press.ref} {...press.bind} className={`group relative flex justify-end ${grouped ? "mt-1" : "mt-4"}`}>
+        <MessageActions message={message} ctx={ctx} mine open={press.open} setOpen={press.setOpen} />
         <div className="max-w-[85%] md:max-w-[70%]">
-          <div className={`rounded-2xl rounded-br-md px-4 py-2.5 ${message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
-            <RichText text={message.body} handles={ctx.handles} />
+          {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine /> : null}
+          <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
+            {deleted ? <Deleted /> : <RichText text={message.body} handles={ctx.handles} />}
           </div>
+          <Reactions message={message} ctx={ctx} mine />
           <div className="mt-1 flex justify-end gap-2 text-[11px] text-muted">
+            {pinned ? (
+              <span className="inline-flex items-center gap-1 text-accent">
+                <Pin size={10} /> pinned
+              </span>
+            ) : null}
             {message.private ? (
               <span className="inline-flex items-center gap-1 text-private">
                 <Lock size={10} /> only you and your nodes
@@ -209,7 +417,8 @@ export function MessageItem({ message, ctx, grouped }: { message: Message; ctx: 
   }
 
   return (
-    <div id={`m-${message.id}`} className={`flex gap-3 ${grouped ? "mt-1" : "mt-4"}`}>
+    <div id={`m-${message.id}`} ref={press.ref} {...press.bind} className={`group relative flex gap-3 ${grouped ? "mt-1" : "mt-4"}`}>
+      <MessageActions message={message} ctx={ctx} mine={false} open={press.open} setOpen={press.setOpen} />
       <div className="w-9 shrink-0">
         {grouped ? null : node ? <NodeAvatar avatar={node.avatar} size={36} title={node.name} /> : <PersonAvatar name={person?.name ?? "?"} size={34} />}
       </div>
@@ -220,6 +429,11 @@ export function MessageItem({ message, ctx, grouped }: { message: Message; ctx: 
             {node ? <span className="font-mono text-xs text-muted">@{node.slug}</span> : null}
             {ownerName ? <span className="text-xs text-muted">{ownerName}&apos;s node</span> : null}
             <span className="text-[11px] text-muted">{clock(message.createdAt)}</span>
+            {pinned ? (
+              <span className="inline-flex items-center gap-1 text-[11px] text-accent">
+                <Pin size={10} /> pinned
+              </span>
+            ) : null}
             {message.private && message.kind === "text" ? (
               <span className="inline-flex items-center gap-1 text-[11px] text-private">
                 <Lock size={10} /> only you
@@ -227,26 +441,32 @@ export function MessageItem({ message, ctx, grouped }: { message: Message; ctx: 
             ) : null}
           </div>
         )}
-        {message.kind === "approval" ? (
-          <ApprovalCard message={message} ctx={ctx} node={node} />
-        ) : message.kind === "run" ? (
-          <RunCard message={message} />
-        ) : message.kind === "error" ? (
-          <div className="flex items-start gap-2 rounded-2xl border border-danger/30 bg-danger/5 px-3 py-2 text-sm">
-            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-danger" />
-            <span>
-              {message.body}
-              <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-private">
-                <Lock size={10} /> only you
+        {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine={false} /> : null}
+        <div className={`rounded-2xl transition ${ring}`}>
+          {message.kind === "approval" ? (
+            <ApprovalCard message={message} ctx={ctx} node={node} />
+          ) : message.kind === "run" ? (
+            <RunCard message={message} />
+          ) : message.kind === "error" ? (
+            <div className="flex items-start gap-2 rounded-2xl border border-danger/30 bg-danger/5 px-3 py-2 text-sm">
+              <AlertTriangle size={16} className="mt-0.5 shrink-0 text-danger" />
+              <span>
+                {message.body}
+                <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-private">
+                  <Lock size={10} /> only you
+                </span>
               </span>
-            </span>
-          </div>
-        ) : (
-          <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
-            <RichText text={message.body} handles={ctx.handles} />
-            <ToolChips tools={Array.isArray(message.data.tools) ? message.data.tools : []} />
-          </div>
-        )}
+            </div>
+          ) : deleted ? (
+            <Deleted />
+          ) : (
+            <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
+              <RichText text={message.body} handles={ctx.handles} />
+              <ToolChips tools={Array.isArray(message.data.tools) ? message.data.tools : []} />
+            </div>
+          )}
+        </div>
+        <Reactions message={message} ctx={ctx} mine={false} />
       </div>
     </div>
   );

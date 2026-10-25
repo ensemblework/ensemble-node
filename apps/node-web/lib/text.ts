@@ -16,24 +16,32 @@ export function clock(iso: string): string {
 
 export type Piece = { text: string; mention?: string; link?: string; code?: boolean };
 
-const TOKEN = /(`[^`\n]+`)|(https?:\/\/[^\s)]+)|((?:^|(?<=[\s([{"'>,;]))@[a-z0-9][a-z0-9_-]*)/gi;
+const TOKEN = /(`[^`\n]+`)|\[([^\]\n]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s)]*)\)|(https?:\/\/[^\s)]+)|((?:^|(?<=[\s([{"'>,;]))@[a-z0-9][a-z0-9_-]*)/gi;
 
-/** Splits a message into plain text, `code`, links and @mentions (only handles that exist in the room). */
+/** Splits a message into plain text, `code`, links (bare or `[label](address)`) and @mentions (only handles that exist in the room). */
 export function pieces(text: string, handles: ReadonlySet<string>): Piece[] {
   const out: Piece[] = [];
   let last = 0;
   for (const match of text.matchAll(TOKEN)) {
     const at = match.index ?? 0;
-    const [whole, code, link, mention] = match;
+    const [whole, code, label, target, link, mention] = match;
     if (mention && !handles.has(mention.slice(1).toLowerCase()) && !["@everyone", "@nodes"].includes(mention.toLowerCase())) continue;
     if (at > last) out.push({ text: text.slice(last, at) });
     if (code) out.push({ text: code.slice(1, -1), code: true });
+    else if (label && target) out.push({ text: label, link: target });
     else if (link) out.push({ text: link, link });
     else out.push({ text: whole, mention: whole.slice(1).toLowerCase() });
     last = at + whole.length;
   }
   if (last < text.length) out.push({ text: text.slice(last) });
   return out.length ? out : [{ text }];
+}
+
+/** Where a link opens: this site's rooms and nodes in place, other paths in Ensemble (`app`), the rest in a new tab. */
+export function linkTarget(href: string, app: string): { href: string; here: boolean } {
+  if (/^\/(?:r|n)\//.test(href)) return { href, here: true };
+  if (href.startsWith("/")) return { href: `${app}${href}`, here: false };
+  return { href, here: false };
 }
 
 /** The `@partial` being typed just before the cursor, if any. */

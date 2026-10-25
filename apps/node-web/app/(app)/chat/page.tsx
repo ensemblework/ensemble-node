@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import { useActivity, useBootstrap } from "@/lib/hooks";
 import { useBusyNodes } from "@/lib/live";
 import { plainPreview } from "@/lib/chat";
+import { readableBody } from "@/lib/entity-text";
 import { ago } from "@/lib/text";
 import { dmRoomOf, shortModel } from "@/components/shell";
 import { NodeAvatar } from "@/components/node-avatar";
@@ -134,7 +135,7 @@ export default function Home() {
                   <Link href={`/r/${room.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-raised/60">
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{room.title}</span>
-                      <span className="block truncate text-xs text-muted">{room.last ? (room.last.data?.deleted ? "Message deleted" : plainPreview(room.last.body)) : ""}</span>
+                      <span className="block truncate text-xs text-muted">{room.last ? (room.last.data?.deleted ? "Message deleted" : plainPreview(readableBody(room.last))) : ""}</span>
                     </span>
                     <span className="shrink-0 text-xs text-muted">{ago(room.lastMessageAt)}</span>
                   </Link>

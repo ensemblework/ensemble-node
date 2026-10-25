@@ -20,6 +20,7 @@ import { Composer, type MentionOption } from "./composer";
 import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
 import { PinnedBar, PinsDrawer } from "./pins";
 import { RichText } from "./rich-text";
+import { readableBody } from "@/lib/entity-text";
 import { RoomSettings } from "./room-settings";
 import { SearchPanel } from "./search";
 
@@ -513,7 +514,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                       ) : null}
                       {row.text ? (
                         <div className="opacity-80">
-                          <RichText text={row.text} handles={ctx.handles} />
+                          <RichText text={row.text} handles={ctx.handles} refs={row.refs ?? []} showIds={row.showIds === true} streaming />
                         </div>
                       ) : (
                         <span className="inline-flex gap-1 py-2">
@@ -559,7 +560,7 @@ export function RoomView({ roomId }: { roomId: string }) {
             Verify your email to talk to nodes. <Link href="/welcome" className="text-accent">Verify now</Link>
           </span>
         }
-        reply={reply ? { id: reply.id, author: authorLabel(reply, ctx), excerpt: plainPreview(reply.body).slice(0, 160), private: reply.private } : null}
+        reply={reply ? { id: reply.id, author: authorLabel(reply, ctx), excerpt: plainPreview(readableBody(reply)).slice(0, 160), private: reply.private } : null}
         onCancelReply={() => setReply(null)}
         onSend={(body, isPrivate) => {
           stuck.current = true;

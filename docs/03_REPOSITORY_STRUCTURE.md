@@ -43,6 +43,7 @@ ensemble-node/
 │   │   ├── hooks.ts             queries, mutations, the event stream
 │   │   ├── live.ts              who is thinking / writing right now (text batched per frame, per room)
 │   │   ├── jump.ts, toast.ts    open a conversation at a message; short notes on screen
+│   │   ├── entity-text.ts       node replies name records by title, not id (tested)
 │   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts, decisions.ts, work-log.ts
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        model groups, crew drafts and unique names, connection status, how a Needs me

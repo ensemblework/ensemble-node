@@ -4,7 +4,8 @@ import { useEffect, useRef } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, ApiError, eventsUrl } from "./api";
 import { keepOlder, matchesAuthor, reactionsOf, toggleReaction } from "./chat";
-import { live } from "./live";
+import { live, type LiveCall } from "./live";
+import { refsOf } from "./entity-text";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
 import { runEnded } from "./work-log";
@@ -411,8 +412,9 @@ export function useNodeEvents(enabled: boolean) {
       if (data.state !== "thinking") void client.invalidateQueries({ queryKey: keys.activity });
     }) as EventListener);
     source.addEventListener("node.frame", ((event: MessageEvent<string>) => {
-      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; frame: { type: string; text?: string; call?: { name: string; state?: string; summary?: string } } };
+      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; showIds?: boolean; frame: { type: string; text?: string; refs?: unknown; call?: LiveCall } };
       if (data.frame.type === "delta" && data.frame.text) live.delta(data.roomId, data.nodeId, data.frame.text);
+      else if (data.frame.type === "refs") live.refs(data.roomId, data.nodeId, refsOf(data.frame.refs), data.showIds === true);
       else if (data.frame.call) live.tool(data.roomId, data.nodeId, data.frame.call);
     }) as EventListener);
     source.addEventListener("node.room", ((event: MessageEvent<string>) => {

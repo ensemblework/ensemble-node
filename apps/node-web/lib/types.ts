@@ -1,3 +1,4 @@
+import type { EntityRef } from "./entity-text";
 /** What Ensemble's `/api/node/*` routes send (Ensemble docs/35). */
 
 export type AvatarShape = "orb" | "square" | "spark" | "hex" | "leaf" | "compass";
@@ -21,7 +22,8 @@ export type Member = NodeMember | PersonMember;
 
 export type MessageKind = "text" | "approval" | "run" | "status" | "error";
 
-export type ToolChip = { id: string; name: string; state?: string; summary: string | null; href: string | null };
+/** `refs`: the records the call's result names (Ensemble's AssistantRef): ids for links, titles to show. */
+export type ToolChip = { id: string; name: string; state?: string; summary: string | null; href: string | null; refs?: EntityRef[] };
 export type HeldCall = { callId: string; name: string; summary: string; input: Record<string, unknown> };
 
 export type Message = {

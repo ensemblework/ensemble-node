@@ -6,6 +6,7 @@ import { canDelete, canPin, canReact, isDeleted, plainPreview, reactionRows, rea
 import { ENSEMBLE_APP } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, TOOL_LABEL } from "@/lib/text";
+import { formatEntityText, messageRefs, readableBody } from "@/lib/entity-text";
 import { toast, toastError } from "@/lib/toast";
 import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { toolChipSummary } from "@/lib/work-log";
@@ -35,22 +36,24 @@ const appLink = (href: string | null | undefined) => (href ? (href.startsWith("h
 function ToolRow({ tool }: { tool: ToolChip }) {
   const link = appLink(tool.href);
   const failed = tool.state === "failed";
+  // Receipts name records by title; an older one may still carry an id beside its title.
+  const summary = tool.summary ? formatEntityText(tool.summary, tool.refs, { plain: true }) : null;
   const content = (
     <>
       {failed ? <X size={12} className="shrink-0 text-danger" aria-label="Failed" role="img" /> : null}
       <ToolIcon name={tool.name} size={14} />
       <span className="shrink-0 font-medium">{TOOL_LABEL(tool.name)}</span>
-      {tool.summary ? <span className="min-w-0 truncate text-muted">· {tool.summary}</span> : null}
+      {summary ? <span className="min-w-0 truncate text-muted">· {summary}</span> : null}
       {link ? <ExternalLink size={11} className="shrink-0 text-muted" aria-hidden /> : null}
     </>
   );
   const style = `inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-xs ${failed ? "border-danger/30 bg-danger/5" : "border-line bg-bg"}`;
   return link ? (
-    <External href={link} className={`${style} hover:border-accent`} title={tool.summary ?? undefined}>
+    <External href={link} className={`${style} hover:border-accent`} title={summary ?? undefined}>
       {content}
     </External>
   ) : (
-    <span className={style} title={tool.summary ?? undefined}>
+    <span className={style} title={summary ?? undefined}>
       {content}
     </span>
   );
@@ -130,7 +133,7 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
         pending ? (
           <Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={Math.min(10, Math.max(3, body.split("\n").length + 1))} />
         ) : (
-          <RichText text={message.body} handles={ctx.handles} />
+          <RichText text={message.body} handles={ctx.handles} refs={messageRefs(data)} showIds={data.showIds === true} />
         )
       ) : (
         <ul className="space-y-1.5">
@@ -157,14 +160,14 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
                 )}
                 <span>
                   <span className="block text-xs font-medium text-muted">{TOOL_LABEL(call.name)}</span>
-                  <span>{call.summary}</span>
+                  <span className="whitespace-pre-wrap">{formatEntityText(call.summary, [], { plain: true })}</span>
                 </span>
               </label>
             </li>
           ))}
         </ul>
       )}
-      {data.result?.summary ? <p className="mt-2 text-sm text-ok">{data.result.summary}</p> : null}
+      {data.result?.summary ? <p className="mt-2 text-sm text-ok">{formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
       {data.result?.failed?.length ? <p className="mt-1 text-sm text-danger">{data.result.failed.map((row: { name: string; error: string }) => `${TOOL_LABEL(row.name)}: ${row.error}`).join(" · ")}</p> : null}
       {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
       {pending ? (
@@ -200,7 +203,7 @@ export function replyOf(message: Message, ctx: Pick<MessageContext, "meId" | "no
     seq: message.seq,
     authorKind: message.authorKind,
     handle: message.authorNodeId ? (ctx.nodes.get(message.authorNodeId)?.slug ?? null) : (ctx.people.get(message.authorAccountId)?.handle ?? null),
-    excerpt: plainPreview(message.body).slice(0, 160),
+    excerpt: plainPreview(readableBody(message)).slice(0, 160),
   };
 }
 
@@ -295,7 +298,7 @@ function MessageActions({ message, ctx, mine, open, setOpen }: { message: Messag
             <Reply size={15} />
           </ActionButton>
           {message.body ? (
-            <ActionButton label="Copy text" onClick={() => void navigator.clipboard.writeText(message.body).then(() => toast("Copied.", "ok"), toastError).finally(close)}>
+            <ActionButton label="Copy text" onClick={() => void navigator.clipboard.writeText(readableBody(message)).then(() => toast("Copied.", "ok"), toastError).finally(close)}>
               <Copy size={14} />
             </ActionButton>
           ) : null}
@@ -457,7 +460,7 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
             <Deleted />
           ) : (
             <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
-              <RichText text={message.body} handles={ctx.handles} />
+              <RichText text={message.body} handles={ctx.handles} {...(message.authorKind === "node" ? { refs: messageRefs(message.data), showIds: message.data.showIds === true } : {})} />
               <ToolChips tools={Array.isArray(message.data.tools) ? message.data.tools : []} />
             </div>
           )}

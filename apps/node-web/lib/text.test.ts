@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ago, insertMention, matchHandles, mergeMessage, modelLabel, pieces, typingMention } from "./text";
+import { ago, insertMention, linkTarget, matchHandles, mergeMessage, modelLabel, pieces, typingMention } from "./text";
 
 test("time ago is short", () => {
   const now = Date.parse("2026-10-19T12:00:00Z");
@@ -47,4 +47,17 @@ test("messages merge by id or clientId, in seq order", () => {
 test("a model shows its name, version and relative credits when the server sends them", () => {
   assert.equal(modelLabel({ label: "GPT-6.1 Sol (2026-09-29)", relativeCost: 20 }), "GPT-6.1 Sol (2026-09-29) · 20× credits");
   assert.equal(modelLabel({ label: "GPT-5 mini (2025-08-07)" }), "GPT-5 mini (2025-08-07)");
+});
+
+test("Markdown links keep their label; rooms open here, Ensemble paths in Ensemble", () => {
+  assert.deepEqual(pieces("See [Draft brief](https://app.example.test/tasks/1) in [Launch](/r/2).", new Set()), [
+    { text: "See " },
+    { text: "Draft brief", link: "https://app.example.test/tasks/1" },
+    { text: " in " },
+    { text: "Launch", link: "/r/2" },
+    { text: "." },
+  ]);
+  assert.deepEqual(linkTarget("/r/2", "https://app.example.test"), { href: "/r/2", here: true });
+  assert.deepEqual(linkTarget("/tasks/1", "https://app.example.test"), { href: "https://app.example.test/tasks/1", here: false });
+  assert.deepEqual(linkTarget("https://x.dev", "https://app.example.test"), { href: "https://x.dev", here: false });
 });

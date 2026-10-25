@@ -11,7 +11,7 @@ import { Segmented, Spinner } from "../ui";
 
 const KIND_ICON: Record<RoomKind, typeof Hash> = { dm: MessageSquare, crew: Users, room: Hash };
 
-function useDebounced(value: string, ms = 250): string {
+export function useDebounced(value: string, ms = 250): string {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(value), ms);

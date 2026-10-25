@@ -2,14 +2,14 @@
 
 import { Pin, PinOff } from "lucide-react";
 import { useEffect, useState } from "react";
-import { plainPreview } from "@/lib/chat";
+import { messagePreview, plainPreview } from "@/lib/chat";
 import { usePin, usePins } from "@/lib/hooks";
 import { ago } from "@/lib/text";
 import type { Message, Room } from "@/lib/types";
 import { Drawer, Spinner } from "../ui";
 import { authorLabel, type MessageContext } from "./message";
 
-const excerpt = (message: Message) => plainPreview(message.kind === "run" ? `Run: ${message.body}` : message.body).slice(0, 140);
+const excerpt = (message: Message) => (message.kind === "run" ? plainPreview(`Run: ${message.body}`) : messagePreview(message)).slice(0, 140);
 
 /** The newest pin under the header; each click goes to the next one, like a chat app's pinned bar. */
 export function PinnedBar({ room, ctx, onAll }: { room: Room; ctx: MessageContext; onAll: () => void }) {

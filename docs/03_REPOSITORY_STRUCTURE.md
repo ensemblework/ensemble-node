@@ -21,9 +21,10 @@ ensemble-node/
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, sign out
 │   ├── components/
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
-│   │   │                        run card and its work log (run-card.tsx, work-log.tsx), composer, rich text and
-│   │   │                        code blocks (code-block.tsx), settings drawer (DM, crew, room), search panel,
-│   │   │                        pinned bar and drawer
+│   │   │                        run card and its work log (run-card.tsx, work-log.tsx), composer, attachments
+│   │   │                        (attachments.tsx: paperclip menu, Files picker, shelf, drop and paste; also on the
+│   │   │                        start page), files on a message (file-chips.tsx), rich text and code blocks
+│   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer
 │   │   ├── shell.tsx            sidebar, layout, auth guard, ⌘K search
 │   │   ├── model-picker.tsx     every model a node can use, grouped (included, own keys, AI plans)
 │   │   ├── node-picker.tsx      my nodes as checkboxes with a Lead radio
@@ -37,14 +38,18 @@ ensemble-node/
 │   │   │                        shared local vendor logos and generic tool fallbacks
 │   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, drawer, menus, toasts, External (new-tab links)
 │   ├── lib/
-│   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads; URLs and links into Ensemble
+│   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads, uploads to Files with
+│   │   │                        progress and cancel; URLs and links into Ensemble
 │   │   ├── environment.ts       testing or production; refuses a build that mixes them (tested)
 │   │   ├── connector-logos.ts   catalog aliases, asset metadata and connector tool identity (tested)
 │   │   ├── hooks.ts             queries, mutations, the event stream
 │   │   ├── live.ts              who is thinking / writing right now (text batched per frame, per room)
 │   │   ├── jump.ts, toast.ts    open a conversation at a message; short notes on screen
-│   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts, decisions.ts, work-log.ts
+│   │   ├── entity-text.ts       node replies name records by title, not id (tested)
+│   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts, decisions.ts, work-log.ts, attachments.ts
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
+│   │   │                        what a message sends and a retry sends again, the attachment shelf and pasted
+│   │   │                        files, who may open a file on a message,
 │   │   │                        model groups, crew drafts and unique names, connection status, how a Needs me
 │   │   │                        card is answered and which run it belongs to, a run's steps as a work log
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send

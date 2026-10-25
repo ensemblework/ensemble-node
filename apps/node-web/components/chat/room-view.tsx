@@ -5,8 +5,9 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, AtSign, Bot, Download, Ellipsis, Hash, Lock, MessagesSquare, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
-import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, plainPreview, serverAuthor, type ViewFilter } from "@/lib/chat";
-import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, useBootstrap, useMessages, useSend, type Author } from "@/lib/hooks";
+import { messageFiles } from "@/lib/attachments";
+import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
+import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, updateMessages, useBootstrap, useMessages, useSend, type Author } from "@/lib/hooks";
 import { clearJump, useJump } from "@/lib/jump";
 import { useLiveRoom } from "@/lib/live";
 import { TOOL_LABEL } from "@/lib/text";
@@ -16,10 +17,11 @@ import { ModelPicker } from "../model-picker";
 import { NodeAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
 import { IconButton, MenuItem, Pill, Spinner, useDismiss } from "../ui";
-import { Composer, type MentionOption } from "./composer";
+import { Composer, type ComposerDraft, type MentionOption } from "./composer";
 import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
 import { PinnedBar, PinsDrawer } from "./pins";
 import { RichText } from "./rich-text";
+import { readableBody } from "@/lib/entity-text";
 import { RoomSettings } from "./room-settings";
 import { SearchPanel } from "./search";
 
@@ -47,11 +49,13 @@ export function RoomView({ roomId }: { roomId: string }) {
   const author: Author = serverAuthor(filter);
   const messages = useMessages(roomId, author);
   const send = useSend(roomId);
+  const sendMessage = send.mutate;
   const live = useLiveRoom(roomId);
   const [panel, setPanel] = useState<null | "settings" | "pins">(null);
   const [menu, setMenu] = useState(false);
   const [searching, setSearching] = useState(false);
   const [reply, setReply] = useState<Message | null>(null);
+  const [draft, setDraft] = useState<ComposerDraft | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
   const [olderDone, setOlderDone] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -246,8 +250,16 @@ export function RoomView({ roomId }: { roomId: string }) {
       pinned: new Set(room.pinned ?? []),
       onReply: (message: Message) => setReply(message),
       onJump: (messageId: string) => void jumpTo(messageId),
+      onRetry: (message: Message) => sendMessage(resendInput(message)),
+      onEdit: (message: Message) => {
+        updateMessages(client, roomId, (list) => list.filter((row) => row.id !== message.id));
+        setDraft({ nonce: Date.now(), body: message.body, private: message.private, files: messageFiles(message) });
+        const quoted = message.data?.replyTo?.id;
+        const target = quoted ? client.getQueryData<Message[]>(keys.messages(roomId, "all"))?.find((row) => row.id === quoted) : undefined;
+        if (target) setReply(target);
+      },
     };
-  }, [boot.data, room, jumpTo]);
+  }, [boot.data, room, jumpTo, sendMessage, client, roomId]);
 
   if (!boot.data || !ctx || !room) {
     return (
@@ -281,6 +293,10 @@ export function RoomView({ roomId }: { roomId: string }) {
     ...others.map((row) => ({ handle: row.handle, label: row.name, detail: row.responsibility ?? "person", person: true })),
     ...(nodeMembers.length > 1 ? [{ handle: "everyone", label: "Everyone", detail: "Every node in this conversation" }] : []),
   ];
+  const attachHint =
+    others.length > 0
+      ? "Nodes read files only from their owner's messages. Others here see a file's name but cannot open it."
+      : `${dmNode ? dmNode.name : "Your nodes"} read${dmNode ? "s" : ""} what you attach: the text of documents, and pictures when ${dmNode ? "its" : "their"} model can see images.`;
   const placeholder = dmNode ? `Message ${dmNode.name}` : room.kind === "crew" ? `Message your crew${lead ? ` — @${lead.slug} takes it unless you @mention a node` : ""}` : `Message ${room.title}`;
   const filterInfo = FILTERS.find((row) => row.id === filter)!;
 
@@ -513,7 +529,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                       ) : null}
                       {row.text ? (
                         <div className="opacity-80">
-                          <RichText text={row.text} handles={ctx.handles} />
+                          <RichText text={row.text} handles={ctx.handles} refs={row.refs ?? []} showIds={row.showIds === true} streaming />
                         </div>
                       ) : (
                         <span className="inline-flex gap-1 py-2">
@@ -559,13 +575,15 @@ export function RoomView({ roomId }: { roomId: string }) {
             Verify your email to talk to nodes. <Link href="/welcome" className="text-accent">Verify now</Link>
           </span>
         }
-        reply={reply ? { id: reply.id, author: authorLabel(reply, ctx), excerpt: plainPreview(reply.body).slice(0, 160), private: reply.private } : null}
+        reply={reply ? { id: reply.id, author: authorLabel(reply, ctx), excerpt: messagePreview(reply).slice(0, 160), private: reply.private } : null}
         onCancelReply={() => setReply(null)}
-        onSend={(body, isPrivate) => {
+        attachHint={attachHint}
+        draft={draft}
+        onSend={(body, isPrivate, files) => {
           stuck.current = true;
           setAtBottom(true);
           if (filter !== "all" && filter !== "people") setFilter("all");
-          send.mutate({ body, private: isPrivate, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}) });
+          send.mutate({ body, private: isPrivate, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}), ...(files.length ? { files } : {}) });
           setReply(null);
         }}
         onStop={() => void api(`/api/node/rooms/${roomId}/stop`, { body: {} }).catch(toastError)}

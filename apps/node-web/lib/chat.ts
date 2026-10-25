@@ -1,5 +1,7 @@
-/** Pure helpers for the conversation view: filters, reactions, days, unread, search highlights, emails. */
-import type { Message } from "./types";
+/** Pure helpers for the conversation view: filters, reactions, days, unread, search highlights, emails, sending. */
+import { messageFiles } from "./attachments";
+import { readableBody } from "./entity-text";
+import type { Message, MessageFile, ReplyTo } from "./types";
 
 /** All: everything. people: what people wrote, and system lines. nodes: what nodes wrote. mentions: messages that mention me. */
 export type ViewFilter = "all" | "people" | "nodes" | "mentions";
@@ -156,4 +158,60 @@ export function plainPreview(text: string): string {
     .replace(/`([^`]+)`/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/** A message list's one-line preview: the words, else the files it carries. */
+export function messagePreview(message: Pick<Message, "authorKind" | "body" | "data">): string {
+  if (isDeleted(message)) return "Message deleted";
+  const text = plainPreview(readableBody(message));
+  if (text) return text;
+  const files = messageFiles(message);
+  return files.length === 1 ? `📎 ${files[0]!.name}` : files.length ? `📎 ${files.length} files` : "";
+}
+
+/** What I send to a room. `files` are already in my Files; only their ids go to the server. */
+export type SendInput = { body: string; private: boolean; clientId: string; replyTo?: ReplyTo; files?: MessageFile[] };
+
+/** The body of `POST /api/node/rooms/:id/messages`. */
+export function sendBody(input: SendInput): { body: string; private: boolean; clientId: string; replyToId?: string; files?: string[] } {
+  return {
+    body: input.body,
+    private: input.private,
+    clientId: input.clientId,
+    ...(input.replyTo ? { replyToId: input.replyTo.id } : {}),
+    ...(input.files?.length ? { files: input.files.map((file) => file.id) } : {}),
+  };
+}
+
+/** The message shown at once while it is on its way; the server's copy replaces it by clientId. */
+export function optimisticMessage(roomId: string, meId: string, input: SendInput, now = new Date()): Message {
+  return {
+    id: `local-${input.clientId}`,
+    roomId,
+    seq: Number.MAX_SAFE_INTEGER,
+    authorKind: "human",
+    authorAccountId: meId,
+    authorNodeId: null,
+    kind: "text",
+    body: input.body,
+    data: { ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(input.files?.length ? { files: input.files } : {}) },
+    private: input.private,
+    mentions: [],
+    rootMessageId: null,
+    clientId: input.clientId,
+    createdAt: now.toISOString(),
+    sending: true,
+  };
+}
+
+/** A failed message sent again: the same words, files and clientId, so the server keeps one copy and nothing is uploaded again. */
+export function resendInput(message: Message): SendInput {
+  const files = messageFiles(message);
+  return {
+    body: message.body,
+    private: message.private,
+    clientId: message.clientId ?? message.id.replace(/^local-/, ""),
+    ...(message.data?.replyTo ? { replyTo: message.data.replyTo } : {}),
+    ...(files.length ? { files } : {}),
+  };
 }

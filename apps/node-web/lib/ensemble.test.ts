@@ -26,7 +26,7 @@ test("revoked computers go and online ones come first", () => {
 
 test("a connection says whether it is connected, as whom, or what is wrong", () => {
   const entry = (state: Partial<ConnectorEntry["state"]>, more: Partial<ConnectorEntry> = {}): ConnectorEntry => ({
-    id: "x", name: "X", vendor: "X", category: "chat", featured: false, tagline: "", auth: ["oauth"], reads: [], writes: [], status: "ready",
+    id: "x", logo: "x", name: "X", vendor: "X", category: "chat", featured: false, tagline: "", auth: ["oauth"], reads: [], writes: [], status: "ready",
     products: [{ id: "mail", name: "Gmail" }],
     state: { connected: false, account: null, appReady: true, products: {}, sources: {}, ...state },
     ...more,

@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Check, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Lock, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
+import { AlertTriangle, Check, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Lock, Pin, PinOff, Reply, SmilePlus, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { canDelete, canPin, canReact, isDeleted, plainPreview, reactionRows, reactionsOf } from "@/lib/chat";
 import { ENSEMBLE_APP, ENSEMBLE_LINKS } from "@/lib/config";
@@ -9,6 +9,7 @@ import { clock, RUN_LABEL, TOOL_LABEL } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
 import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
+import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
 import { RichText } from "./rich-text";
 
@@ -38,7 +39,8 @@ function ToolChips({ tools }: { tools: ToolChip[] }) {
         const failed = tool.state === "failed";
         const content = (
           <>
-            {failed ? <X size={12} className="text-danger" /> : <Wrench size={12} className="text-accent" />}
+            {failed ? <X size={12} className="shrink-0 text-danger" aria-label="Failed" role="img" /> : null}
+            <ToolIcon name={tool.name} />
             <span className="font-medium">{TOOL_LABEL(tool.name)}</span>
             {tool.summary ? <span className="max-w-[280px] truncate text-muted">· {tool.summary}</span> : null}
             {link ? <ExternalLink size={11} className="text-muted" /> : null}
@@ -113,10 +115,11 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
                       setChosen(next);
                     }}
                   />
-                ) : call.name === "hub_assign_to_agent" ? (
+                ) : null}
+                {call.name === "hub_assign_to_agent" ? (
                   <Cpu size={15} className="mt-0.5 text-accent" />
                 ) : (
-                  <Wrench size={15} className="mt-0.5 text-accent" />
+                  <ToolIcon name={call.name} className="mt-0.5" />
                 )}
                 <span>
                   <span className="block text-xs font-medium text-muted">{TOOL_LABEL(call.name)}</span>

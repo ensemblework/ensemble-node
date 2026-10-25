@@ -10,6 +10,7 @@ import { toast, toastError } from "@/lib/toast";
 import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
+import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
@@ -36,7 +37,8 @@ function ToolRow({ tool }: { tool: ToolChip }) {
   const failed = tool.state === "failed";
   const content = (
     <>
-      {failed ? <X size={12} className="shrink-0 text-danger" aria-label="Failed" /> : <Wrench size={12} className="shrink-0 text-accent" aria-hidden />}
+      {failed ? <X size={12} className="shrink-0 text-danger" aria-label="Failed" role="img" /> : null}
+      <ToolIcon name={tool.name} size={14} />
       <span className="shrink-0 font-medium">{TOOL_LABEL(tool.name)}</span>
       {tool.summary ? <span className="min-w-0 truncate text-muted">· {tool.summary}</span> : null}
       {link ? <ExternalLink size={11} className="shrink-0 text-muted" aria-hidden /> : null}
@@ -147,10 +149,11 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
                       setChosen(next);
                     }}
                   />
-                ) : call.name === "hub_assign_to_agent" ? (
+                ) : null}
+                {call.name === "hub_assign_to_agent" ? (
                   <Cpu size={15} className="mt-0.5 text-accent" />
                 ) : (
-                  <Wrench size={15} className="mt-0.5 text-accent" />
+                  <ToolIcon name={call.name} className="mt-0.5" />
                 )}
                 <span>
                   <span className="block text-xs font-medium text-muted">{TOOL_LABEL(call.name)}</span>

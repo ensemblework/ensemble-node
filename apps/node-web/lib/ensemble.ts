@@ -10,25 +10,6 @@ export const SOURCE_LABEL: Record<AgentDecision["source"], string> = {
   other: "An agent",
 };
 
-/**
- * How Node can answer a question from Needs me.
- * - simple: Allow or Deny here.
- * - confirm: Allow needs a second, explicit confirmation (a push, a path outside the folder…).
- * - device: that computer takes this kind of approval only on itself; Deny works here.
- * - options: the agent asks to pick an answer; answer it in Ensemble.
- * - elsewhere: someone else answers it (the person whose computer runs it).
- */
-export type DecisionMode = "simple" | "confirm" | "device" | "options" | "elsewhere";
-
-export function decisionMode(decision: Pick<AgentDecision, "canAnswer" | "detail">): DecisionMode {
-  const detail = decision.detail ?? {};
-  if (decision.canAnswer === false) return "elsewhere";
-  if (detail.options?.length) return "options";
-  if (detail.deviceId && (detail.tier === "run_branch_push" || detail.tier === "high_risk")) return "device";
-  if (detail.confirm) return "confirm";
-  return "simple";
-}
-
 /** A run approval's preview, as one readable line or block. */
 export function previewText(preview: unknown, max = 400): string {
   if (preview == null) return "";

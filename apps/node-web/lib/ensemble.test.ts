@@ -1,16 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { connectorStatus, decisionMode, liveDevices, previewText } from "./ensemble";
+import { connectorStatus, liveDevices, previewText } from "./ensemble";
 import type { ConnectorEntry, Device } from "./types";
-
-test("Needs me questions are answered here only when that is safe and exact", () => {
-  assert.equal(decisionMode({ canAnswer: true, detail: { command: "ls" } }), "simple");
-  assert.equal(decisionMode({ canAnswer: true, detail: { confirm: true } }), "confirm");
-  assert.equal(decisionMode({ canAnswer: true, detail: { options: ["Yes", "No"] } }), "options");
-  assert.equal(decisionMode({ canAnswer: true, detail: { deviceId: "d1", tier: "high_risk" } }), "device");
-  assert.equal(decisionMode({ canAnswer: false, detail: {} }), "elsewhere");
-  assert.equal(decisionMode({ detail: null }), "simple");
-});
 
 test("an approval preview reads as text", () => {
   assert.equal(previewText("Push to main"), "Push to main");
@@ -26,7 +17,7 @@ test("revoked computers go and online ones come first", () => {
 
 test("a connection says whether it is connected, as whom, or what is wrong", () => {
   const entry = (state: Partial<ConnectorEntry["state"]>, more: Partial<ConnectorEntry> = {}): ConnectorEntry => ({
-    id: "x", name: "X", vendor: "X", category: "chat", featured: false, tagline: "", auth: ["oauth"], reads: [], writes: [], status: "ready",
+    id: "x", logo: "x", name: "X", vendor: "X", category: "chat", featured: false, tagline: "", auth: ["oauth"], reads: [], writes: [], status: "ready",
     products: [{ id: "mail", name: "Gmail" }],
     state: { connected: false, account: null, appReady: true, products: {}, sources: {}, ...state },
     ...more,

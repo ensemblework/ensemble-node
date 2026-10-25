@@ -170,6 +170,7 @@ export type ApprovalRecord = { id: string; runId: string; taskId: string | null;
 export type AgentDecision = {
   id: string;
   source: "cursor" | "claude" | "copilot" | "codex" | "ensemble" | "other";
+  /** "permission" or "question" for a run's own cards; an editor hook's event name otherwise. */
   event: string;
   toolName: string;
   title: string;
@@ -177,8 +178,12 @@ export type AgentDecision = {
     command?: string | null;
     server?: string | null;
     options?: string[];
+    /** A question also takes an answer of the person's own words. */
+    allowCustom?: boolean;
     taskId?: string;
     taskTitle?: string;
+    /** The computer job that asked (a run's own cards). */
+    jobId?: string;
     deviceId?: string | null;
     deviceName?: string | null;
     tier?: "ordinary" | "run_branch_push" | "high_risk";
@@ -187,15 +192,76 @@ export type AgentDecision = {
     header?: string | null;
   } | null;
   cwd: string | null;
+  sessionId?: string | null;
   canAnswer?: boolean;
   status: "pending" | "decided" | "expired" | "settled";
   requestedAt: string;
   expiresAt: string;
 };
 
+/** What `POST /api/decisions/:id/decide` takes. A question's answer is `reason`. */
+export type DecisionBody = { decision: "allow" | "deny"; scope: "once" | "session"; reason?: string; confirmed?: true };
+
+/** A computer job behind a run card (`GET /api/agent/jobs/:id`, the fields Node reads). */
+export type AgentJob = {
+  id: string;
+  taskId: string;
+  title: string;
+  kind: string;
+  status: string;
+  /** For a coding run, the engine (claude-code, codex, cursor-agent, copilot-cli, …); else the model's provider. */
+  provider: string | null;
+  model: string;
+  /** The model that answered, when the engine said. */
+  modelUsed: string | null;
+  reasoningEffort: string | null;
+  contextTier?: string | null;
+  progress: string | null;
+  summary: string | null;
+  error: string | null;
+  turns: number;
+  toolCalls: number;
+  runId: string | null;
+  /** Only for the person whose computer runs it. */
+  deviceName: string | null;
+  /** True when the run is on my computer: only then may I stop it. */
+  yours: boolean;
+  folder: string;
+  branch: string;
+  files: Array<{ path: string; added: number; removed: number }>;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+/** One of the job's milestones (`events`, the last 150). */
+export type JobEvent = { id: string; kind: string; data: Record<string, unknown> | null; at: string };
+
+export type JobDetail = { job: AgentJob; log: string; events: JobEvent[] };
+
+/** One tool call in a run step, as the engine trace stores it (previews, never whole files). */
+export type RunToolCall = { id?: string; name: string; args?: string; ok?: boolean; output?: string; ms?: number; engine?: string; summary?: string };
+
+/** One step of a run's trace (`GET /api/runs/:id`): a tool call, thinking, a message, or the result. */
+export type RunStep = {
+  index: number;
+  title: string;
+  status: "pending" | "running" | "done" | "failed" | "needs_approval" | "skipped";
+  output: string | null;
+  toolCalls: RunToolCall[] | null;
+  reasoning: string | null;
+  model: string | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  error: string | null;
+};
+
 /** Ensemble's connector store with this account's state (`GET /api/connectors/catalog`). */
 export type ConnectorEntry = {
   id: string;
+  logo: string;
   name: string;
   vendor: string;
   category: string;

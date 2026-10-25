@@ -20,28 +20,37 @@ ensemble-node/
 │   │       ├── activity/        approvals, runs, turns, computers, credits (mobile)
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, sign out
 │   ├── components/
-│   │   ├── chat/                room view, message (actions, reactions, replies) and cards, composer, rich text,
-│   │   │                        settings drawer (DM, crew, room), search panel, pinned bar and drawer
+│   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
+│   │   │                        run card and its work log (run-card.tsx, work-log.tsx), composer, rich text and
+│   │   │                        code blocks (code-block.tsx), settings drawer (DM, crew, room), search panel,
+│   │   │                        pinned bar and drawer
 │   │   ├── shell.tsx            sidebar, layout, auth guard, ⌘K search
 │   │   ├── model-picker.tsx     every model a node can use, grouped (included, own keys, AI plans)
 │   │   ├── node-picker.tsx      my nodes as checkboxes with a Lead radio
 │   │   ├── email-chips.tsx      emails as chips
 │   │   ├── invites.tsx          the requests-to-join inbox
 │   │   ├── needs-me.tsx         Ensemble's Needs me: run approvals and agents' questions
+│   │   ├── decision-answer.tsx  answering a Needs me card (shared by Needs me and run cards)
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      node faces (shape, colour, eyes; breathing while thinking)
+│   │   ├── connector-logo.tsx, tool-icon.tsx
+│   │   │                        shared local vendor logos and generic tool fallbacks
 │   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, drawer, menus, toasts, External (new-tab links)
 │   ├── lib/
 │   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads; URLs and links into Ensemble
 │   │   ├── environment.ts       testing or production; refuses a build that mixes them (tested)
+│   │   ├── connector-logos.ts   catalog aliases, asset metadata and connector tool identity (tested)
 │   │   ├── hooks.ts             queries, mutations, the event stream
-│   │   ├── live.ts              who is thinking / writing right now
+│   │   ├── live.ts              who is thinking / writing right now (text batched per frame, per room)
 │   │   ├── jump.ts, toast.ts    open a conversation at a message; short notes on screen
-│   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts
+│   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts, decisions.ts, work-log.ts
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
-│   │   │                        model groups, crew drafts and unique names, Needs me modes, connection status
+│   │   │                        model groups, crew drafts and unique names, connection status, how a Needs me
+│   │   │                        card is answered and which run it belongs to, a run's steps as a work log
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send
-│   └── public/brand/            Ensemble mark
+│   └── public/
+│       ├── brand/              Ensemble mark
+│       └── connectors/         vendor assets, provenance manifest and licence/trademark notice
 ├── docs/                        these guides; research/; design/pre-v0/
 └── .github/                     workflows/test-web.yml (testing: checks, publish node-test),
                                  workflows/ci.yml (checks for main), workflows/deploy.yml and

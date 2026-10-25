@@ -1,5 +1,6 @@
 /** Pure helpers for the conversation view: filters, reactions, days, unread, search highlights, emails, sending. */
 import { messageFiles } from "./attachments";
+import { readableBody } from "./entity-text";
 import type { Message, MessageFile, ReplyTo } from "./types";
 
 /** All: everything. people: what people wrote, and system lines. nodes: what nodes wrote. mentions: messages that mention me. */
@@ -160,9 +161,9 @@ export function plainPreview(text: string): string {
 }
 
 /** A message list's one-line preview: the words, else the files it carries. */
-export function messagePreview(message: Pick<Message, "body" | "data">): string {
+export function messagePreview(message: Pick<Message, "authorKind" | "body" | "data">): string {
   if (isDeleted(message)) return "Message deleted";
-  const text = plainPreview(message.body);
+  const text = plainPreview(readableBody(message));
   if (text) return text;
   const files = messageFiles(message);
   return files.length === 1 ? `📎 ${files[0]!.name}` : files.length ? `📎 ${files.length} files` : "";

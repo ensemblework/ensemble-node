@@ -9,8 +9,11 @@
  * when a node starts or stops thinking, never for text.
  */
 import { useSyncExternalStore } from "react";
+import type { EntityRef } from "./entity-text";
 
-export type LiveNode = { thinking: boolean; text: string; tools: Array<{ name: string; state?: string; summary?: string }> };
+export type LiveCall = { name: string; state?: string; summary?: string; refs?: EntityRef[] };
+/** `refs`: the records the turn showed the model, so the text being written shows titles, not ids. */
+export type LiveNode = { thinking: boolean; text: string; tools: LiveCall[]; refs?: EntityRef[]; showIds?: boolean };
 export type LiveRow = { nodeId: string } & LiveNode;
 
 const state = new Map<string, LiveNode>();
@@ -103,11 +106,16 @@ export const live = {
     pendingText.set(id, (pendingText.get(id) ?? "") + text);
     schedule();
   },
-  tool(roomId: string, nodeId: string, call: { name: string; state?: string; summary?: string }) {
-    change(roomId, nodeId, (current) => ({ ...(current ?? { text: "", tools: [] }), thinking: true, tools: [...(current?.tools ?? []), call].slice(-6) }));
+  tool(roomId: string, nodeId: string, call: LiveCall) {
+    // Only the last few calls show, but every call's records are kept for the text.
+    change(roomId, nodeId, (current) => ({ ...(current ?? { text: "", tools: [] }), thinking: true, tools: [...(current?.tools ?? []), call].slice(-6), refs: [...(call.refs ?? []), ...(current?.refs ?? [])] }));
   },
   posted(roomId: string, nodeId: string) {
-    change(roomId, nodeId, (current) => (current ? { ...current, text: "", tools: [] } : null));
+    change(roomId, nodeId, (current) => (current ? { ...current, text: "", tools: [], refs: [], showIds: false } : null));
+  },
+  /** The records this turn showed the model, sent before its text; `showIds` when someone asked for ids. */
+  refs(roomId: string, nodeId: string, refs: EntityRef[], showIds: boolean) {
+    change(roomId, nodeId, (current) => ({ ...(current ?? { text: "", tools: [] }), thinking: true, refs: [...(current?.refs ?? []), ...refs], showIds }));
   },
   /** Applies everything buffered now (tests, and before a reader that cannot wait a frame). */
   flush() {

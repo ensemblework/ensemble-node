@@ -21,6 +21,7 @@ import { Composer, type ComposerDraft, type MentionOption } from "./composer";
 import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
 import { PinnedBar, PinsDrawer } from "./pins";
 import { RichText } from "./rich-text";
+import { readableBody } from "@/lib/entity-text";
 import { RoomSettings } from "./room-settings";
 import { SearchPanel } from "./search";
 
@@ -528,7 +529,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                       ) : null}
                       {row.text ? (
                         <div className="opacity-80">
-                          <RichText text={row.text} handles={ctx.handles} />
+                          <RichText text={row.text} handles={ctx.handles} refs={row.refs ?? []} showIds={row.showIds === true} streaming />
                         </div>
                       ) : (
                         <span className="inline-flex gap-1 py-2">

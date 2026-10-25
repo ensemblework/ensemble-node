@@ -131,8 +131,8 @@ test("retrying a failed message sends the same words, files and clientId", () =>
 
 test("a message with only files previews as its files", () => {
   const file = { id: "f1", name: "plan.pdf", kind: "pdf", size: 2048 };
-  assert.equal(messagePreview({ body: "", data: { files: [file] } }), "📎 plan.pdf");
-  assert.equal(messagePreview({ body: "", data: { files: [file, { ...file, id: "f2" }] } }), "📎 2 files");
-  assert.equal(messagePreview({ body: "**Look**", data: { files: [file] } }), "Look");
-  assert.equal(messagePreview({ body: "", data: { files: [file], deleted: true } }), "Message deleted");
+  assert.equal(messagePreview({ authorKind: "human", body: "", data: { files: [file] } }), "📎 plan.pdf");
+  assert.equal(messagePreview({ authorKind: "human", body: "", data: { files: [file, { ...file, id: "f2" }] } }), "📎 2 files");
+  assert.equal(messagePreview({ authorKind: "human", body: "**Look**", data: { files: [file] } }), "Look");
+  assert.equal(messagePreview({ authorKind: "human", body: "", data: { files: [file], deleted: true } }), "Message deleted");
 });

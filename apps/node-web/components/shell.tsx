@@ -10,7 +10,7 @@ import { requestJump } from "@/lib/jump";
 import { useBusyNodes } from "@/lib/live";
 import { keys, useActivity, useApprovals, useBootstrap, useDecisions, useMe, useNodeEvents } from "@/lib/hooks";
 import { modelName, shortModelName } from "@/lib/models";
-import { plainPreview } from "@/lib/chat";
+import { messagePreview } from "@/lib/chat";
 import { ago } from "@/lib/text";
 import type { Bootstrap, Room } from "@/lib/types";
 import { ActivityPanel } from "./activity";
@@ -27,7 +27,7 @@ export function dmRoomOf(boot: Bootstrap | undefined, nodeId: string): Room | un
 const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 function RoomRow({ room, boot, busy, active, onNavigate }: { room: Room; boot: Bootstrap; busy: Set<string>; active: boolean; onNavigate?: () => void }) {
-  const preview = room.last ? `${room.last.private ? "🔒 " : ""}${room.last.data?.deleted ? "Message deleted" : plainPreview(room.last.body)}` : "No messages yet";
+  const preview = room.last ? `${room.last.private ? "🔒 " : ""}${messagePreview(room.last)}` : "No messages yet";
   let icon: ReactNode;
   let title = room.title;
   if (room.kind === "dm") {

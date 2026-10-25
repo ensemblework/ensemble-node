@@ -24,6 +24,14 @@ export type MessageKind = "text" | "approval" | "run" | "status" | "error";
 export type ToolChip = { id: string; name: string; state?: string; summary: string | null; href: string | null };
 export type HeldCall = { callId: string; name: string; summary: string; input: Record<string, unknown> };
 
+/** A file on a message (`data.files`): a reference to a Document in the sender's Ensemble Files. */
+export type MessageFile = { id: string; name: string; kind: string; size: number };
+
+/** Ensemble's Files (`GET /api/documents`, `POST /api/documents`), the fields Node reads. */
+export type FileRecord = { id: string; filename: string; mediaType?: string; kind: string; byteSize: number; textStatus: string; createdAt: string };
+/** Hosted accounts have caps (null: none); `maxFileBytes` is the largest single file this server keeps. */
+export type FileUsage = { count: number; bytes: number; maxCount: number | null; maxBytes: number | null; maxFileBytes: number };
+
 export type Message = {
   id: string;
   roomId: string;
@@ -33,8 +41,9 @@ export type Message = {
   authorNodeId: string | null;
   kind: MessageKind;
   body: string;
+  /** `files` on a person's message; `replyTo`, `tools`, `reactions`, card fields and more by kind. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: Record<string, any>;
+  data: Record<string, any> & { files?: MessageFile[]; replyTo?: ReplyTo };
   private: boolean;
   mentions: Array<{ kind: "human" | "node"; id: string }>;
   rootMessageId: string | null;

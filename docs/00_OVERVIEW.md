@@ -20,7 +20,7 @@ People who already organise work in Ensemble and want teammates that take a requ
 - Chat tools: search in one conversation or all of them (⌘K), people only / nodes only / mentions of me, pins, reactions, replies, deleting your own messages, copy, and export as Markdown.
 - Nodes delegate to each other (`node_delegate`), report in other rooms (`node_post`), and remember facts (`node_remember`).
 - Approvals: held Ensemble writes and every computer job wait for an owner‑only card. Shared‑room posts are drafted for the owner unless the owner lets the node post on its own.
-- Computer runs are shown as cards, followed until they end, and reported back by the node.
+- Computer runs are shown as live cards with the engine's work log (commands, edits, output), a Stop button and the run's questions answered in place; they are followed until they end and reported back by the node.
 - Live updates: messages, cards, "thinking…", and the reply being written.
 - Models and credits: every model a node can use, in one picker: those included with Ensemble (its Azure AI Foundry deployments, drawing on the account's 20,000 monthly credits, which every Ensemble app shares), models on the account's own API keys, and AI plans on a paired computer. GPT‑5 mini by default.
 - Ensemble from Node: Needs me (answer run approvals and agents' questions), paired computers with their shared folders, and connected apps. Pairing a computer and connecting an app open Ensemble in a new tab.

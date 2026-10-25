@@ -1,16 +1,18 @@
 "use client";
 
-import { AlertTriangle, Check, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Lock, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Lock, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { canDelete, canPin, canReact, isDeleted, plainPreview, reactionRows, reactionsOf } from "@/lib/chat";
-import { ENSEMBLE_APP, ENSEMBLE_LINKS } from "@/lib/config";
+import { ENSEMBLE_APP } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
-import { clock, RUN_LABEL, TOOL_LABEL } from "@/lib/text";
+import { clock, TOOL_LABEL } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
 import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
+import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { Button, External, Pill, Textarea } from "../ui";
 import { RichText } from "./rich-text";
+import { RunCard } from "./run-card";
 
 export type MessageContext = {
   meId: string;
@@ -29,32 +31,64 @@ export type MessageContext = {
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
 
+function ToolRow({ tool }: { tool: ToolChip }) {
+  const link = appLink(tool.href);
+  const failed = tool.state === "failed";
+  const content = (
+    <>
+      {failed ? <X size={12} className="shrink-0 text-danger" aria-label="Failed" /> : <Wrench size={12} className="shrink-0 text-accent" aria-hidden />}
+      <span className="shrink-0 font-medium">{TOOL_LABEL(tool.name)}</span>
+      {tool.summary ? <span className="min-w-0 truncate text-muted">· {tool.summary}</span> : null}
+      {link ? <ExternalLink size={11} className="shrink-0 text-muted" aria-hidden /> : null}
+    </>
+  );
+  const style = `inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-xs ${failed ? "border-danger/30 bg-danger/5" : "border-line bg-bg"}`;
+  return link ? (
+    <External href={link} className={`${style} hover:border-accent`} title={tool.summary ?? undefined}>
+      {content}
+    </External>
+  ) : (
+    <span className={style} title={tool.summary ?? undefined}>
+      {content}
+    </span>
+  );
+}
+
+/** What a reply used in Ensemble: one line ("Used 4 tools") that opens into the list, so ordinary chats stay clean. */
 function ToolChips({ tools }: { tools: ToolChip[] }) {
+  const [open, setOpen] = useState(false);
   if (!tools?.length) return null;
+  if (tools.length === 1) {
+    return (
+      <div className="mt-2 flex">
+        <ToolRow tool={tools[0]!} />
+      </div>
+    );
+  }
+  const summary = toolChipSummary(tools);
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
-      {tools.map((tool) => {
-        const link = appLink(tool.href);
-        const failed = tool.state === "failed";
-        const content = (
-          <>
-            {failed ? <X size={12} className="text-danger" /> : <Wrench size={12} className="text-accent" />}
-            <span className="font-medium">{TOOL_LABEL(tool.name)}</span>
-            {tool.summary ? <span className="max-w-[280px] truncate text-muted">· {tool.summary}</span> : null}
-            {link ? <ExternalLink size={11} className="text-muted" /> : null}
-          </>
-        );
-        const style = `inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-xs ${failed ? "border-danger/30 bg-danger/5" : "border-line bg-bg"}`;
-        return link ? (
-          <External key={tool.id} href={link} className={`${style} hover:border-accent`} title={tool.summary ?? undefined}>
-            {content}
-          </External>
-        ) : (
-          <span key={tool.id} className={style} title={tool.summary ?? undefined}>
-            {content}
-          </span>
-        );
-      })}
+    <div className="mt-2">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-bg px-2 py-1 text-xs text-muted transition hover:border-muted hover:text-ink"
+      >
+        <Wrench size={12} className="shrink-0 text-accent" aria-hidden />
+        <span className="shrink-0 font-medium text-ink">{summary.label}</span>
+        {summary.names ? <span className="min-w-0 truncate">· {summary.names}</span> : null}
+        {summary.failed ? <span className="shrink-0 text-danger">· {summary.failed} failed</span> : null}
+        <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+      </button>
+      {open ? (
+        <ul className="mt-1.5 flex flex-col items-start gap-1" aria-label="Tools used">
+          {tools.map((tool) => (
+            <li key={tool.id} className="flex max-w-full">
+              <ToolRow tool={tool} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -147,47 +181,6 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
     </div>
   );
 }
-
-const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "accent" | "muted"> = {
-  succeeded: "ok",
-  failed: "danger",
-  interrupted: "warn",
-  waiting_approval: "warn",
-  blocked: "warn",
-  running: "accent",
-  claimed: "accent",
-  queued: "muted",
-};
-
-function RunCard({ message }: { message: Message }) {
-  const data = message.data;
-  const live = ["queued", "claimed", "running", "stopping"].includes(data.status);
-  return (
-    <div className="mt-1 rounded-2xl border border-line bg-panel p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex items-center gap-2 text-sm font-medium">
-          <Cpu size={16} className={live ? "animate-pulse text-accent" : "text-muted"} /> {message.body}
-        </span>
-        <Pill tone={RUN_TONE[data.status] ?? "muted"}>{RUN_LABEL[data.status] ?? data.status}</Pill>
-      </div>
-      <p className="mt-1 text-xs text-muted">{data.computer ? `On ${data.computer}` : "On your computer"}</p>
-      {data.progress && live ? <p className="mt-2 text-sm">{data.progress}</p> : null}
-      {data.summary ? <p className="mt-2 text-sm">{data.summary}</p> : null}
-      {data.error ? <p className="mt-2 text-sm text-danger">{data.error}</p> : null}
-      <div className="mt-2 flex flex-wrap gap-3 text-xs">
-        <External href={ENSEMBLE_LINKS.task(data.taskId)} className="inline-flex items-center gap-1 text-accent hover:underline">
-          Open the task in Ensemble <ExternalLink size={11} />
-        </External>
-        {data.status === "waiting_approval" ? (
-          <External href={ENSEMBLE_LINKS.needsMe} className="inline-flex items-center gap-1 text-warn hover:underline">
-            Answer it in Needs me <ExternalLink size={11} />
-          </External>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 
 /** Who wrote a message, as a short label for quotes and search results. */
 export function authorLabel(message: Pick<Message, "authorKind" | "authorAccountId" | "authorNodeId">, ctx: Pick<MessageContext, "meId" | "nodes" | "people">): string {
@@ -446,7 +439,7 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
           {message.kind === "approval" ? (
             <ApprovalCard message={message} ctx={ctx} node={node} />
           ) : message.kind === "run" ? (
-            <RunCard message={message} />
+            <RunCard message={message} ctx={ctx} node={node} />
           ) : message.kind === "error" ? (
             <div className="flex items-start gap-2 rounded-2xl border border-danger/30 bg-danger/5 px-3 py-2 text-sm">
               <AlertTriangle size={16} className="mt-0.5 shrink-0 text-danger" />

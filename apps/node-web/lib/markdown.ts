@@ -2,7 +2,8 @@
 export type Block =
   | { kind: "heading"; level: number; text: string }
   | { kind: "list"; ordered: boolean; items: string[] }
-  | { kind: "code"; text: string }
+  /** `lang`: the fence's language ("ts" from ```ts), or null. */
+  | { kind: "code"; text: string; lang: string | null }
   | { kind: "quote"; text: string }
   | { kind: "paragraph"; text: string };
 
@@ -18,10 +19,11 @@ export function blocks(source: string): Block[] {
     const line = lines[i]!;
     if (line.startsWith("```")) {
       flush();
+      const lang = /^```\s*([\w+#.-]+)/.exec(line)?.[1]?.toLowerCase() ?? null;
       const code: string[] = [];
       i += 1;
       while (i < lines.length && !lines[i]!.startsWith("```")) code.push(lines[i++]!);
-      out.push({ kind: "code", text: code.join("\n") });
+      out.push({ kind: "code", text: code.join("\n"), lang });
       continue;
     }
     const heading = /^(#{1,4})\s+(.*)$/.exec(line);

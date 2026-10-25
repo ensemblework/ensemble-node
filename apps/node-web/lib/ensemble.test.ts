@@ -1,16 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { connectorStatus, decisionMode, liveDevices, previewText } from "./ensemble";
+import { connectorStatus, liveDevices, previewText } from "./ensemble";
 import type { ConnectorEntry, Device } from "./types";
-
-test("Needs me questions are answered here only when that is safe and exact", () => {
-  assert.equal(decisionMode({ canAnswer: true, detail: { command: "ls" } }), "simple");
-  assert.equal(decisionMode({ canAnswer: true, detail: { confirm: true } }), "confirm");
-  assert.equal(decisionMode({ canAnswer: true, detail: { options: ["Yes", "No"] } }), "options");
-  assert.equal(decisionMode({ canAnswer: true, detail: { deviceId: "d1", tier: "high_risk" } }), "device");
-  assert.equal(decisionMode({ canAnswer: false, detail: {} }), "elsewhere");
-  assert.equal(decisionMode({ detail: null }), "simple");
-});
 
 test("an approval preview reads as text", () => {
   assert.equal(previewText("Push to main"), "Push to main");

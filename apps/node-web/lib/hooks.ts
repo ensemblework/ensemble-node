@@ -6,7 +6,8 @@ import { api, ApiError, eventsUrl } from "./api";
 import { keepOlder, matchesAuthor, reactionsOf, toggleReaction } from "./chat";
 import { live } from "./live";
 import { mergeMessage } from "./text";
-import { toastError } from "./toast";
+import { toast, toastError } from "./toast";
+import { runEnded } from "./work-log";
 import type {
   Activity,
   AgentDecision,
@@ -14,7 +15,9 @@ import type {
   AuthStatus,
   Bootstrap,
   ConnectorEntry,
+  DecisionBody,
   Device,
+  JobDetail,
   IncomingInvite,
   Limits,
   McpConnection,
@@ -24,6 +27,7 @@ import type {
   NodePublic,
   ReplyTo,
   Room,
+  RunStep,
   SearchResult,
 } from "./types";
 
@@ -47,7 +51,13 @@ export const keys = {
   decisions: ["decisions"] as const,
   connectors: ["connectors"] as const,
   mcp: ["mcp-connections"] as const,
+  /** A run card's computer job, and its run's steps; both keyed by the job. */
+  job: (jobId: string) => ["job", jobId] as const,
+  runSteps: (jobId: string) => ["run-steps", jobId] as const,
 };
+
+/** How often an active run on screen is read again. */
+export const RUN_POLL_MS = 2500;
 
 /** Messages per page of a room. */
 export const PAGE = 100;
@@ -279,6 +289,72 @@ export function useDecisions() {
   return useQuery({ queryKey: keys.decisions, queryFn: () => api<{ decisions: AgentDecision[] }>("/api/decisions?status=pending").then((result) => result.decisions), refetchInterval: 60_000 });
 }
 
+/** A run card's computer job: status, engine, model, progress, summary, events. Read again every few seconds while `poll` and the job has not ended; an ended job does not change. */
+export function useJob(jobId: string, options: { enabled: boolean; poll: boolean }) {
+  return useQuery({
+    queryKey: keys.job(jobId),
+    queryFn: () => api<JobDetail>(`/api/agent/jobs/${jobId}`),
+    enabled: options.enabled,
+    staleTime: (query) => (runEnded(query.state.data?.job.status) ? Number.POSITIVE_INFINITY : 0),
+    refetchInterval: (query) => (options.poll && !runEnded(query.state.data?.job.status) ? RUN_POLL_MS : false),
+    retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+  });
+}
+
+/** The engine trace of a job's run: every tool call, thinking, message and the result. Read only while the work log is open. */
+export function useRunSteps(jobId: string, runId: string | null | undefined, enabled: boolean, poll: boolean) {
+  return useQuery({
+    queryKey: keys.runSteps(jobId),
+    queryFn: () => api<{ run: { steps: RunStep[] } }>(`/api/runs/${runId}`).then((result) => result.run.steps ?? []),
+    enabled: enabled && Boolean(runId),
+    refetchInterval: poll ? RUN_POLL_MS : false,
+    placeholderData: keepPreviousData,
+    retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+  });
+}
+
+/** Stops a computer job (only the person whose computer runs it may). */
+export function useStopJob() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (jobId: string) => api<void>(`/api/agent/jobs/${jobId}/stop`, { method: "POST" }),
+    onSettled: (_data, _error, jobId) => void client.invalidateQueries({ queryKey: keys.job(jobId) }),
+  });
+}
+
+/** After an answer: Needs me, and the run that waited on it. */
+function refreshNeedsMe(client: QueryClient, jobId: string | undefined) {
+  void client.invalidateQueries({ queryKey: keys.decisions });
+  void client.invalidateQueries({ queryKey: keys.approvals });
+  if (jobId) void client.invalidateQueries({ queryKey: keys.job(jobId) });
+}
+
+/** Answers a question from Needs me. Once answered, the card leaves the list and `note` is shown. */
+export function useDecide() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; body: DecisionBody; jobId?: string; note: string }) => api<unknown>(`/api/decisions/${input.id}/decide`, { body: input.body }),
+    onSuccess: (_data, input) => {
+      client.setQueryData<AgentDecision[]>(keys.decisions, (rows) => rows?.filter((row) => row.id !== input.id));
+      toast(input.note, "ok");
+    },
+    onSettled: (_data, _error, input) => refreshNeedsMe(client, input.jobId),
+  });
+}
+
+/** Approves or rejects a run approval from Needs me. */
+export function useDecideApproval() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; decision: "approved" | "rejected"; jobId?: string }) => api<unknown>(`/api/approvals/${input.id}/decide`, { body: { decision: input.decision } }),
+    onSuccess: (_data, input) => {
+      client.setQueryData<ApprovalRecord[]>(keys.approvals, (rows) => rows?.filter((row) => row.id !== input.id));
+      toast(input.decision === "approved" ? "Approved." : "Rejected.", "ok");
+    },
+    onSettled: (_data, _error, input) => refreshNeedsMe(client, input.jobId),
+  });
+}
+
 export function useConnectors() {
   return useQuery({ queryKey: keys.connectors, queryFn: () => api<{ entries: ConnectorEntry[] }>("/api/connectors/catalog").then((result) => result.entries), staleTime: 60_000 });
 }
@@ -320,6 +396,11 @@ export function useNodeEvents(enabled: boolean) {
       putMessage(client, message);
       if (message.authorNodeId) live.posted(message.roomId, message.authorNodeId);
       if (message.kind === "approval" || message.kind === "run") void client.invalidateQueries({ queryKey: keys.activity });
+      // A run card changed: its open view reads the job (and the work log, when open) again.
+      if (message.kind === "run" && typeof message.data?.jobId === "string") {
+        void client.invalidateQueries({ queryKey: keys.job(message.data.jobId) });
+        void client.invalidateQueries({ queryKey: keys.runSteps(message.data.jobId) });
+      }
       later();
     };
     source.addEventListener("node.message", onMessage as EventListener);

@@ -1,6 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canDelete, canPin, dayLabel, firstUnread, highlightParts, keepOlder, matchesAuthor, mentionsMe, plainPreview, reactionRows, snippet, takeEmails, toggleReaction } from "./chat";
+import {
+  canDelete,
+  canPin,
+  dayLabel,
+  firstUnread,
+  highlightParts,
+  keepOlder,
+  matchesAuthor,
+  mentionsMe,
+  messagePreview,
+  optimisticMessage,
+  plainPreview,
+  reactionRows,
+  resendInput,
+  sendBody,
+  snippet,
+  takeEmails,
+  toggleReaction,
+} from "./chat";
 
 test("view filters match what the server sends for people and nodes", () => {
   assert.equal(matchesAuthor({ authorKind: "system" }, "people"), true);
@@ -89,4 +107,32 @@ test("a refetch keeps earlier pages and messages still on their way", () => {
 
 test("previews drop Markdown marks and line breaks", () => {
   assert.equal(plainPreview("You have **3 tasks**:\n1. Review `api.ts`\n- ship\n```\npnpm test\n```\n> done"), "You have 3 tasks: Review api.ts ship done");
+});
+
+test("a message sends its files by id, and shows them while it is on its way", () => {
+  const files = [{ id: "f1", name: "plan.pdf", kind: "pdf", size: 2048 }, { id: "f2", name: "shot.png", kind: "image", size: 900 }];
+  const replyTo = { id: "m0", seq: 3, authorKind: "node" as const, handle: "manager", excerpt: "Plan?" };
+  assert.deepEqual(sendBody({ body: "", private: true, clientId: "c1", replyTo, files }), { body: "", private: true, clientId: "c1", replyToId: "m0", files: ["f1", "f2"] });
+  assert.deepEqual(sendBody({ body: "hi", private: false, clientId: "c2", files: [] }), { body: "hi", private: false, clientId: "c2" }, "no files: no files field");
+  const shown = optimisticMessage("r1", "me", { body: "", private: false, clientId: "c1", files });
+  assert.equal(shown.id, "local-c1");
+  assert.equal(shown.sending, true);
+  assert.deepEqual(shown.data.files, files);
+});
+
+test("retrying a failed message sends the same words, files and clientId", () => {
+  const files = [{ id: "f1", name: "plan.pdf", kind: "pdf", size: 2048 }];
+  const replyTo = { id: "m0", seq: 3, authorKind: "human" as const, handle: "ben", excerpt: "Look" };
+  const failed = { ...optimisticMessage("r1", "me", { body: "See this", private: true, clientId: "c1", replyTo, files }), sending: false, failed: "Ensemble cannot be reached." };
+  const again = resendInput(failed);
+  assert.deepEqual(again, { body: "See this", private: true, clientId: "c1", replyTo, files });
+  assert.deepEqual(sendBody(again).files, ["f1"], "the files go by id again, nothing is uploaded");
+});
+
+test("a message with only files previews as its files", () => {
+  const file = { id: "f1", name: "plan.pdf", kind: "pdf", size: 2048 };
+  assert.equal(messagePreview({ body: "", data: { files: [file] } }), "📎 plan.pdf");
+  assert.equal(messagePreview({ body: "", data: { files: [file, { ...file, id: "f2" }] } }), "📎 2 files");
+  assert.equal(messagePreview({ body: "**Look**", data: { files: [file] } }), "Look");
+  assert.equal(messagePreview({ body: "", data: { files: [file], deleted: true } }), "Message deleted");
 });

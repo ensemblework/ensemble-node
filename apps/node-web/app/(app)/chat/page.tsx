@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { ArrowUp, Inbox, Plus, ShieldQuestion } from "lucide-react";
 import { api } from "@/lib/api";
 import { useActivity, useBootstrap } from "@/lib/hooks";
 import { useBusyNodes } from "@/lib/live";
-import { plainPreview } from "@/lib/chat";
+import { messagePreview, sendBody } from "@/lib/chat";
 import { ago } from "@/lib/text";
+import { toastError } from "@/lib/toast";
+import { AttachButton, AttachmentShelf, DropHint, pasteFiles, useAttachments, useFileDrop } from "@/components/chat/attachments";
 import { dmRoomOf, shortModel } from "@/components/shell";
 import { NodeAvatar } from "@/components/node-avatar";
 import { Spinner } from "@/components/ui";
@@ -21,20 +23,35 @@ export default function Home() {
   const [text, setText] = useState("");
   const [target, setTarget] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const attachments = useAttachments();
+  const verified = Boolean(boot.data?.me.verified);
+  const drop = useFileDrop(attachments.addFiles, verified);
+  const blockerId = useId();
+  // One clientId per draft: sending the same draft again after a failure cannot post it twice.
+  const clientId = useRef<string | null>(null);
+  useEffect(() => {
+    clientId.current = null;
+  }, [text, attachments.files.length]);
   if (!boot.data) return <div className="flex h-full items-center justify-center text-muted"><Spinner /></div>;
   const { nodes, me } = boot.data;
   const chosen = nodes.find((node) => node.id === target) ?? nodes.find((node) => node.role === "manager") ?? nodes[0];
   const waiting = activity.data?.approvals.length ?? 0;
   const recent = boot.data.rooms.filter((room) => room.lastMessageAt).slice(0, 5);
 
+  const files = attachments.files;
+  const blocker = attachments.blocker;
+  const canAsk = Boolean(text.trim() || files.length) && !blocker && !sending && me.verified;
+
   const ask = async () => {
-    const body = text.trim();
     const dm = chosen ? dmRoomOf(boot.data, chosen.id) : undefined;
-    if (!body || !dm) return;
+    if (!canAsk || !dm) return;
     setSending(true);
+    clientId.current ??= crypto.randomUUID();
     try {
-      await api(`/api/node/rooms/${dm.id}/messages`, { body: { body, clientId: crypto.randomUUID() } });
+      await api(`/api/node/rooms/${dm.id}/messages`, { body: sendBody({ body: text.trim(), private: false, clientId: clientId.current, files }) });
       router.push(`/r/${dm.id}`);
+    } catch (error) {
+      toastError(error);
     } finally {
       setSending(false);
     }
@@ -49,10 +66,13 @@ export default function Home() {
             {me.name ? `Hi ${me.name.split(" ")[0]}.` : "Hi."} What should your nodes do?
           </h1>
           {chosen ? (
-            <div className="mx-auto max-w-2xl rounded-3xl border border-line bg-panel p-2 text-left shadow-lg focus-within:border-accent/60">
+            <div {...drop.bind} className="relative mx-auto max-w-2xl rounded-3xl border border-line bg-panel p-2 text-left shadow-lg focus-within:border-accent/60">
+              {drop.over ? <DropHint /> : null}
+              <AttachmentShelf attachments={attachments} />
               <textarea
                 value={text}
                 onChange={(event) => setText(event.target.value)}
+                onPaste={me.verified ? (event) => pasteFiles(event, attachments.addFiles) : undefined}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && !event.shiftKey) {
                     event.preventDefault();
@@ -64,15 +84,21 @@ export default function Home() {
                 placeholder={`Ask ${chosen.name}…`}
                 className="w-full resize-none bg-transparent px-3 py-2 text-[15px] outline-none placeholder:text-muted"
               />
-              <div className="flex items-center justify-between px-1">
-                <div className="flex flex-wrap gap-1">
+              <div className="flex items-center justify-between gap-2 px-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                  <AttachButton attachments={attachments} hint={`${chosen.name} reads what you attach: the text of documents, and pictures when its model can see images.`} disabled={!me.verified} />
                   {nodes.map((node) => (
                     <button key={node.id} onClick={() => setTarget(node.id)} title={node.name} className={`rounded-full p-0.5 ${node.id === chosen.id ? "ring-2 ring-accent" : "opacity-60 hover:opacity-100"}`}>
                       <NodeAvatar avatar={node.avatar} size={24} thinking={busy.has(node.id)} />
                     </button>
                   ))}
                 </div>
-                <button onClick={() => void ask()} disabled={!text.trim() || sending || !me.verified} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-accent text-accent-ink disabled:opacity-40" aria-label="Send">
+                {blocker ? (
+                  <span id={blockerId} role="status" className="min-w-0 flex-1 truncate text-right text-xs text-warn" title={blocker}>
+                    {blocker}
+                  </span>
+                ) : null}
+                <button onClick={() => void ask()} disabled={!canAsk} title={blocker ?? undefined} aria-describedby={blocker ? blockerId : undefined} className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-ink disabled:opacity-40" aria-label="Send">
                   {sending ? <Spinner /> : <ArrowUp size={18} />}
                 </button>
               </div>
@@ -134,7 +160,7 @@ export default function Home() {
                   <Link href={`/r/${room.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-raised/60">
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-medium">{room.title}</span>
-                      <span className="block truncate text-xs text-muted">{room.last ? (room.last.data?.deleted ? "Message deleted" : plainPreview(room.last.body)) : ""}</span>
+                      <span className="block truncate text-xs text-muted">{room.last ? messagePreview(room.last) : ""}</span>
                     </span>
                     <span className="shrink-0 text-xs text-muted">{ago(room.lastMessageAt)}</span>
                   </Link>

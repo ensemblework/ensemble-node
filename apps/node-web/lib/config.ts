@@ -30,6 +30,8 @@ export const ENSEMBLE_LINKS = {
   metrics: `${ENSEMBLE_APP}/metrics`,
   board: `${ENSEMBLE_APP}/board`,
   task: (id: string) => `${ENSEMBLE_APP}/tasks/${id}`,
+  files: `${ENSEMBLE_APP}/files`,
+  file: (id: string) => `${ENSEMBLE_APP}/files/${encodeURIComponent(id)}`,
   forgot: `${ENSEMBLE_APP}/forgot`,
   terms: "https://ensemblework.com/terms",
   privacy: "https://ensemblework.com/privacy",

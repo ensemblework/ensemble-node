@@ -2,7 +2,7 @@
 
 import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Lock, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { canDelete, canPin, canReact, isDeleted, plainPreview, reactionRows, reactionsOf } from "@/lib/chat";
+import { canDelete, canPin, canReact, isDeleted, messagePreview, reactionRows, reactionsOf } from "@/lib/chat";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, TOOL_LABEL } from "@/lib/text";
@@ -12,6 +12,7 @@ import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
+import { MessageFiles } from "./file-chips";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 
@@ -28,6 +29,9 @@ export type MessageContext = {
   pinned: ReadonlySet<string>;
   onReply: (message: Message) => void;
   onJump: (messageId: string) => void;
+  /** A message that was not sent: send it again as it was, or put it back in the composer. */
+  onRetry: (message: Message) => void;
+  onEdit: (message: Message) => void;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -200,7 +204,7 @@ export function replyOf(message: Message, ctx: Pick<MessageContext, "meId" | "no
     seq: message.seq,
     authorKind: message.authorKind,
     handle: message.authorNodeId ? (ctx.nodes.get(message.authorNodeId)?.slug ?? null) : (ctx.people.get(message.authorAccountId)?.handle ?? null),
-    excerpt: plainPreview(message.body).slice(0, 160),
+    excerpt: messagePreview(message).slice(0, 160),
   };
 }
 
@@ -215,7 +219,7 @@ function ReplyQuote({ reply, onJump, mine }: { reply: ReplyTo; onJump: (id: stri
       <CornerUpLeft size={12} className="mt-0.5 shrink-0 text-accent" />
       <span className="min-w-0">
         <span className="font-medium text-ink">{reply.handle ? `@${reply.handle}` : reply.authorKind === "node" ? "A node" : "Someone"}</span>{" "}
-        <span className="line-clamp-2 break-words">{reply.excerpt || "Deleted message"}</span>
+        <span className="line-clamp-2 break-words">{reply.excerpt || "📎 Files"}</span>
       </span>
     </button>
   );
@@ -390,9 +394,16 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
         <MessageActions message={message} ctx={ctx} mine open={press.open} setOpen={press.setOpen} />
         <div className="max-w-[85%] md:max-w-[70%]">
           {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine /> : null}
-          <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
-            {deleted ? <Deleted /> : <RichText text={message.body} handles={ctx.handles} />}
-          </div>
+          {deleted || message.body ? (
+            <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
+              {deleted ? <Deleted /> : <RichText text={message.body} handles={ctx.handles} />}
+            </div>
+          ) : null}
+          {deleted ? null : (
+            <div className={`rounded-2xl transition ${message.body ? "" : ring}`}>
+              <MessageFiles message={message} meId={ctx.meId} align="end" />
+            </div>
+          )}
           <Reactions message={message} ctx={ctx} mine />
           <div className="mt-1 flex justify-end gap-2 text-[11px] text-muted">
             {pinned ? (
@@ -405,7 +416,21 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
                 <Lock size={10} /> only you and your nodes
               </span>
             ) : null}
-            {message.failed ? <span className="text-danger">Not sent: {message.failed}</span> : message.sending ? "Sending…" : clock(message.createdAt)}
+            {message.failed ? (
+              <span className="inline-flex flex-wrap items-center justify-end gap-x-2 text-danger">
+                <span>Not sent: {message.failed}</span>
+                <button type="button" onClick={() => ctx.onRetry(message)} className="font-medium text-ink underline-offset-2 hover:underline" title="Send it again, with the same files">
+                  Retry
+                </button>
+                <button type="button" onClick={() => ctx.onEdit(message)} className="font-medium text-ink underline-offset-2 hover:underline" title="Put it back in the message box">
+                  Edit
+                </button>
+              </span>
+            ) : message.sending ? (
+              "Sending…"
+            ) : (
+              clock(message.createdAt)
+            )}
           </div>
         </div>
       </div>
@@ -457,7 +482,8 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
             <Deleted />
           ) : (
             <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
-              <RichText text={message.body} handles={ctx.handles} />
+              {message.body ? <RichText text={message.body} handles={ctx.handles} /> : null}
+              <MessageFiles message={message} meId={ctx.meId} sender={person?.name} />
               <ToolChips tools={Array.isArray(message.data.tools) ? message.data.tools : []} />
             </div>
           )}

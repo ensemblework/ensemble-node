@@ -70,7 +70,7 @@ export const RUN_LABEL: Record<string, string> = {
   claimed: "Starting",
   running: "Running",
   stopping: "Stopping",
-  waiting_approval: "Needs you in Ensemble",
+  waiting_approval: "Needs you",
   blocked: "Blocked",
   succeeded: "Done",
   failed: "Failed",

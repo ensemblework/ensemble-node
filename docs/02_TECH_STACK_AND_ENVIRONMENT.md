@@ -61,7 +61,7 @@ To try computer work, pair your machine against the local API (`ensemble login` 
 ```bash
 pnpm dev          # website on :3300
 pnpm typecheck
-pnpm test         # node --test via tsx: lib/*.test.ts (text, markdown helpers)
+pnpm test         # node --test via tsx: lib/*.test.ts (the pure helpers)
 pnpm build        # next build
 pnpm start        # serve the build on :3300
 ```

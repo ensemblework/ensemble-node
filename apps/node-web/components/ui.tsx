@@ -40,7 +40,7 @@ export function MenuItem({ children, onClick, checked, tone }: { children: React
   );
 }
 
-export function Button({ tone = "primary", className = "", busy, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone; busy?: boolean }) {
+export function Button({ tone = "primary", size = "md", className = "", busy, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { tone?: Tone; size?: "sm" | "md"; busy?: boolean }) {
   const tones: Record<Tone, string> = {
     primary: "bg-accent text-accent-ink hover:brightness-110",
     ghost: "border border-line bg-panel text-ink hover:bg-raised",
@@ -51,9 +51,9 @@ export function Button({ tone = "primary", className = "", busy, children, ...re
     <button
       {...rest}
       disabled={rest.disabled || busy}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone]} ${className}`}
+      className={`inline-flex items-center justify-center font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${size === "sm" ? "gap-1.5 rounded-lg px-3 py-1.5 text-xs" : "gap-2 rounded-xl px-4 py-2 text-sm"} ${tones[tone]} ${className}`}
     >
-      {busy ? <Spinner /> : null}
+      {busy ? <Spinner className={size === "sm" ? "h-3 w-3" : ""} /> : null}
       {children}
     </button>
   );

@@ -1,6 +1,7 @@
 import { Fragment } from "react";
 import { blocks, boldParts } from "@/lib/markdown";
 import { pieces } from "@/lib/text";
+import { CodeBlock } from "./code-block";
 
 function Inline({ text, handles }: { text: string; handles: ReadonlySet<string> }) {
   return (
@@ -29,13 +30,13 @@ function Inline({ text, handles }: { text: string; handles: ReadonlySet<string> 
   );
 }
 
-/** A message body: Markdown blocks with mentions, links and code. */
-export function RichText({ text, handles }: { text: string; handles: ReadonlySet<string> }) {
+/** A message body: Markdown blocks with mentions, links and code. `small` for text inside a card. */
+export function RichText({ text, handles, small = false }: { text: string; handles: ReadonlySet<string>; small?: boolean }) {
   return (
-    <div className="space-y-2 break-words text-[15px] leading-relaxed">
+    <div className={`space-y-2 break-words leading-relaxed ${small ? "text-sm" : "text-[15px]"}`}>
       {blocks(text).map((block, index) => {
         if (block.kind === "heading") return <p key={index} className="font-semibold">{<Inline text={block.text} handles={handles} />}</p>;
-        if (block.kind === "code") return <pre key={index} className="scroll-thin overflow-x-auto rounded-lg bg-bg p-3 font-mono text-xs">{block.text}</pre>;
+        if (block.kind === "code") return <CodeBlock key={index} code={block.text} lang={block.lang} />;
         if (block.kind === "quote") return <blockquote key={index} className="border-l-2 border-line pl-3 text-muted"><Inline text={block.text} handles={handles} /></blockquote>;
         if (block.kind === "list") {
           const List = block.ordered ? "ol" : "ul";

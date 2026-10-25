@@ -61,6 +61,7 @@ The cost is coupling: Node's backend ships with Ensemble's releases and must fol
 | Sharing policy classes | `/api/node/*` is `personal`: it acts for the signed-in account whichever space is open. |
 | CLI device login (`bridge` key) and TUI | The Node tab reads `GET /api/bridge/node` with the key the CLI already has. |
 | Needs me, paired computers, connected apps | The website reads `GET /api/approvals`, `GET /api/decisions?status=pending`, `GET /api/devices`, `GET /api/connectors/catalog` and `GET /api/mcp-connections`, and answers Needs me with Ensemble's own `POST /api/approvals/:id/decide` and `POST /api/decisions/:id/decide`. Pairing a computer and connecting an app happen in Ensemble (links open in a new tab). |
+| Computer jobs and run traces | A run card reads the job (`GET /api/agent/jobs/:id`: engine, model, thinking level, progress, summary, changed files, milestones) and its run's steps (`GET /api/runs/:runId`, Ensemble's engine trace: each tool call, thinking and message), and stops it with `POST /api/agent/jobs/:id/stop`. |
 
 ## 4. Flows
 
@@ -100,7 +101,7 @@ Mira writes "Plan the login page and hand out the work" in the crew. The lead (`
 
 ### 4.6 Work on a computer
 
-`hub_assign_to_agent` always waits. When Mira approves, Ensemble's Apply creates the `WorkspaceJob` for her run profile and computer. Node records a `node_runs` row and posts a run card, owner‑only in shared rooms. Every 15 s the watcher mirrors status, progress and summary onto the card. When the job ends, the node gets a turn with the result and reports to whoever asked. Questions the run asks (permissions, choices) are answered in Ensemble's Needs me: the Hub, the CLI's Tasks tab or the phone.
+`hub_assign_to_agent` always waits. When Mira approves, Ensemble's Apply creates the `WorkspaceJob` for her run profile and computer. Node records a `node_runs` row and posts a run card, owner‑only in shared rooms. Every 15 s the watcher mirrors status, progress and summary onto the card. When the job ends, the node gets a turn with the result and reports to whoever asked. The card shows the run's work log from Ensemble's engine trace, and the person whose computer runs it can stop it there. Questions the run asks (permissions, choices) are Ensemble's Needs me cards: they are answered on the run card itself, on Node's Computers & Needs me page, or in Ensemble (the Hub, the CLI's Tasks tab or the phone); the first answer counts.
 
 ### 4.7 The CLI's Node tab
 
@@ -112,7 +113,7 @@ Every conversation has search (`GET /api/node/search?q&roomId&author`; ⌘K sear
 
 ### 4.9 Ensemble from Node
 
-**Computers & Needs me** lists the paired computers (revoked ones left out) with the folders each shares, and what waits in Ensemble's Needs me. Run approvals take Approve or Reject. Agents' questions take Allow once or Deny; a risky allow asks the person to confirm and then sends `confirmed: true`; questions with answer options, ones only that computer may approve, and ones someone else must answer link to Ensemble's Needs me instead. **Connections** lists what the account has connected in Ensemble and what it can connect; Connect and Manage open Ensemble's connections settings in a new tab.
+**Computers & Needs me** lists the paired computers (revoked ones left out) with the folders each shares, and what waits in Ensemble's Needs me. Run approvals take Approve or Reject. A permission takes Allow once (`scope: "once"`) or Deny; a run that is not on a paired computer also takes Allow for this run (`scope: "session"`), except a push. A run's question takes one of its options, or the person's own words when it allows them, sent as `reason`; Skip denies it and the agent chooses. A risky allow asks the person to confirm and then sends `confirmed: true`. Ones only that computer may approve take Deny here. An editor's own multiple-choice questions and ones someone else must answer link to Ensemble's Needs me instead. The rules are in `lib/decisions.ts`; the run card and this page share `components/decision-answer.tsx`. **Connections** lists what the account has connected in Ensemble and what it can connect; Connect and Manage open Ensemble's connections settings in a new tab.
 
 ## 5. Models and credits
 

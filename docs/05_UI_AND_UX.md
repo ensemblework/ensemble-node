@@ -57,7 +57,7 @@ One picker everywhere a model is chosen: new nodes, new nodes in a crew, the nod
 
 ## Live behaviour
 
-One EventSource per tab (`/api/node/events`, with credentials). `node.message` / `node.message.updated` merge into every loaded list of that room by id or clientId (reactions and deletes arrive this way too). `node.status` drives the breathing face and "thinking…". `node.frame` (owner only) streams the text being written and tool names. `node.room` refreshes the conversation list and pins. `node.invite` refreshes requests to join. After a reconnect, open conversations refetch, so nothing said during the gap is lost; earlier pages stay loaded. Read markers are sent at most once a second while you are at the bottom of a conversation.
+One EventSource per tab (`/api/node/events`, with credentials). `node.message` / `node.message.updated` merge into every loaded list of that room by id or clientId (reactions and deletes arrive this way too). `node.status` drives the breathing face and "thinking…". `node.frame` (owner only) streams the text being written and tool names; `lib/live.ts` buffers the text and applies it once per animation frame, re-rendering only that room, while the busy faces in the sidebar and start page change only when a node starts or stops thinking. `node.room` refreshes the conversation list and pins. `node.invite` refreshes requests to join. `node.needs` re-reads Needs me (run approvals and agents' questions) at once; its 60-second poll is the fallback. After a reconnect, open conversations and Needs me refetch, so nothing said during the gap is lost; earlier pages stay loaded. Read markers are sent at most once a second while you are at the bottom of a conversation.
 
 ## Links
 

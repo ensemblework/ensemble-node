@@ -35,7 +35,7 @@ ensemble-node/
 │   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads; URLs and links into Ensemble
 │   │   ├── environment.ts       testing or production; refuses a build that mixes them (tested)
 │   │   ├── hooks.ts             queries, mutations, the event stream
-│   │   ├── live.ts              who is thinking / writing right now
+│   │   ├── live.ts              who is thinking / writing right now (text batched per frame, per room)
 │   │   ├── jump.ts, toast.ts    open a conversation at a message; short notes on screen
 │   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,

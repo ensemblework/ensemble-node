@@ -270,7 +270,7 @@ export function useDevices() {
   return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), refetchInterval: 30_000 });
 }
 
-/** Ensemble's Needs me: run approvals and questions from agents. */
+/** Ensemble's Needs me: run approvals and questions from agents. The stream's `node.needs` re-reads it at once; the poll is the fallback. */
 export function useApprovals() {
   return useQuery({ queryKey: keys.approvals, queryFn: () => api<{ approvals: ApprovalRecord[] }>("/api/approvals").then((result) => result.approvals), refetchInterval: 60_000 });
 }
@@ -339,6 +339,11 @@ export function useNodeEvents(enabled: boolean) {
       if (data.roomId) void client.invalidateQueries({ queryKey: keys.pins(data.roomId) });
       later();
     }) as EventListener);
+    // Needs me changed (a run asks, or a card was answered somewhere): re-read it now, not at the next poll.
+    source.addEventListener("node.needs", () => {
+      void client.invalidateQueries({ queryKey: keys.approvals });
+      void client.invalidateQueries({ queryKey: keys.decisions });
+    });
     source.addEventListener("node.invite", () => {
       void client.invalidateQueries({ queryKey: keys.invites });
       later();
@@ -349,6 +354,8 @@ export function useNodeEvents(enabled: boolean) {
       if (opened) {
         void client.invalidateQueries({ queryKey: ["messages"] });
         void client.invalidateQueries({ queryKey: keys.invites });
+        void client.invalidateQueries({ queryKey: keys.approvals });
+        void client.invalidateQueries({ queryKey: keys.decisions });
         later();
       }
       opened = true;

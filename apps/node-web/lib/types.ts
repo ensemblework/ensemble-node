@@ -196,6 +196,7 @@ export type AgentDecision = {
 /** Ensemble's connector store with this account's state (`GET /api/connectors/catalog`). */
 export type ConnectorEntry = {
   id: string;
+  logo: string;
   name: string;
   vendor: string;
   category: string;

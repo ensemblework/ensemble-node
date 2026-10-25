@@ -1,0 +1,68 @@
+CONNECTOR LOGOS
+
+These local identification assets are reused from ensemblework/ensemble,
+apps/hub-web/components/connectors/brands. manifest.json records each asset's
+name, source and original fit. The source library is available at:
+https://github.com/ensemblework/ensemble/tree/c3c315d/apps/hub-web/components/connectors/brands
+
+The Wispr Flow placeholder was replaced with
+the vendor's own apple-touch icon (resized to 96 px); Zotero was replaced with
+the CC0 Simple Icons mark, coloured #CC2936. No runtime vendor requests are made.
+Jam's SVG has an explicit viewBox added for reliable scaling.
+
+Product names, logos and brands belong to their respective owners and are
+used only to identify services. Ensemble is not affiliated with or endorsed
+by them. Copyright licences do not grant trademark rights.
+
+SVG Logos by Gil Barbara and Simple Icons: CC0.
+https://github.com/gilbarbara/logos/blob/main/LICENSE.txt
+https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md
+
+Vendor site icons: the original URLs and transformations are in manifest.json.
+
+Devicon assets (Azure DevOps and Canva):
+https://github.com/devicons/devicon/blob/master/LICENSE
+
+The MIT License (MIT)
+Copyright (c) 2015 konpa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software is furnished to do so,
+subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+vscode-icons assets (Outlook and Context7):
+https://github.com/vscode-icons/vscode-icons/blob/master/LICENSE
+
+The MIT License (MIT)
+Copyright The vscode-icons Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

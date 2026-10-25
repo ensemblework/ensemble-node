@@ -14,6 +14,7 @@ import { toast, toastError } from "@/lib/toast";
 import type { Member, Message, NodeFull, Room } from "@/lib/types";
 import { ModelPicker } from "../model-picker";
 import { NodeAvatar } from "../node-avatar";
+import { ToolIcon } from "../tool-icon";
 import { IconButton, MenuItem, Pill, Spinner, useDismiss } from "../ui";
 import { Composer, type MentionOption } from "./composer";
 import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
@@ -503,6 +504,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                         <div className="mb-1 flex flex-wrap gap-1.5">
                           {row.tools.map((tool, at) => (
                             <span key={at} className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg px-2 py-0.5 text-xs text-muted">
+                              <ToolIcon name={tool.name} />
                               {TOOL_LABEL(tool.name)}
                               {tool.state === "awaiting_approval" ? " · needs you" : ""}
                             </span>

@@ -30,10 +30,13 @@ ensemble-node/
 │   │   ├── needs-me.tsx         Ensemble's Needs me: run approvals and agents' questions
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      node faces (shape, colour, eyes; breathing while thinking)
+│   │   ├── connector-logo.tsx, tool-icon.tsx
+│   │   │                        shared local vendor logos and generic tool fallbacks
 │   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, drawer, menus, toasts, External (new-tab links)
 │   ├── lib/
 │   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads; URLs and links into Ensemble
 │   │   ├── environment.ts       testing or production; refuses a build that mixes them (tested)
+│   │   ├── connector-logos.ts   catalog aliases, asset metadata and connector tool identity (tested)
 │   │   ├── hooks.ts             queries, mutations, the event stream
 │   │   ├── live.ts              who is thinking / writing right now
 │   │   ├── jump.ts, toast.ts    open a conversation at a message; short notes on screen
@@ -41,7 +44,9 @@ ensemble-node/
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        model groups, crew drafts and unique names, Needs me modes, connection status
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send
-│   └── public/brand/            Ensemble mark
+│   └── public/
+│       ├── brand/              Ensemble mark
+│       └── connectors/         vendor assets, provenance manifest and licence/trademark notice
 ├── docs/                        these guides; research/; design/pre-v0/
 └── .github/                     workflows/test-web.yml (testing: checks, publish node-test),
                                  workflows/ci.yml (checks for main), workflows/deploy.yml and

@@ -3,23 +3,21 @@
 import { useMemo, useState } from "react";
 import { Plug, Search } from "lucide-react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
+import { CONNECTOR_TRADEMARK_NOTICE } from "@/lib/connector-logos";
 import { connectorStatus } from "@/lib/ensemble";
 import { useConnectors, useMcpConnections } from "@/lib/hooks";
 import type { ConnectorEntry, McpConnection } from "@/lib/types";
 import { External, Notice, Pill, Segmented, Spinner } from "@/components/ui";
+import { ConnectorLogo } from "@/components/connector-logo";
 
 const TONE_CLASS = { ok: "text-ok", warn: "text-warn", danger: "text-danger", muted: "text-muted" } as const;
-
-function Logo({ name }: { name: string }) {
-  return <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-raised text-sm font-semibold text-accent">{name.slice(0, 1).toUpperCase()}</span>;
-}
 
 function EntryRow({ entry }: { entry: ConnectorEntry }) {
   const status = connectorStatus(entry);
   const connected = status.section === "connected";
   return (
     <li className="flex items-center gap-3 rounded-xl border border-line bg-bg px-3 py-2.5">
-      <Logo name={entry.name} />
+      <ConnectorLogo id={entry.logo ?? entry.id} name={entry.name} decorative />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5 text-sm font-medium">
           <span className="truncate">{entry.name}</span>
@@ -49,7 +47,7 @@ function CustomRow({ connection }: { connection: McpConnection }) {
   }
   return (
     <li className="flex items-center gap-3 rounded-xl border border-line bg-bg px-3 py-2.5">
-      <Logo name={connection.name} />
+      <ConnectorLogo id="custom" name={connection.name} decorative />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5 text-sm font-medium">
           <span className="truncate">{connection.name}</span> <Pill>MCP</Pill>
@@ -159,6 +157,7 @@ export default function ConnectionsPage() {
             )}
           </>
         )}
+        <p className="text-xs text-muted">{CONNECTOR_TRADEMARK_NOTICE}</p>
       </div>
     </div>
   );

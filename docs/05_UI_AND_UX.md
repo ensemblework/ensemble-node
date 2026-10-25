@@ -39,6 +39,14 @@ Inspired by Grok Bot and ChatGPT Dots: a chat-first app with characterful agents
 
 The sidebar holds Search, Direct chats, Crews and Rooms (each with a + to make one), then Requests to join and Computers & Needs me (both with badges), Connections and Settings. A DM row's tooltip names the node's model.
 
+## Connector logos
+
+`ConnectorLogo` and `lib/connector-logos.ts` are the shared brand renderer and resolver. Connections use the catalog API's `logo` key (falling back to its ID for older responses), not the display name. Native connector tools and catalog MCP tool names use the same assets in completed replies, live tool chips and approval cards. Generic Ensemble tools stay generic; `apps_search` does not identify a service, so it keeps its wrench. Custom MCP names, including ones named after a vendor, are never treated as proof of that vendor's identity.
+
+Assets are local under `public/connectors/`, reused from Ensemble's brand library with per-image provenance in `manifest.json` and licences/trademark attribution in `NOTICE.txt`. Wispr Flow and Zotero use real vendor marks rather than the Hub library's older placeholder lettermarks. This does not add integrations: the API catalog still controls what can be connected.
+
+Tiles have fixed dimensions and contained, unmodified aspect ratios. A neutral white backing keeps black and coloured marks readable in both themes; small chat marks use 16 px tiles and connection rows use 36 px. Adjacent connection names make row logos decorative; standalone/tool logos have accessible names. Unknown logos use initials, custom MCP and CSV use explicit generic icons, and failed image loads retain the same tile with an accessible "logo unavailable" fallback. Branding does not replace connection status text, approval controls or tool-failure indicators.
+
 ## The model picker
 
 One picker everywhere a model is chosen: new nodes, new nodes in a crew, the node page, and the DM header's model menu. Groups: **Included with Ensemble** (Everyday and Step-up, with relative credits), **Your API keys** (per provider), **Your AI plans on ‹computer›**. The bootstrap carries the included models, so the picker opens at once; own keys and AI plans come from `/api/node/models` when it opens. A filter box appears for long lists, and the server's problems show at the bottom.

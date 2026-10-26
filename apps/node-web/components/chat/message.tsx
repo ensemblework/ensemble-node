@@ -395,7 +395,7 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
     return (
       <div id={`m-${message.id}`} ref={press.ref} {...press.bind} className={`group relative flex justify-end ${grouped ? "mt-1" : "mt-4"}`}>
         <MessageActions message={message} ctx={ctx} mine open={press.open} setOpen={press.setOpen} />
-        <div className="max-w-[85%] md:max-w-[70%]">
+        <div className="min-w-0 max-w-[85%] md:max-w-[70%]">
           {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine /> : null}
           {deleted || message.body ? (
             <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>

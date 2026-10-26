@@ -51,7 +51,7 @@ export function Button({ tone = "primary", size = "md", className = "", busy, ch
     <button
       {...rest}
       disabled={rest.disabled || busy}
-      className={`inline-flex items-center justify-center font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${size === "sm" ? "gap-1.5 rounded-lg px-3 py-1.5 text-xs" : "gap-2 rounded-xl px-4 py-2 text-sm"} ${tones[tone]} ${className}`}
+      className={`inline-flex min-w-0 max-w-full items-center justify-center font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${size === "sm" ? "gap-1.5 rounded-lg px-3 py-1.5 text-xs" : "gap-2 rounded-xl px-4 py-2 text-sm"} ${tones[tone]} ${className}`}
     >
       {busy ? <Spinner className={size === "sm" ? "h-3 w-3" : ""} /> : null}
       {children}
@@ -61,7 +61,7 @@ export function Button({ tone = "primary", size = "md", className = "", busy, ch
 
 export function IconButton({ label, className = "", children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
   return (
-    <button {...rest} aria-label={label} title={label} className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-muted transition hover:bg-raised hover:text-ink disabled:opacity-40 ${className}`}>
+    <button {...rest} aria-label={label} title={label} className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-muted transition hover:bg-raised hover:text-ink disabled:opacity-40 ${className}`}>
       {children}
     </button>
   );
@@ -72,7 +72,7 @@ export function Spinner({ className = "" }: { className?: string }) {
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className={`w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none transition placeholder:text-muted focus:border-accent ${props.className ?? ""}`} />;
+  return <input {...props} className={`min-w-0 w-full rounded-xl border border-line bg-bg px-3 py-2 text-sm outline-none transition placeholder:text-muted focus:border-accent ${props.className ?? ""}`} />;
 }
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
@@ -182,19 +182,19 @@ export function Drawer({ open, onClose, title, children, side = "right" }: { ope
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal aria-label={title}>
+    <div className="fixed inset-x-0 top-0 z-50 flex h-[var(--node-viewport-height,100dvh)]" role="dialog" aria-modal aria-label={title}>
       <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
       <div
         className={
           side === "center"
-            ? "relative m-auto max-h-[90vh] w-[min(560px,94vw)] overflow-y-auto rounded-2xl border border-line bg-panel p-5 shadow-2xl scroll-thin"
+            ? "relative m-auto max-h-[90%] w-[min(560px,94vw)] overflow-y-auto overscroll-y-contain rounded-2xl border border-line bg-panel p-5 shadow-2xl scroll-thin"
             : side === "top"
-              ? "relative mx-auto mt-[8vh] max-h-[80vh] w-[min(680px,94vw)] self-start overflow-y-auto rounded-2xl border border-line bg-panel p-4 shadow-2xl scroll-thin"
-              : "relative ml-auto h-full w-[min(460px,100vw)] overflow-y-auto border-l border-line bg-panel p-5 shadow-2xl scroll-thin"
+              ? "relative mx-auto mt-[8dvh] max-h-[80%] w-[min(680px,94vw)] self-start overflow-y-auto overscroll-y-contain rounded-2xl border border-line bg-panel p-4 shadow-2xl scroll-thin"
+              : "relative ml-auto h-full min-w-0 w-[min(460px,100vw)] overflow-y-auto overscroll-y-contain border-l border-line bg-panel p-5 shadow-2xl scroll-thin"
         }
       >
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold">{title}</h2>
+        <div className="sticky top-0 z-10 mb-4 flex items-center justify-between gap-2 bg-panel">
+          <h2 className="min-w-0 text-lg font-semibold">{title}</h2>
           <IconButton label="Close" onClick={onClose}>
             <X size={18} />
           </IconButton>

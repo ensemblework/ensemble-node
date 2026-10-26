@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Activity as ActivityIcon, Hash, Inbox, Laptop, Lock, Menu, PanelRightClose, PanelRightOpen, Plug, Plus, Search, Settings, Users, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
@@ -149,7 +149,27 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [menu, setMenu] = useState(false);
   const [panel, setPanel] = useState(true);
   const [search, setSearch] = useState(false);
+  const frame = useRef<HTMLDivElement>(null);
+  const ready = Boolean(boot.data);
   useNodeEvents(signedIn);
+
+  useEffect(() => {
+    const element = frame.current;
+    const viewport = window.visualViewport;
+    if (!element || !viewport) return;
+    const update = () => {
+      // Mobile keyboards resize the visual viewport, not necessarily CSS dvh.
+      if (window.innerWidth < 768 && viewport.scale === 1) element.style.setProperty("--node-viewport-height", `${viewport.height}px`);
+      else element.style.removeProperty("--node-viewport-height");
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    window.addEventListener("resize", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      window.removeEventListener("resize", update);
+    };
+  }, [ready]);
 
   useEffect(() => {
     if (me.error instanceof ApiError && me.error.status === 401) router.replace("/login");
@@ -199,7 +219,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="flex h-[100dvh] overflow-hidden">
+    <div ref={frame} className="flex overflow-hidden" style={{ height: "var(--node-viewport-height, 100dvh)" }}>
       <aside className="hidden w-72 shrink-0 border-r border-line bg-panel md:block">
         <Sidebar boot={boot.data} onSearch={openSearch} needsMe={needsMe} />
       </aside>
@@ -213,7 +233,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       ) : null}
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-line px-2 py-1.5 md:hidden">
+        <div className="flex shrink-0 items-center justify-between border-b border-line px-2 py-1.5 md:hidden">
           <IconButton label="Menu" onClick={() => setMenu(true)} className="relative">
             {menu ? <X size={18} /> : <Menu size={18} />}
             {boot.data.invites?.length || needsMe ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent" /> : null}
@@ -232,7 +252,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
         </div>
         <div className="relative flex min-h-0 flex-1">
-          <main className="min-w-0 flex-1">{children}</main>
+          <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
           <div className="absolute right-2 top-2 z-10 hidden lg:block">
             <IconButton label={panel ? "Hide activity" : "Show activity"} onClick={() => setPanel(!panel)} className="relative bg-panel/80">
               {panel ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}

@@ -121,14 +121,14 @@ export function DecisionActions({ decision, size = "md" }: { decision: AgentDeci
                   type="button"
                   disabled={Boolean(busy)}
                   onClick={() => allow(`option:${option}`, false, option)}
-                  className={`flex w-full items-start gap-2 rounded-lg border px-2.5 py-1.5 text-left ${text} transition hover:bg-raised disabled:opacity-50 ${option === view.recommended ? "border-accent/60" : "border-line"}`}
+                  className={`grid w-full grid-cols-[1rem_minmax(0,1fr)] items-start gap-x-2 gap-y-1 rounded-lg border px-2.5 py-1.5 text-left ${text} transition hover:bg-raised disabled:opacity-50 ${option === view.recommended ? "border-accent/60" : "border-line"}`}
                 >
                   <span className="mt-px w-4 shrink-0 font-mono text-[11px] text-muted" aria-hidden>
                     {String.fromCharCode(65 + index)}
                   </span>
                   <span className="min-w-0 flex-1 break-words">{option}</span>
-                  {option === view.recommended ? <span className="shrink-0 rounded-full bg-accent/15 px-1.5 text-[10px] font-medium text-accent">Recommended</span> : null}
-                  {busy === `option:${option}` ? <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : null}
+                  {option === view.recommended ? <span className="col-start-2 justify-self-start rounded-full bg-accent/15 px-1.5 text-[10px] font-medium text-accent">Recommended</span> : null}
+                  {busy === `option:${option}` ? <span className="col-start-2 h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : null}
                 </button>
               </li>
             ))}

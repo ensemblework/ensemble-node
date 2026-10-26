@@ -46,3 +46,17 @@ test("a node's first delta marks it busy", () => {
   live.flush();
   assert.ok(busySnapshot().has("n2"));
 });
+
+test("a reply being written keeps the records of every call and of the turn", () => {
+  live.reset();
+  live.refs("r", "n3", [{ kind: "project", id: "p", label: "Launch" }], true);
+  for (let index = 0; index < 8; index += 1) live.tool("r", "n3", { name: `t${index}`, refs: [{ kind: "task", id: `t${index}`, label: `Task ${index}` }] });
+  live.flush();
+  const row = roomSnapshot("r")[0]!;
+  assert.equal(row.tools.length, 6, "only the last calls show");
+  assert.equal(row.refs?.length, 9, "every record stays known");
+  assert.equal(row.showIds, true);
+  live.posted("r", "n3");
+  live.flush();
+  assert.deepEqual(roomSnapshot("r")[0]!.refs, []);
+});

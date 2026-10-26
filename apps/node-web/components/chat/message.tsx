@@ -2,16 +2,18 @@
 
 import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Lock, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { canDelete, canPin, canReact, isDeleted, plainPreview, reactionRows, reactionsOf } from "@/lib/chat";
+import { canDelete, canPin, canReact, isDeleted, messagePreview, reactionRows, reactionsOf } from "@/lib/chat";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, TOOL_LABEL } from "@/lib/text";
+import { formatEntityText, messageRefs, readableBody } from "@/lib/entity-text";
 import { toast, toastError } from "@/lib/toast";
 import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
+import { MessageFiles } from "./file-chips";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 
@@ -28,6 +30,9 @@ export type MessageContext = {
   pinned: ReadonlySet<string>;
   onReply: (message: Message) => void;
   onJump: (messageId: string) => void;
+  /** A message that was not sent: send it again as it was, or put it back in the composer. */
+  onRetry: (message: Message) => void;
+  onEdit: (message: Message) => void;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -35,22 +40,24 @@ const appLink = (href: string | null | undefined) => (href ? (href.startsWith("h
 function ToolRow({ tool }: { tool: ToolChip }) {
   const link = appLink(tool.href);
   const failed = tool.state === "failed";
+  // Receipts name records by title; an older one may still carry an id beside its title.
+  const summary = tool.summary ? formatEntityText(tool.summary, tool.refs, { plain: true }) : null;
   const content = (
     <>
       {failed ? <X size={12} className="shrink-0 text-danger" aria-label="Failed" role="img" /> : null}
       <ToolIcon name={tool.name} size={14} />
       <span className="shrink-0 font-medium">{TOOL_LABEL(tool.name)}</span>
-      {tool.summary ? <span className="min-w-0 truncate text-muted">· {tool.summary}</span> : null}
+      {summary ? <span className="min-w-0 truncate text-muted">· {summary}</span> : null}
       {link ? <ExternalLink size={11} className="shrink-0 text-muted" aria-hidden /> : null}
     </>
   );
   const style = `inline-flex max-w-full items-center gap-1 rounded-lg border px-2 py-1 text-xs ${failed ? "border-danger/30 bg-danger/5" : "border-line bg-bg"}`;
   return link ? (
-    <External href={link} className={`${style} hover:border-accent`} title={tool.summary ?? undefined}>
+    <External href={link} className={`${style} hover:border-accent`} title={summary ?? undefined}>
       {content}
     </External>
   ) : (
-    <span className={style} title={tool.summary ?? undefined}>
+    <span className={style} title={summary ?? undefined}>
       {content}
     </span>
   );
@@ -130,7 +137,7 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
         pending ? (
           <Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={Math.min(10, Math.max(3, body.split("\n").length + 1))} />
         ) : (
-          <RichText text={message.body} handles={ctx.handles} />
+          <RichText text={message.body} handles={ctx.handles} refs={messageRefs(data)} showIds={data.showIds === true} />
         )
       ) : (
         <ul className="space-y-1.5">
@@ -157,14 +164,14 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
                 )}
                 <span>
                   <span className="block text-xs font-medium text-muted">{TOOL_LABEL(call.name)}</span>
-                  <span>{call.summary}</span>
+                  <span className="whitespace-pre-wrap">{formatEntityText(call.summary, [], { plain: true })}</span>
                 </span>
               </label>
             </li>
           ))}
         </ul>
       )}
-      {data.result?.summary ? <p className="mt-2 text-sm text-ok">{data.result.summary}</p> : null}
+      {data.result?.summary ? <p className="mt-2 text-sm text-ok">{formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
       {data.result?.failed?.length ? <p className="mt-1 text-sm text-danger">{data.result.failed.map((row: { name: string; error: string }) => `${TOOL_LABEL(row.name)}: ${row.error}`).join(" · ")}</p> : null}
       {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
       {pending ? (
@@ -200,7 +207,7 @@ export function replyOf(message: Message, ctx: Pick<MessageContext, "meId" | "no
     seq: message.seq,
     authorKind: message.authorKind,
     handle: message.authorNodeId ? (ctx.nodes.get(message.authorNodeId)?.slug ?? null) : (ctx.people.get(message.authorAccountId)?.handle ?? null),
-    excerpt: plainPreview(message.body).slice(0, 160),
+    excerpt: messagePreview(message).slice(0, 160),
   };
 }
 
@@ -215,7 +222,7 @@ function ReplyQuote({ reply, onJump, mine }: { reply: ReplyTo; onJump: (id: stri
       <CornerUpLeft size={12} className="mt-0.5 shrink-0 text-accent" />
       <span className="min-w-0">
         <span className="font-medium text-ink">{reply.handle ? `@${reply.handle}` : reply.authorKind === "node" ? "A node" : "Someone"}</span>{" "}
-        <span className="line-clamp-2 break-words">{reply.excerpt || "Deleted message"}</span>
+        <span className="line-clamp-2 break-words">{reply.excerpt || "📎 Files"}</span>
       </span>
     </button>
   );
@@ -295,7 +302,7 @@ function MessageActions({ message, ctx, mine, open, setOpen }: { message: Messag
             <Reply size={15} />
           </ActionButton>
           {message.body ? (
-            <ActionButton label="Copy text" onClick={() => void navigator.clipboard.writeText(message.body).then(() => toast("Copied.", "ok"), toastError).finally(close)}>
+            <ActionButton label="Copy text" onClick={() => void navigator.clipboard.writeText(readableBody(message)).then(() => toast("Copied.", "ok"), toastError).finally(close)}>
               <Copy size={14} />
             </ActionButton>
           ) : null}
@@ -388,11 +395,18 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
     return (
       <div id={`m-${message.id}`} ref={press.ref} {...press.bind} className={`group relative flex justify-end ${grouped ? "mt-1" : "mt-4"}`}>
         <MessageActions message={message} ctx={ctx} mine open={press.open} setOpen={press.setOpen} />
-        <div className="max-w-[85%] md:max-w-[70%]">
+        <div className="min-w-0 max-w-[85%] md:max-w-[70%]">
           {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine /> : null}
-          <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
-            {deleted ? <Deleted /> : <RichText text={message.body} handles={ctx.handles} />}
-          </div>
+          {deleted || message.body ? (
+            <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
+              {deleted ? <Deleted /> : <RichText text={message.body} handles={ctx.handles} />}
+            </div>
+          ) : null}
+          {deleted ? null : (
+            <div className={`rounded-2xl transition ${message.body ? "" : ring}`}>
+              <MessageFiles message={message} meId={ctx.meId} align="end" />
+            </div>
+          )}
           <Reactions message={message} ctx={ctx} mine />
           <div className="mt-1 flex justify-end gap-2 text-[11px] text-muted">
             {pinned ? (
@@ -405,7 +419,21 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
                 <Lock size={10} /> only you and your nodes
               </span>
             ) : null}
-            {message.failed ? <span className="text-danger">Not sent: {message.failed}</span> : message.sending ? "Sending…" : clock(message.createdAt)}
+            {message.failed ? (
+              <span className="inline-flex flex-wrap items-center justify-end gap-x-2 text-danger">
+                <span>Not sent: {message.failed}</span>
+                <button type="button" onClick={() => ctx.onRetry(message)} className="font-medium text-ink underline-offset-2 hover:underline" title="Send it again, with the same files">
+                  Retry
+                </button>
+                <button type="button" onClick={() => ctx.onEdit(message)} className="font-medium text-ink underline-offset-2 hover:underline" title="Put it back in the message box">
+                  Edit
+                </button>
+              </span>
+            ) : message.sending ? (
+              "Sending…"
+            ) : (
+              clock(message.createdAt)
+            )}
           </div>
         </div>
       </div>
@@ -457,7 +485,8 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
             <Deleted />
           ) : (
             <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
-              <RichText text={message.body} handles={ctx.handles} />
+              {message.body ? <RichText text={message.body} handles={ctx.handles} {...(message.authorKind === "node" ? { refs: messageRefs(message.data), showIds: message.data.showIds === true } : {})} /> : null}
+              <MessageFiles message={message} meId={ctx.meId} sender={person?.name} />
               <ToolChips tools={Array.isArray(message.data.tools) ? message.data.tools : []} />
             </div>
           )}

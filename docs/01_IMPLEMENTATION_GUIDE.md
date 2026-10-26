@@ -61,6 +61,7 @@ The cost is coupling: Node's backend ships with Ensemble's releases and must fol
 | Sharing policy classes | `/api/node/*` is `personal`: it acts for the signed-in account whichever space is open. |
 | CLI device login (`bridge` key) and TUI | The Node tab reads `GET /api/bridge/node` with the key the CLI already has. |
 | Needs me, paired computers, connected apps | The website reads `GET /api/approvals`, `GET /api/decisions?status=pending`, `GET /api/devices`, `GET /api/connectors/catalog` and `GET /api/mcp-connections`, and answers Needs me with Ensemble's own `POST /api/approvals/:id/decide` and `POST /api/decisions/:id/decide`. Pairing a computer and connecting an app happen in Ensemble (links open in a new tab). |
+| Files | Attachments upload to the person's Ensemble Files (`POST /api/documents`) and are chosen from them (`GET /api/documents?q=`); a message carries up to 8 of the sender's own file ids (`files` on `POST /api/node/rooms/:id/messages`, `data.files` on the message: id, name, kind, size). The sender's picture thumbnails read `GET /api/documents/:id/original`. Nothing is copied into Node. |
 | Computer jobs and run traces | A run card reads the job (`GET /api/agent/jobs/:id`: engine, model, thinking level, progress, summary, changed files, milestones) and its run's steps (`GET /api/runs/:runId`, Ensemble's engine trace: each tool call, thinking and message), and stops it with `POST /api/agent/jobs/:id/stop`. |
 
 ## 4. Flows
@@ -109,11 +110,15 @@ Mira writes "Plan the login page and hand out the work" in the crew. The lead (`
 
 ### 4.8 Chat tools
 
-Every conversation has search (`GET /api/node/search?q&roomId&author`; ⌘K searches all of them), a view of people only or nodes only (`GET …/messages?author=people|nodes`) or mentions of me (filtered in the browser), pins (`GET/POST /api/node/rooms/:id/pins`, only messages everyone in the room can read), reactions (`POST /api/node/messages/:id/reactions`), replies (`replyToId`), deleting your own messages (`DELETE /api/node/messages/:id`), copy, and export as Markdown (`GET /api/node/rooms/:id/export`, saved by the browser). A search result, a pin or a quote opens the conversation at that message and loads earlier pages (`before`) until it is there.
+Every conversation has search (`GET /api/node/search?q&roomId&author`; ⌘K searches all of them), a view of people only or nodes only (`GET …/messages?author=people|nodes`) or mentions of me (filtered in the browser), pins (`GET/POST /api/node/rooms/:id/pins`, only messages everyone in the room can read), reactions (`POST /api/node/messages/:id/reactions`), replies (`replyToId`), deleting your own messages (`DELETE /api/node/messages/:id`), copy, and export as Markdown (`GET /api/node/rooms/:id/export`, saved by the browser). A search result, a pin or a quote opens the conversation at that message and loads earlier pages (`before`) until it is there. A message that was not sent can be sent again with the same `clientId` (the server keeps one copy) or edited.
 
 ### 4.9 Ensemble from Node
 
 **Computers & Needs me** lists the paired computers (revoked ones left out) with the folders each shares, and what waits in Ensemble's Needs me. Run approvals take Approve or Reject. A permission takes Allow once (`scope: "once"`) or Deny; a run that is not on a paired computer also takes Allow for this run (`scope: "session"`), except a push. A run's question takes one of its options, or the person's own words when it allows them, sent as `reason`; Skip denies it and the agent chooses. A risky allow asks the person to confirm and then sends `confirmed: true`. Ones only that computer may approve take Deny here. An editor's own multiple-choice questions and ones someone else must answer link to Ensemble's Needs me instead. The rules are in `lib/decisions.ts`; the run card and this page share `components/decision-answer.tsx`. **Connections** lists what the account has connected in Ensemble and what it can connect; Connect and Manage open Ensemble's connections settings in a new tab.
+
+### 4.10 Files on messages
+
+Mira drops a PDF and a screenshot on her Assistant's DM composer. Each uploads to her Ensemble Files at once with progress; the message, sent when both are in, carries their ids (`files`). A message may be files only. A node works in its owner's space, so it reads the files on its **owner's** messages: the text of documents, and the pictures themselves when its model reads images (a model that cannot see images is told so). In a room, Ben's files are named to Mira's nodes, but they cannot open them and say so; Ben and Mira each open only their own files. The website follows the same line: only the sender's file chips link to Ensemble's Files and show thumbnails ([05](05_UI_AND_UX.md#attachments)).
 
 ## 5. Models and credits
 
@@ -128,6 +133,7 @@ Every conversation has search (`GET /api/node/search?q&roomId&author`; ⌘K sear
 - **Two threads per node and room:** shared (reads only public messages) and private (reads everything the owner sees, answers only the owner). Separate conversations and cursors.
 - **Taint:** a turn whose trigger came from someone other than the owner, or from a message marked `fromNonOwner`, runs with the write policy narrowed to preview. Its posts carry the mark, and `node_remember` is refused.
 - **Shared rooms:** by default a node drafts every shared‑room post for its owner. The owner can switch a node to post on its own; writes and computer work still wait.
+- **Files on messages:** a message carries only file ids the sender owns (the server refuses others: "One of those files is not in your Files."). A node opens only its owner's files; anyone else's are names to it. Removing a file from a message before sending never deletes it from Files.
 - **Files on a paired computer:** off for every node until its owner switches on "Read files on my computer". Then the node may read, never write, inside the folders that computer shares with Ensemble, only in turns that only the owner started and reads (a DM, a crew, Only me), never secrets or `.git`, and only while the computer allows browsing (`ensemble browse on`).
 - **Requests to join:** only a room's creator asks people, by the email of an existing Ensemble account. A room holds 10 people, counting open requests; a decline blocks asking the same person again for 30 days; people read only what is said after they join.
 - **Exactly once:** cards settle with a JSON‑guarded `pending → applying` update. Ensemble's Apply dedupes calls by id and locks them.
@@ -138,7 +144,7 @@ Every conversation has search (`GET /api/node/search?q&roomId&author`; ⌘K sear
 | Phase | Scope |
 | --- | --- |
 | **v0 (done)** | Everything in [00](00_OVERVIEW.md#v0-19-oct-2026). |
-| v1 | Web push for approvals and finished runs (PWA service worker is in place). Invite links. Room ↔ Ensemble project binding (a room's default project and board). A plan card (manager's plan as live checklist). Node's own run profile (`run_profile_id`). Nodes working in a shared Ensemble space (`space_id`). Retry/edit on failed messages. |
+| v1 | Web push for approvals and finished runs (PWA service worker is in place). Invite links. Room ↔ Ensemble project binding (a room's default project and board). A plan card (manager's plan as live checklist). Node's own run profile (`run_profile_id`). Nodes working in a shared Ensemble space (`space_id`). |
 | v2 | Routines (schedules and Ensemble events) with "test now". Per‑node autonomy matrix (from design/pre-v0/11). Peer requests between people's nodes with expiry. Activity feed. |
 | v3 | Native iOS/Android shells. Voice notes. Browser broker on the paired computer. Guardian review model. Templates marketplace. |
 

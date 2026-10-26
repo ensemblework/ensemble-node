@@ -3,8 +3,9 @@
 import { useEffect, useRef } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api, ApiError, eventsUrl } from "./api";
-import { keepOlder, matchesAuthor, reactionsOf, toggleReaction } from "./chat";
-import { live } from "./live";
+import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
+import { live, type LiveCall } from "./live";
+import { refsOf } from "./entity-text";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
 import { runEnded } from "./work-log";
@@ -17,6 +18,8 @@ import type {
   ConnectorEntry,
   DecisionBody,
   Device,
+  FileRecord,
+  FileUsage,
   JobDetail,
   IncomingInvite,
   Limits,
@@ -25,7 +28,6 @@ import type {
   Message,
   ModelList,
   NodePublic,
-  ReplyTo,
   Room,
   RunStep,
   SearchResult,
@@ -51,6 +53,8 @@ export const keys = {
   decisions: ["decisions"] as const,
   connectors: ["connectors"] as const,
   mcp: ["mcp-connections"] as const,
+  /** The person's Ensemble Files matching a name ("" for the newest). */
+  files: (q: string) => ["files", q] as const,
   /** A run card's computer job, and its run's steps; both keyed by the job. */
   job: (jobId: string) => ["job", jobId] as const,
   runSteps: (jobId: string) => ["run-steps", jobId] as const,
@@ -156,33 +160,17 @@ export function nodesById(boot: Bootstrap | undefined, room?: Room): Map<string,
   return map;
 }
 
+/**
+ * Sends a message: it shows at once, and stays with "Not sent" when the server refuses. Its files are
+ * already in Files, so a retry (same clientId) only sends their ids again.
+ */
 export function useSend(roomId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { body: string; private: boolean; clientId: string; replyTo?: ReplyTo }) =>
-      api<{ message: Message }>(`/api/node/rooms/${roomId}/messages`, {
-        body: { body: input.body, private: input.private, clientId: input.clientId, ...(input.replyTo ? { replyToId: input.replyTo.id } : {}) },
-      }).then((result) => result.message),
+    mutationFn: (input: SendInput) => api<{ message: Message }>(`/api/node/rooms/${roomId}/messages`, { body: sendBody(input) }).then((result) => result.message),
     onMutate: (input) => {
       const boot = client.getQueryData<Bootstrap>(keys.bootstrap);
-      const optimistic: Message = {
-        id: `local-${input.clientId}`,
-        roomId,
-        seq: Number.MAX_SAFE_INTEGER,
-        authorKind: "human",
-        authorAccountId: boot?.me.id ?? "",
-        authorNodeId: null,
-        kind: "text",
-        body: input.body,
-        data: input.replyTo ? { replyTo: input.replyTo } : {},
-        private: input.private,
-        mentions: [],
-        rootMessageId: null,
-        clientId: input.clientId,
-        createdAt: new Date().toISOString(),
-        sending: true,
-      };
-      putMessage(client, optimistic);
+      putMessage(client, optimisticMessage(roomId, boot?.me.id ?? "", input));
     },
     onSuccess: (message) => {
       putMessage(client, message);
@@ -192,6 +180,29 @@ export function useSend(roomId: string) {
       updateMessages(client, roomId, (list) => list.map((row) => (row.clientId === input.clientId ? { ...row, sending: false, failed: error instanceof Error ? error.message : String(error) } : row)));
     },
   });
+}
+
+type FilesAnswer = { files: FileRecord[]; usage?: FileUsage };
+
+const filesQuery = (q: string) => ({
+  queryKey: keys.files(q),
+  queryFn: () => api<FilesAnswer>(`/api/documents${q ? `?q=${encodeURIComponent(q.slice(0, 200))}` : ""}`),
+  staleTime: 30_000,
+});
+
+/** The person's Ensemble Files, newest first; `q` matches names. */
+export function useFiles(q: string, enabled: boolean) {
+  return useQuery({ ...filesQuery(q), enabled, placeholderData: keepPreviousData });
+}
+
+let maxFileBytes: number | null = null;
+
+/** The largest file this server keeps, from the Files list (read once); null when unknown. */
+export async function fileLimit(client: QueryClient): Promise<number | null> {
+  if (maxFileBytes) return maxFileBytes;
+  const result = await client.fetchQuery({ ...filesQuery(""), staleTime: 5 * 60_000 }).catch(() => null);
+  maxFileBytes = result?.usage?.maxFileBytes ?? null;
+  return maxFileBytes;
 }
 
 export function useSettle() {
@@ -411,8 +422,9 @@ export function useNodeEvents(enabled: boolean) {
       if (data.state !== "thinking") void client.invalidateQueries({ queryKey: keys.activity });
     }) as EventListener);
     source.addEventListener("node.frame", ((event: MessageEvent<string>) => {
-      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; frame: { type: string; text?: string; call?: { name: string; state?: string; summary?: string } } };
+      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; showIds?: boolean; frame: { type: string; text?: string; refs?: unknown; call?: LiveCall } };
       if (data.frame.type === "delta" && data.frame.text) live.delta(data.roomId, data.nodeId, data.frame.text);
+      else if (data.frame.type === "refs") live.refs(data.roomId, data.nodeId, refsOf(data.frame.refs), data.showIds === true);
       else if (data.frame.call) live.tool(data.roomId, data.nodeId, data.frame.call);
     }) as EventListener);
     source.addEventListener("node.room", ((event: MessageEvent<string>) => {

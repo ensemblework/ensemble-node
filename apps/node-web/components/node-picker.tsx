@@ -54,7 +54,7 @@ export function NodePicker({
                   if (event.target.checked && !lead) onLead(node.id);
                 }}
               />
-              <NodeAvatar avatar={node.avatar} size={28} dim={node.status === "paused"} />
+              <NodeAvatar node={node} size={28} dim={node.status === "paused"} />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium">
                   {node.name} <span className="font-mono text-xs font-normal text-muted">@{node.slug}</span>

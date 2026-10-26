@@ -25,7 +25,7 @@ ensemble-node/
 │   │   │                        (attachments.tsx: paperclip menu, Files picker, shelf, drop and paste; also on the
 │   │   │                        start page), files on a message (file-chips.tsx), rich text and code blocks
 │   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer
-│   │   ├── shell.tsx            sidebar, layout, auth guard, ⌘K search
+│   │   ├── shell.tsx            collapsible recent-chat sidebar, phone sheet, layout, auth guard, ⌘K search
 │   │   ├── model-picker.tsx     every model a node can use, grouped (included, own keys, AI plans)
 │   │   ├── node-picker.tsx      my nodes as checkboxes with a Lead radio
 │   │   ├── email-chips.tsx      emails as chips
@@ -33,7 +33,8 @@ ensemble-node/
 │   │   ├── needs-me.tsx         Ensemble's Needs me: run approvals and agents' questions
 │   │   ├── decision-answer.tsx  answering a Needs me card (shared by Needs me and run cards)
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, links to pair one), turnstile.tsx
-│   │   ├── node-avatar.tsx      node faces (shape, colour, eyes; breathing while thinking)
+│   │   ├── node-avatar.tsx      model signatures, node accents and thinking state
+│   │   ├── model-logo.tsx       canonical local model/vendor and agent marks
 │   │   ├── connector-logo.tsx, tool-icon.tsx
 │   │   │                        shared local vendor logos and generic tool fallbacks
 │   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, drawer, menus, toasts, External (new-tab links)
@@ -41,6 +42,8 @@ ensemble-node/
 │   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads, uploads to Files with
 │   │   │                        progress and cancel; URLs and links into Ensemble
 │   │   ├── environment.ts       testing or production; refuses a build that mixes them (tested)
+│   │   ├── conversations.ts     cross-kind recency, live previews and read/snapshot reconciliation (tested)
+│   │   ├── model-brand.ts       actual model/provider signature identity (tested)
 │   │   ├── connector-logos.ts   catalog aliases, asset metadata and connector tool identity (tested)
 │   │   ├── hooks.ts             queries, mutations, the event stream
 │   │   ├── live.ts              who is thinking / writing right now (text batched per frame, per room)
@@ -55,12 +58,15 @@ ensemble-node/
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send
 │   └── public/
 │       ├── brand/              Ensemble mark
+│       ├── providers/          canonical model/agent marks, provenance and licence notices
 │       └── connectors/         vendor assets, provenance manifest and licence/trademark notice
 ├── docs/                        these guides; research/; design/pre-v0/
 └── .github/                     workflows/test-web.yml (testing: checks, publish node-test),
                                  workflows/ci.yml (checks for main), workflows/deploy.yml and
                                  actions/vercel-deploy (publish main on Vercel)
 ```
+
+`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; usage is in [05](05_UI_AND_UX.md#browser-regression).
 
 ## Where a change belongs
 

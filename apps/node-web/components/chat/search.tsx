@@ -131,7 +131,7 @@ export function SearchPanel({ roomId, onPick, onClose, autoFocus = true }: { roo
                   onClick={() => onPick({ message, room })}
                   className="flex w-full gap-2.5 rounded-xl px-2.5 py-2 text-left outline-none hover:bg-raised focus:bg-raised"
                 >
-                  <span className="mt-0.5">{node ? <NodeAvatar avatar={node.avatar} size={26} /> : <PersonAvatar name={name} size={26} />}</span>
+                  <span className="mt-0.5">{node ? <NodeAvatar node={node} size={26} /> : <PersonAvatar name={name} size={26} />}</span>
                   <span className="min-w-0 flex-1">
                     <span className="flex items-baseline justify-between gap-2 text-xs">
                       <span className="flex min-w-0 items-center gap-1.5">

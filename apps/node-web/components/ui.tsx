@@ -1,10 +1,53 @@
 "use client";
 
-import { ExternalLink, X } from "lucide-react";
-import { useEffect, type AnchorHTMLAttributes, type RefObject, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
+import { ExternalLink, Info, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type AnchorHTMLAttributes, type RefObject, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { dismissToast, useToasts } from "@/lib/toast";
 
 type Tone = "primary" | "ghost" | "danger" | "quiet";
+
+export function InfoTip({ text, label = "More information" }: { text: ReactNode; label?: string }) {
+  const id = useId();
+  const anchor = useRef<HTMLSpanElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 8, top: 8, width: 280 });
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const show = () => { clearTimeout(timer.current); setOpen(true); };
+  const leave = () => { timer.current = setTimeout(() => setOpen(false), 120); };
+  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: Event) => {
+      if (!anchor.current?.contains(event.target as Node) && !panel.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); setOpen(false); }
+    };
+    document.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", escape, true);
+    return () => { document.removeEventListener("pointerdown", away); window.removeEventListener("keydown", escape, true); };
+  }, [open]);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const box = anchor.current?.getBoundingClientRect();
+      if (!box || !panel.current) return;
+      const width = Math.min(280, innerWidth - 16);
+      const height = panel.current.offsetHeight;
+      setPosition({ width, left: Math.max(8, Math.min(box.left, innerWidth - width - 8)), top: Math.max(8, Math.min(box.bottom + 6, innerHeight - height - 8)) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [open]);
+  return <span ref={anchor} className="inline-flex shrink-0" onMouseEnter={show} onMouseLeave={leave}>
+    <button type="button" className="inline-flex size-6 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink" aria-label={label} aria-describedby={open ? id : undefined} aria-expanded={open} onClick={show} onFocus={show} onBlur={() => setOpen(false)}><Info size={14} /></button>
+    {open ? createPortal(<div ref={panel} id={id} role="tooltip" onMouseEnter={show} onMouseLeave={leave} className="fixed z-[80] max-h-[60dvh] overflow-y-auto rounded-xl border border-line bg-panel px-3 py-2 text-xs leading-5 text-muted shadow-xl" style={position}>{text}</div>, document.body) : null}
+  </span>;
+}
 
 /** Closes a menu or popover on Escape or a click outside `ref`. */
 export function useDismiss(open: boolean, close: () => void, ref: RefObject<HTMLElement | null>) {
@@ -90,16 +133,19 @@ export function External({ href, children, icon = false, className = "", ...rest
 }
 
 /** An on/off switch with its label and explanation. */
-export function Switch({ checked, onChange, label, hint, disabled }: { checked: boolean; onChange: (next: boolean) => void; label: ReactNode; hint?: ReactNode; disabled?: boolean }) {
+export function Switch({ checked, onChange, label, hint, info, disabled }: { checked: boolean; onChange: (next: boolean) => void; label: ReactNode; hint?: ReactNode; info?: ReactNode; disabled?: boolean }) {
+  const id = useId();
   return (
-    <label className={`flex items-start justify-between gap-4 ${disabled ? "opacity-60" : "cursor-pointer"}`}>
+    <div className={`flex items-start justify-between gap-4 ${disabled ? "opacity-60" : ""}`}>
       <span className="min-w-0">
-        <span className="block text-sm font-medium">{label}</span>
+        <span className="flex items-center gap-1 text-sm font-medium"><label id={id} htmlFor={`${id}-switch`} className="cursor-pointer">{label}</label>{info ? <InfoTip text={info} /> : null}</span>
         {hint ? <span className="mt-0.5 block text-xs text-muted">{hint}</span> : null}
       </span>
       <button
         type="button"
         role="switch"
+        id={`${id}-switch`}
+        aria-labelledby={id}
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
@@ -107,7 +153,7 @@ export function Switch({ checked, onChange, label, hint, disabled }: { checked: 
       >
         <span className={`inline-block h-4 w-4 rounded-full shadow transition ${checked ? "translate-x-6 bg-accent-ink" : "translate-x-1 bg-muted"}`} />
       </button>
-    </label>
+    </div>
   );
 }
 
@@ -173,33 +219,48 @@ export function Notice({ tone = "info", children }: { tone?: "info" | "error" | 
   return <div className={`rounded-xl border px-3 py-2 text-sm ${tones[tone]}`}>{children}</div>;
 }
 
-export function Drawer({ open, onClose, title, children, side = "right" }: { open: boolean; onClose: () => void; title: string; children: ReactNode; side?: "right" | "center" | "top" }) {
+export function Drawer({ open, onClose, title, children, side = "right" }: { open: boolean; onClose: () => void; title: string; children: ReactNode; side?: "left" | "right" | "center" | "top" }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     if (!open) return;
-    const onKey = (event: KeyboardEvent) => event.key === "Escape" && onClose();
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const panel = ref.current;
+    panel?.focus({ preventScroll: true });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); closeRef.current(); return; }
+      if (event.key !== "Tab" || !panel) return;
+      const controls = [...panel.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]')].filter(node => node.tabIndex >= 0);
+      const first = controls[0], last = controls.at(-1);
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel)) { event.preventDefault(); first?.focus(); }
+    };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    return () => { window.removeEventListener("keydown", onKey); opener?.focus({ preventScroll: true }); };
+  }, [open]);
   if (!open) return null;
   return (
-    <div className="fixed inset-x-0 top-0 z-50 flex h-[var(--node-viewport-height,100dvh)]" role="dialog" aria-modal aria-label={title}>
-      <button className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
+    <div ref={ref} tabIndex={-1} className="fixed inset-x-0 top-0 z-50 flex h-[var(--node-viewport-height,100dvh)] outline-none" role="dialog" aria-modal aria-label={title}>
+      <button type="button" tabIndex={-1} className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="Dismiss overlay" onClick={onClose} />
       <div
         className={
-          side === "center"
+          side === "left"
+            ? "chat-drawer relative flex h-full w-[min(340px,90vw)] min-w-0 flex-col border-r border-line bg-panel shadow-2xl"
+            : side === "center"
             ? "relative m-auto max-h-[90%] w-[min(560px,94vw)] overflow-y-auto overscroll-y-contain rounded-2xl border border-line bg-panel p-5 shadow-2xl scroll-thin"
             : side === "top"
               ? "relative mx-auto mt-[8dvh] max-h-[80%] w-[min(680px,94vw)] self-start overflow-y-auto overscroll-y-contain rounded-2xl border border-line bg-panel p-4 shadow-2xl scroll-thin"
               : "relative ml-auto h-full min-w-0 w-[min(460px,100vw)] overflow-y-auto overscroll-y-contain border-l border-line bg-panel p-5 shadow-2xl scroll-thin"
         }
       >
-        <div className="sticky top-0 z-10 mb-4 flex items-center justify-between gap-2 bg-panel">
+        <div className={`sticky top-0 z-10 flex shrink-0 items-center justify-between gap-2 bg-panel ${side === "left" ? "px-4 pt-3" : "mb-4"}`}>
           <h2 className="min-w-0 text-lg font-semibold">{title}</h2>
           <IconButton label="Close" onClick={onClose}>
             <X size={18} />
           </IconButton>
         </div>
-        {children}
+        {side === "left" ? <div className="min-h-0 flex-1">{children}</div> : children}
       </div>
     </div>
   );

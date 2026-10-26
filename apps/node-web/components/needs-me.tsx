@@ -83,7 +83,7 @@ export function NeedsMe() {
               return (
                 <li key={card.id}>
                   <Link href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="flex gap-3 rounded-2xl border border-warn/30 bg-warn/5 p-3 text-sm hover:border-warn/60">
-                    <NodeAvatar avatar={node?.avatar} size={28} />
+                    <NodeAvatar node={node} size={28} />
                     <span className="min-w-0">
                       <span className="block font-medium">{card.data.type === "post" ? `@${node?.slug ?? "node"} wants to post for you` : `@${node?.slug ?? "node"} wants to act for you`}</span>
                       <span className="line-clamp-2 text-muted">{card.body}</span>

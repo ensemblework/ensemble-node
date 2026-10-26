@@ -1,11 +1,11 @@
 # 05 · UI and UX
 
-Inspired by Grok Bot and ChatGPT Dots: a chat-first app with characterful agents. Ensemble's flavour is Satin Gold on a near-black petrol night, the Woven Chorus mark, Figtree, and Ensemble's own cards (tasks, runs, approvals).
+Chat-first teammates with familiar messenger navigation. Ensemble's flavour is Satin Gold on a near-black petrol night, the Woven Chorus mark, Figtree, and Ensemble's own cards (tasks, runs, approvals).
 
 ## Principles
 
 - **Chat first.** Every screen leads back to a conversation. The composer is the biggest control on the page.
-- **Nodes have faces.** Each node is a shape (orb, square, spark, hex, leaf, compass), a colour and eyes that blink. It breathes while thinking. Reduced motion keeps it still.
+- **Recognisable signatures.** Nodes show the actual model's vendor mark, with their own accent colour. Agent runs show the agent's mark. A status halo, not a moving character, indicates thinking; reduced motion keeps it still. Unreported models use Ensemble's neutral identity.
 - **What needs you is never buried.** Approvals are owner-only cards in the conversation, mirrored in the Activity panel with a badge.
 - **Privacy you can see.** Anything only you can see is marked with a lock and the private (violet) tint: Only‑me messages, drafts, approval cards, error notices, run cards in shared rooms.
 - **Honest status.** "Thinking…", the reply being written, tool chips and run states come from the server, never from timers.
@@ -25,10 +25,10 @@ Inspired by Grok Bot and ChatGPT Dots: a chat-first app with characterful agents
 | Landing `/` | Wordmark, "AI teammates that work on your own computer", a floating cast of nodes, four feature tiles, and a line on accounts: an existing Ensemble account is used as it is (connected apps, computers, trusted folders, credits); signing up on Node creates the Ensemble account. Signed-in visitors go to `/chat`. |
 | Sign in `/login` | Provider buttons from `/api/auth/status`, email and password, create account with Turnstile, forgot password → Ensemble. |
 | Welcome `/welcome` | Steps: verify (code) → you're in Ensemble (one account, the three apps, shared credits) → first node or a crew suggestion → connect a computer (a sentence and links to Ensemble's pairing page and the download, live detection, open requests to join). |
-| Home `/chat` | "What should your nodes do?" composer with a node picker and attachments (sends to that node's DM, then opens it), requests-to-join and waiting-approvals banners, the node grid (role and model), recent conversations. |
-| Room `/r/:id` | Header (node face or room icon, members; in a DM the node's model as a menu), search, the More menu (show everything / people only / nodes only / mentions of me, pinned messages, export, settings), the pinned bar, messages with day labels and a "New messages" divider, live "thinking/writing" rows, a jump-to-latest button with a count, the composer (with attachments, below). |
+| Home `/chat` | A start composer with a labelled node selector and attachments (sends to that node's DM, then opens it), requests and approvals banners, compact node cards (signature, name, role and model), recent conversations. |
+| Room `/r/:id` | One header on phones, with back-to-chats, a model signature or group icon, clickable conversation name/details, a DM model menu, search and More. More holds author filters, pins, Activity, export and settings. The timeline has day labels, a new-messages divider, honest thinking/writing rows, jump-to-latest with a count, and the composer. |
 | Settings drawer | DM: the node's model and a link to its page. Crew: rename, every node with Lead, Make lead and Remove, all your nodes with Add. Room: rename (creator), each person with their nodes (only public fields for other people's), your lead and Make lead, add up to 3 of yours, remove (never your last one: leave instead), "what you handle here", requests to join (creator: invite by email, pending / accepted / declined with "ask again after", Withdraw), leave or delete. Export as Markdown. |
-| Node `/n/:id` | Look (shape, colour, eyes), name (unique among your nodes), role, charter; then, saved as they change: chat model, "Read files on my computer" (off by default), "in rooms with other people" (ask first / post on its own); memory list (add, forget), pause/resume, delete. |
+| Node `/n/:id` | Name, accent colour, role and instructions; the model supplies the signature. Model and permissions save as they change: read-only computer access (off by default) and shared-room posting (ask first / post on its own). Memory list, pause/resume and delete. Stored legacy shape/eye values are retained by the API, not offered as inactive controls. |
 | New `/new` | Node (template, name, role, model). Crew: name, a suggestion that fills in proposed new nodes (rename, change role and model, remove, "Add a node", "Use your Manager instead"), your existing nodes as checkboxes, one lead across both. Room: name, 1–3 of your nodes and your lead, emails as chips (up to 9), then the result for each email. |
 | Requests `/requests` | Requests to join rooms: room, who asked, how many people. Accept → pick 1–3 nodes and a lead; Decline. Live, with a badge in the sidebar. |
 | Search `/search`, ⌘K / Ctrl+K | Every conversation, or one (the room's search button). Every word must match; All / People / Nodes. A result opens the conversation at that message, loading earlier pages when needed, and highlights it. |
@@ -37,7 +37,15 @@ Inspired by Grok Bot and ChatGPT Dots: a chat-first app with characterful agents
 | Activity (panel on wide screens, `/activity` on phones) | Waiting for you, computer runs (open the task in Ensemble), recent turns with credits, computers, credits meter. |
 | Settings `/settings` | Account (it is the Ensemble account, used as is), credits, links to Computers & Needs me, Connections, Requests and Search, computers, links to Ensemble's settings, sign out. |
 
-The sidebar holds Search, Direct chats, Crews and Rooms (each with a + to make one), then Requests to join and Computers & Needs me (both with badges), Connections and Settings. A DM row's tooltip names the node's model.
+The sidebar is one recent list across direct chats, crews and rooms, sorted by the newest message, including pending sends. All / Unread / Groups and Search chats narrow it without changing server data. Each row keeps its timestamp, preview, typing or private indicator, and unread count. Refused sends are marked Not sent. A DM tooltip names its node's model. New conversation and full message search sit at the top; Your nodes, Invites, Computers & Needs me, Connections and account settings sit below. The Needs me badge includes node proposals as well as computer-run questions; phones retain an attention dot on back-to-chats. Live changes update the preview immediately, not after a bootstrap refetch.
+
+On desktop Collapse conversations becomes a 68 px rail with recent signatures and navigation; Expand restores the 304 px list. `node.sidebar-collapsed` remembers the choice in this browser. The Activity panel is closed initially; its own toggle and `node.activity-open` preference restore it when wanted. Neither preference contains conversation content.
+
+## Model and agent marks
+
+`components/model-logo.tsx` and `lib/model-brand.ts` resolve the actual model first, then a known provider/agent when no model identifies the maker. GPT/Codex, Claude, Gemini, Grok, GitHub Copilot, Cursor and the other supported vendors use local canonical SVGs, shared with the Hub. Model pickers use the same marks as nodes, search results, mentions, settings and run cards; source group icons do not stand in for a model.
+
+`public/providers/manifest.json` and `NOTICE.txt` retain provenance and identification-only trademark notices. The Grok SVG is from LobeHub/lobe-icons under its included MIT licence. A public node exposes no private model choice: without reported model/provider fields it keeps Ensemble's mark rather than guessing. Node names and accent colours distinguish teammates using the same model.
 
 ## Connector logos
 
@@ -64,7 +72,7 @@ Both composers (a conversation's and the start page's) take files (`components/c
 ## Messages and cards
 
 - **Your messages** sit on the right in a gold-tinted bubble; Only‑me ones are violet with a lock.
-- **Node messages** sit on the left with the node's face, name, `@handle` and, for someone else's node, "Ben's node". Markdown subset: headings, lists, code, quotes, bold, links (bare and `[label](address)`); known `@handles` are highlighted.
+- **Node messages** sit on the left with the model signature and node's name; someone else's node retains its owner label. Repeated handles are omitted from message headers. Markdown subset: headings, lists, code, quotes, bold, links (bare and `[label](address)`); known `@handles` are highlighted.
 - **Records by title.** A node names Ensemble records by title, never by id (`lib/entity-text.ts`, the same rules as Ensemble's [docs/11 §4.1](https://github.com/ensemblework/ensemble/blob/main/docs/11_HOW_THE_ASSISTANT_WORKS.md#41-records-by-title-ids-for-machines)). A record link (`[@Draft brief](ensemble://task/…)`) shows its label and opens the record in Ensemble; a room opens here. A bare id of a record the message names (its `data.refs` and its tool chips' `refs`) shows as that record's title, linked; records with the same title get their kind, due date or a number. Unknown ids, code, quotes and links stay as written, ids stay when someone in the turn asked for them (`data.showIds`), and what people write is never changed. Conversation previews, pins, reply quotes and Copy read the same way (`readableBody`). Text being written holds back a half-written id, using the turn's `refs` frame and its tool calls.
 - **Code blocks** show the fence's language and a copy button above the code, which scrolls sideways instead of wrapping, also on a phone (`components/chat/code-block.tsx`).
 - **Message actions** appear on hover or focus, or after a long press on a phone: react (the eight reactions), reply, copy, pin or unpin (only messages everyone in the room can read), delete (your own). Reactions show under the message with counts; yours are highlighted and the tooltip names who reacted.
@@ -83,7 +91,13 @@ Both composers (a conversation's and the start page's) take files (`components/c
 
 ## Live behaviour
 
-One EventSource per tab (`/api/node/events`, with credentials). `node.message` / `node.message.updated` merge into every loaded list of that room by id or clientId (reactions and deletes arrive this way too). `node.status` drives the breathing face and "thinking…". `node.frame` (owner only) streams the text being written, tool names and the records the turn knows (`refs`); `lib/live.ts` buffers the text and applies it once per animation frame, re-rendering only that room, while the busy faces in the sidebar and start page change only when a node starts or stops thinking. `node.room` refreshes the conversation list and pins. `node.invite` refreshes requests to join. `node.needs` re-reads Needs me (run approvals and agents' questions, also those shown on run cards) at once; its 60-second poll is the fallback. A run card reads its job (`GET /api/agent/jobs/:id`) once it is on screen, and every 2.5 s while the run is active and the card is on screen or open; its steps (`GET /api/runs/:runId`) only while the work log is open, every 2.5 s while active and on screen. An ended run is read once. `node.message.updated` for a run card re-reads both at once. After a reconnect, open conversations and Needs me refetch, so nothing said during the gap is lost; earlier pages stay loaded. Read markers are sent at most once a second while you are at the bottom of a conversation.
+One EventSource per tab (`/api/node/events`, with credentials). `node.message` / `node.message.updated` merge into every loaded list by id or clientId and update the sidebar preview immediately. Reactions and old edits do not move a conversation or increment unread counts. `node.status` drives the status halo and typing preview. `node.frame` (owner only) streams text, tool names and known records (`refs`); `lib/live.ts` buffers text once per animation frame for that room, while sidebar busy state changes only at start/stop. `node.room` refreshes the list and pins; `node.invite` refreshes invites; `node.needs` re-reads pending cards immediately (60-second poll fallback).
+
+The timeline follows new messages and resized/streaming content only while already at the bottom. Reading earlier work keeps its position and offers a counted jump-to-latest. Older-page loads preserve the anchor. Pending sends and their confirmed copies share the same clientId render key, avoiding duplicate bubbles or repeated entrance animations. Only new arrivals get a short entrance, disabled with reduced motion.
+
+Unsent text and its Only me state survive switching conversations in tab memory, scoped by account and room; they are not written to browser storage. Attachments and reply targets are not part of these text drafts. Read updates are debounced per room, so switching chats cannot cancel the previous room's update. Bootstrap refreshes preserve newer live previews and read markers; failed read writes restore the prior marker and report an error.
+
+Run cards read the job when visible and every 2.5 seconds while active and visible/open; trace steps load only while the work log is open. Ended runs are read once. A changed run message refreshes both immediately. Reconnects refresh open messages and Needs me, retaining earlier pages.
 
 ## Links
 
@@ -91,9 +105,15 @@ Links that leave Node (Ensemble, ensemblework.com, vendors, links in messages) o
 
 ## Responsive and installable
 
-Phones get a top bar with the menu (sidebar as a sheet, with a dot when requests or Needs me wait), Search, and an Activity button with a dot when something waits. From 768 px the sidebar is fixed; from 1024 px the Activity panel sits on the right and can be hidden. The web manifest makes it installable to a Home Screen (start URL `/chat`). `public/sw.js` is ready for web push (v1).
+Phones open Chats as a left sheet; selecting a conversation closes it and opens that group's timeline, not a separate form. A conversation uses one header with back-to-chats; other pages retain the global menu/Search/Activity bar. From 768 px the collapsible sidebar is fixed; from 1024 px Activity can be opened on the right. Drawers trap keyboard focus, close on Escape/backdrop and restore the opener. The web manifest makes it installable to a Home Screen (start URL `/chat`). `public/sw.js` is ready for web push (v1).
 
 The conversation scrolls independently of its header and composer. On phones the shell and drawers follow the visual viewport when the keyboard opens; the composer includes the bottom safe area. Form fields use at least 16 px text to avoid Safari's focus zoom. Long names, model/computer metadata, answers and message text wrap within their cards, while fenced code and tool output retain their own horizontal scrolling. The model menu stays inside the phone viewport. Drawers scroll their own content and keep Close in a sticky header.
+
+`InfoTip` makes longer model/permission explanations available on hover, focus or tap, without permanent paragraphs. Errors, privacy labels and approval controls stay visible.
+
+## Browser regression
+
+`e2e/chat-ui.mjs` runs a stateful local API/SSE fixture, never a hosted account or model. Start `pnpm dev` on an unused port, then run it with `NODE_WEB`, `CHROME_PATH` and, when Playwright is supplied externally, `PLAYWRIGHT_MODULE` (the absolute module entry). `NODE_CHAT_SHOTS` optionally saves evidence outside the repository. It exercises five widths, dark/light themes, cross-kind recency, rail persistence, group opening, streaming/scroll anchoring, optimistic sends and private text-draft restoration.
 
 ## The testing website
 

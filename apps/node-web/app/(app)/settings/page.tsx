@@ -10,7 +10,7 @@ import { useBootstrap } from "@/lib/hooks";
 import { ComputerList } from "@/components/connect-computer";
 import { CreditsMeter } from "@/components/credits";
 import { PersonAvatar } from "@/components/node-avatar";
-import { Button, External, Spinner } from "@/components/ui";
+import { Button, External, InfoTip, Spinner } from "@/components/ui";
 
 export default function SettingsPage() {
   const boot = useBootstrap();
@@ -53,9 +53,7 @@ export default function SettingsPage() {
               Ensemble account
             </External>
           </div>
-          <p className="text-sm text-muted">
-            This is your Ensemble account. Node uses it as it is: its connections, paired computers, trusted folders, run profiles and credits. Name, password and sign-in methods are changed in Ensemble.
-          </p>
+          <div className="flex items-center gap-1 text-xs text-muted">One account across Ensemble <InfoTip text="Your connections, computers, run profiles and credits are shared. Manage your name, password and sign-in methods in Ensemble." /></div>
         </section>
 
         <section className="space-y-3 rounded-2xl border border-line bg-panel p-5">

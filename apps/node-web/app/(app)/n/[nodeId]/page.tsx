@@ -13,7 +13,7 @@ import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { dmRoomOf } from "@/components/shell";
 import { ModelPicker } from "@/components/model-picker";
-import { AVATAR_COLORS, NodeAvatar } from "@/components/node-avatar";
+import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "@/components/node-avatar";
 import { Button, Field, InfoTip, Input, Notice, Spinner, Switch, Textarea } from "@/components/ui";
 
 type Memory = { id: string; content: string; createdAt: string };
@@ -102,10 +102,22 @@ function NodeEditor({ node }: { node: NodeFull }) {
               <Input value={role} onChange={(event) => setRole(event.target.value)} maxLength={40} />
             </Field>
           </div>
-          <Field label="Accent colour" group>
+          <Field label="Appearance" group>
             <div className="flex flex-wrap items-center gap-2">
+              {AVATAR_SHAPES.map((shape) => (
+                <button key={shape} onClick={() => setAvatar({ ...avatar, shape })} className={`rounded-xl p-1 ${avatar.shape === shape ? "ring-2 ring-accent" : "hover:bg-raised"}`} aria-label={shape} aria-pressed={avatar.shape === shape}>
+                  <NodeAvatar avatar={{ ...avatar, shape }} size={32} />
+                </button>
+              ))}
+              <span className="mx-1 h-6 w-px bg-line" />
               {AVATAR_COLORS.map((color) => (
-                <button key={color} onClick={() => setAvatar({ ...avatar, color })} className={`h-7 w-7 rounded-full ${avatar.color === color ? "ring-2 ring-accent ring-offset-2 ring-offset-bg" : ""}`} style={{ background: color }} aria-label={color} />
+                <button key={color} onClick={() => setAvatar({ ...avatar, color })} className={`h-7 w-7 rounded-full ${avatar.color === color ? "ring-2 ring-accent ring-offset-2 ring-offset-bg" : ""}`} style={{ background: color }} aria-label={color} aria-pressed={avatar.color === color} />
+              ))}
+              <span className="mx-1 h-6 w-px bg-line" />
+              {(["dot", "line", "wide"] as const).map((eyes) => (
+                <button key={eyes} onClick={() => setAvatar({ ...avatar, eyes })} className={`rounded-xl p-1 ${avatar.eyes === eyes ? "ring-2 ring-accent" : "hover:bg-raised"}`} aria-label={`${eyes} eyes`} aria-pressed={avatar.eyes === eyes}>
+                  <NodeAvatar avatar={{ ...avatar, eyes }} size={28} />
+                </button>
               ))}
             </div>
           </Field>

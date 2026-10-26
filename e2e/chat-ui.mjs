@@ -70,6 +70,12 @@ try {
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
       if (path === "/api/agent/jobs/job") return json({ job: { id: "job", taskId: "task", title: "Build the landing page", kind: "code", status: "succeeded", provider: "copilot-cli", model: "gpt-6.1-sol", modelUsed: null, reasoningEffort: "high", progress: null, summary: "Updated the landing page.", error: null, turns: 1, toolCalls: 2, runId: null, deviceName: "Development laptop", yours: true, folder: "website", branch: "feature/landing", files: [], createdAt: stamp(1), startedAt: stamp(1), finishedAt: stamp(2) }, events: [] });
       if (path.endsWith("/memory")) return json({ memories: [] });
+      const node = /^\/api\/node\/nodes\/([^/]+)$/.exec(path);
+      if (node && request.method() === "PATCH") {
+        const saved = state.boot.nodes.find(row => row.id === node[1]);
+        Object.assign(saved, request.postDataJSON());
+        return json({ node: saved });
+      }
       const read = /^\/api\/node\/rooms\/([^/]+)\/read$/.exec(path);
       if (read) {
         const room = state.boot.rooms.find(room => room.id === read[1]);
@@ -107,7 +113,9 @@ try {
     assert.equal(await chats().locator("[data-conversation]").count(), 2);
     await chats().getByRole("button", { name: "All", exact: true }).click();
     await closeChats();
-    assert.ok(await page.locator('header [data-model-brand="openai"]').count(), "real model signature in header");
+    assert.ok(await page.locator("header svg[data-node-avatar] .node-eyes").count(), "original Node signature in the chat header");
+    assert.equal(await page.locator("[data-node-avatar] [data-model-brand]").count(), 0, "provider marks do not replace Node identities");
+    assert.ok(await page.locator(".chat-timeline svg[data-node-avatar] .node-eyes").count(), "messages retain Node signatures too");
     const timeline = page.locator(".chat-timeline");
     await timeline.evaluate(el => { el.scrollTop = 0; });
     await page.waitForTimeout(80);
@@ -186,6 +194,22 @@ try {
       await page.getByRole("dialog", { name: "Chats", exact: true }).waitFor({ state: "hidden" });
       await page.setViewportSize({ width, height: 844 });
     }
+    await page.goto(`${WEB}/n/scout`);
+    const appearance = page.getByRole("group", { name: "Appearance", exact: true });
+    await appearance.getByRole("button", { name: "hex", exact: true }).click();
+    await appearance.getByRole("button", { name: "line eyes", exact: true }).click();
+    await appearance.getByRole("button", { name: "#B39DDB", exact: true }).click();
+    const preview = page.locator("main svg[data-node-avatar]").first();
+    assert.equal(await preview.locator(".node-eyes rect").count(), 2);
+    assert.equal(await preview.locator("stop").nth(1).getAttribute("stop-color"), "#B39DDB");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await page.getByText("Saved.", { exact: true }).waitFor();
+    assert.deepEqual(state.boot.nodes[0].avatar, { shape: "hex", eyes: "line", color: "#B39DDB" });
+    await page.reload();
+    await page.getByRole("group", { name: "Appearance", exact: true }).waitFor();
+    assert.equal(await appearance.getByRole("button", { name: "hex", exact: true }).getAttribute("aria-pressed"), "true");
+    assert.equal(await appearance.getByRole("button", { name: "line eyes", exact: true }).getAttribute("aria-pressed"), "true");
+    await fits();
     assert.deepEqual(errors, [], "no client errors");
     assert.deepEqual(unexpected, [], "only the intended API reads/writes");
     console.log(`Node chat UX: ${width}px passed`);

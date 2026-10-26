@@ -33,7 +33,7 @@ ensemble-node/
 │   │   ├── needs-me.tsx         Ensemble's Needs me: run approvals and agents' questions
 │   │   ├── decision-answer.tsx  answering a Needs me card (shared by Needs me and run cards)
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, links to pair one), turnstile.tsx
-│   │   ├── node-avatar.tsx      model signatures, node accents and thinking state
+│   │   ├── node-avatar.tsx      Node signature faces, shape/colour/eyes and thinking state
 │   │   ├── model-logo.tsx       canonical local model/vendor and agent marks
 │   │   ├── connector-logo.tsx, tool-icon.tsx
 │   │   │                        shared local vendor logos and generic tool fallbacks

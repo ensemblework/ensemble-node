@@ -351,6 +351,7 @@ function useLongPress(): { open: boolean; setOpen: (open: boolean) => void; bind
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
   };
+  useEffect(() => cancel, []);
   return {
     open,
     setOpen,
@@ -373,7 +374,7 @@ function Deleted() {
   return <span className="text-sm italic text-muted">Message deleted</span>;
 }
 
-export function MessageItem({ message, ctx, grouped, highlighted }: { message: Message; ctx: MessageContext; grouped: boolean; highlighted?: boolean }) {
+export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { message: Message; ctx: MessageContext; grouped: boolean; highlighted?: boolean; fresh?: boolean }) {
   const press = useLongPress();
   if (message.kind === "status") {
     return (
@@ -393,9 +394,9 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
 
   if (mine && message.kind === "text") {
     return (
-      <div id={`m-${message.id}`} ref={press.ref} {...press.bind} className={`group relative flex justify-end ${grouped ? "mt-1" : "mt-4"}`}>
+      <div id={`m-${message.id}`} ref={press.ref} {...press.bind} data-new-message={fresh || undefined} className={`chat-message group relative flex justify-end ${grouped ? "mt-1.5" : "mt-6"}`}>
         <MessageActions message={message} ctx={ctx} mine open={press.open} setOpen={press.setOpen} />
-        <div className="min-w-0 max-w-[85%] md:max-w-[70%]">
+        <div className="min-w-0 max-w-[88%] md:max-w-[78%]">
           {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine /> : null}
           {deleted || message.body ? (
             <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
@@ -441,18 +442,17 @@ export function MessageItem({ message, ctx, grouped, highlighted }: { message: M
   }
 
   return (
-    <div id={`m-${message.id}`} ref={press.ref} {...press.bind} className={`group relative flex gap-3 ${grouped ? "mt-1" : "mt-4"}`}>
+    <div id={`m-${message.id}`} ref={press.ref} {...press.bind} data-new-message={fresh || undefined} className={`chat-message group relative flex gap-2.5 md:gap-3 ${grouped ? "mt-1.5" : "mt-7"}`}>
       <MessageActions message={message} ctx={ctx} mine={false} open={press.open} setOpen={press.setOpen} />
       <div className="w-9 shrink-0">
-        {grouped ? null : node ? <NodeAvatar avatar={node.avatar} size={36} title={node.name} /> : <PersonAvatar name={person?.name ?? "?"} size={34} />}
+        {grouped ? null : node ? <NodeAvatar node={node} size={32} title={node.name} /> : <PersonAvatar name={person?.name ?? "?"} size={32} />}
       </div>
       <div className="min-w-0 max-w-[92%] flex-1 md:max-w-[80%]">
         {grouped ? null : (
           <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2 text-sm">
             <span className="font-semibold">{node ? node.name : (person?.name ?? "Someone")}</span>
-            {node ? <span className="font-mono text-xs text-muted">@{node.slug}</span> : null}
             {ownerName ? <span className="text-xs text-muted">{ownerName}&apos;s node</span> : null}
-            <span className="text-[11px] text-muted">{clock(message.createdAt)}</span>
+            <span className="text-[10px] text-muted opacity-70">{clock(message.createdAt)}</span>
             {pinned ? (
               <span className="inline-flex items-center gap-1 text-[11px] text-accent">
                 <Pin size={10} /> pinned

@@ -40,7 +40,7 @@ export function ActivityPanel() {
             const node = card.authorNodeId ? nodes.get(card.authorNodeId) : undefined;
             return (
               <Link key={card.id} href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="flex gap-2 rounded-xl border border-warn/30 bg-warn/5 p-2.5 text-sm hover:border-warn/60">
-                <NodeAvatar avatar={node?.avatar} size={24} />
+                <NodeAvatar node={node} size={24} />
                 <span className="min-w-0">
                   <span className="block truncate font-medium">{card.data.type === "post" ? `@${node?.slug ?? "node"} wants to post` : `@${node?.slug ?? "node"} wants to act`}</span>
                   <span className="line-clamp-2 text-xs text-muted">{card.body}</span>
@@ -82,7 +82,7 @@ export function ActivityPanel() {
           const node = nodes.get(turn.nodeId);
           return (
             <div key={turn.id} className="flex items-center gap-2 text-xs">
-              <NodeAvatar avatar={node?.avatar} size={18} thinking={turn.status === "running"} />
+              <NodeAvatar node={node} size={18} thinking={turn.status === "running"} />
               <span className="truncate">@{node?.slug ?? "node"}</span>
               <span className="text-muted">{turn.reason}</span>
               <span className={`ml-auto ${turn.status === "failed" ? "text-danger" : "text-muted"}`}>{turn.status === "done" ? (turn.credits != null ? `${Math.round(turn.credits)} cr` : "done") : turn.status}</span>

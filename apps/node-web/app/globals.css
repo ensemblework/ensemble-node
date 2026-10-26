@@ -67,26 +67,14 @@ body {
   scrollbar-color: rgb(var(--line)) transparent;
 }
 
-/* A node that is thinking breathes; reduced motion keeps it still. */
+/* The signature stays still; only its status halo changes while thinking. */
 @keyframes node-breathe {
   0%,
   100% {
-    transform: scale(1);
-    filter: drop-shadow(0 0 0 rgb(var(--accent) / 0));
+    box-shadow: 0 0 0 0 rgb(var(--accent) / 0);
   }
   50% {
-    transform: scale(1.06);
-    filter: drop-shadow(0 0 10px rgb(var(--accent) / 0.45));
-  }
-}
-@keyframes node-blink {
-  0%,
-  92%,
-  100% {
-    transform: scaleY(1);
-  }
-  95% {
-    transform: scaleY(0.1);
+    box-shadow: 0 0 0 3px rgb(var(--accent) / .12);
   }
 }
 @keyframes float-slow {
@@ -101,17 +89,28 @@ body {
 .node-thinking {
   animation: node-breathe 1.6s ease-in-out infinite;
 }
-.node-eyes {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: node-blink 5s infinite;
+
+.chat-sidebar { transition: width 180ms ease; }
+.chat-room-row { transition: background-color 140ms ease; }
+.chat-room-row[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 25%; bottom: 25%; width: 2px; border-radius: 2px; background: rgb(var(--accent)); }
+.chat-message [role="toolbar"] { max-width: calc(100vw - 32px); flex-wrap: wrap; }
+.chat-composer:focus-within { box-shadow: 0 0 0 3px rgb(var(--accent) / .035); }
+.chat-shell[data-needs-me="true"] .chat-open-conversations::after { content: ""; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--accent)); }
+@keyframes chat-message-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.chat-message[data-new-message="true"] { animation: chat-message-in 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .chat-sidebar, .chat-room-row { transition: none; }
+  .chat-message[data-new-message="true"] { animation: none; }
+  .chat-conversation .animate-bounce, .chat-conversation .animate-pulse { animation: none; }
 }
 .float-slow {
   animation: float-slow 6s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .node-thinking,
-  .node-eyes,
   .float-slow {
     animation: none;
   }

@@ -9,6 +9,7 @@ import { refsOf } from "./entity-text";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
 import { runEnded } from "./work-log";
+import { mergeConversationSnapshot, roomWithMessage } from "./conversations";
 import type {
   Activity,
   AgentDecision,
@@ -62,6 +63,7 @@ export const keys = {
 
 /** How often an active run on screen is read again. */
 export const RUN_POLL_MS = 2500;
+const confirmedReads = new Map<string, number>();
 
 /** Messages per page of a room. */
 export const PAGE = 100;
@@ -84,7 +86,16 @@ export function useAuthStatus() {
 }
 
 export function useBootstrap(enabled = true) {
-  return useQuery({ queryKey: keys.bootstrap, queryFn: () => api<Bootstrap>("/api/node/bootstrap"), enabled });
+  const client = useQueryClient();
+  return useQuery({ queryKey: keys.bootstrap, queryFn: async () => {
+    const fresh = await api<Bootstrap>("/api/node/bootstrap");
+    for (const room of fresh.rooms) {
+      const key = `${fresh.me.id}:${room.id}`;
+      confirmedReads.set(key, Math.max(confirmedReads.get(key) ?? 0, room.readSeq ?? 0));
+    }
+    const current = client.getQueryData<Bootstrap>(keys.bootstrap);
+    return current?.me.id === fresh.me.id ? { ...fresh, rooms: mergeConversationSnapshot(current.rooms, fresh.rooms) } : fresh;
+  }, enabled });
 }
 
 export function useActivity() {
@@ -130,6 +141,9 @@ export function updateMessages(client: QueryClient, roomId: string, change: (lis
 /** Puts a message (new or changed) into every loaded list it belongs in. */
 export function putMessage(client: QueryClient, message: Message) {
   updateMessages(client, message.roomId, (list, author) => (matchesAuthor(message, author) ? mergeMessage(list, message) : list));
+  client.setQueryData<Bootstrap>(keys.bootstrap, current => current ? {
+    ...current, rooms: current.rooms.map(room => room.id === message.roomId ? roomWithMessage(room, message, current.me.id) : room),
+  } : current);
 }
 
 export function useRoom(roomId: string): Room | undefined {
@@ -177,7 +191,8 @@ export function useSend(roomId: string) {
       void client.invalidateQueries({ queryKey: keys.bootstrap });
     },
     onError: (error, input) => {
-      updateMessages(client, roomId, (list) => list.map((row) => (row.clientId === input.clientId ? { ...row, sending: false, failed: error instanceof Error ? error.message : String(error) } : row)));
+      const failed = { ...optimisticMessage(roomId, client.getQueryData<Bootstrap>(keys.bootstrap)?.me.id ?? "", input), sending: false, failed: error instanceof Error ? error.message : String(error) };
+      putMessage(client, failed);
     },
   });
 }
@@ -374,18 +389,31 @@ export function useMcpConnections() {
   return useQuery({ queryKey: keys.mcp, queryFn: () => api<{ connections: McpConnection[] }>("/api/mcp-connections").then((result) => result.connections), staleTime: 60_000 });
 }
 
-let readTimer: ReturnType<typeof setTimeout> | null = null;
+const readTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /** Marks a room read up to seq, at most once a second. */
 export function markRead(client: QueryClient, roomId: string, seq: number) {
   const boot = client.getQueryData<Bootstrap>(keys.bootstrap);
   const room = boot?.rooms.find((row) => row.id === roomId);
   if (!room || (room.readSeq ?? 0) >= seq) return;
+  const key = `${boot?.me.id}:${roomId}`;
+  if (!confirmedReads.has(key)) confirmedReads.set(key, room.readSeq ?? 0);
   client.setQueryData<Bootstrap>(keys.bootstrap, (current) =>
     current ? { ...current, rooms: current.rooms.map((row) => (row.id === roomId ? { ...row, readSeq: seq, unread: 0 } : row)) } : current,
   );
-  if (readTimer) clearTimeout(readTimer);
-  readTimer = setTimeout(() => void api(`/api/node/rooms/${roomId}/read`, { body: { seq } }).catch(() => undefined), 800);
+  clearTimeout(readTimers.get(key));
+  readTimers.set(key, setTimeout(() => {
+    readTimers.delete(key);
+    void api(`/api/node/rooms/${roomId}/read`, { body: { seq } }).then(() => {
+      confirmedReads.set(key, Math.max(confirmedReads.get(key) ?? 0, seq));
+    }).catch(error => {
+      client.setQueryData<Bootstrap>(keys.bootstrap, current => current ? {
+        ...current, rooms: current.rooms.map(row => row.id === roomId && row.readSeq === seq ? { ...row, readSeq: confirmedReads.get(key) ?? 0, unread: room.unread } : row),
+      } : current);
+      void client.invalidateQueries({ queryKey: keys.bootstrap });
+      toastError(error);
+    });
+  }, 800));
 }
 
 /** The account's live stream: messages, card updates, who is thinking, room changes, requests to join. Reconnects by itself. */

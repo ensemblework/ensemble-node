@@ -1,0 +1,7 @@
+Provider and model names and marks belong to their respective owners.
+They identify the model or agent in use; no affiliation or endorsement is implied.
+
+These canonical marks are reused from Ensemble's provider collection.
+manifest.json records the source of each mark and its licence where applicable.
+The Grok vector is from LobeHub/lobe-icons (MIT); its licence is included in
+LOBE-ICONS-LICENSE. Simple Icons vectors are CC0.

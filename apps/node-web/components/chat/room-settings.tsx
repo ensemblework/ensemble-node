@@ -161,7 +161,7 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
 
   const nodeRow = (member: NodeMember, controls: ReactNode) => (
     <li key={member.id} className="flex items-center gap-2.5 rounded-xl border border-line bg-bg px-2.5 py-2">
-      <NodeAvatar avatar={member.node.avatar} size={28} dim={member.node.status === "paused"} />
+      <NodeAvatar node={member.node} size={28} dim={member.node.status === "paused"} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5 truncate text-sm font-medium">
           {member.node.name}
@@ -229,7 +229,7 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
           {node ? (
             <>
               <div className="flex items-center gap-3">
-                <NodeAvatar avatar={node.avatar} size={48} dim={node.status === "paused"} />
+                <NodeAvatar node={node} size={48} dim={node.status === "paused"} />
                 <div>
                   <div className="font-semibold">{node.name}</div>
                   <div className="text-sm text-muted">
@@ -285,7 +285,7 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
             <ul className="space-y-1.5">
               {boot.nodes.map((node) => (
                 <li key={node.id} className="flex items-center gap-2.5 rounded-xl border border-line bg-bg px-2.5 py-2">
-                  <NodeAvatar avatar={node.avatar} size={24} dim={node.status === "paused"} />
+                  <NodeAvatar node={node} size={24} dim={node.status === "paused"} />
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {node.name} <span className="font-mono text-xs text-muted">@{node.slug}</span>
                   </span>
@@ -382,7 +382,7 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
             <ul className="space-y-1.5">
               {addable.map((node) => (
                 <li key={node.id} className="flex items-center gap-2.5 rounded-xl border border-line bg-bg px-2.5 py-2">
-                  <NodeAvatar avatar={node.avatar} size={24} dim={node.status === "paused"} />
+                  <NodeAvatar node={node} size={24} dim={node.status === "paused"} />
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {node.name} <span className="font-mono text-xs text-muted">@{node.slug}</span>
                   </span>

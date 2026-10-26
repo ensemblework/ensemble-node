@@ -13,8 +13,8 @@ import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { dmRoomOf } from "@/components/shell";
 import { ModelPicker } from "@/components/model-picker";
-import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "@/components/node-avatar";
-import { Button, Field, Input, Notice, Spinner, Switch, Textarea } from "@/components/ui";
+import { AVATAR_COLORS, NodeAvatar } from "@/components/node-avatar";
+import { Button, Field, InfoTip, Input, Notice, Spinner, Switch, Textarea } from "@/components/ui";
 
 type Memory = { id: string; content: string; createdAt: string };
 
@@ -84,7 +84,7 @@ function NodeEditor({ node }: { node: NodeFull }) {
               <ArrowLeft size={18} />
             </Link>
           ) : null}
-          <NodeAvatar avatar={avatar} size={56} dim={node.status === "paused"} />
+          <NodeAvatar node={node} avatar={avatar} size={48} dim={node.status === "paused"} />
           <div>
             <h1 className="text-xl font-semibold">{node.name}</h1>
             <p className="font-mono text-sm text-muted">@{node.slug}</p>
@@ -95,33 +95,21 @@ function NodeEditor({ node }: { node: NodeFull }) {
 
         <section className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Name" error={nameError} hint="Unique among your nodes.">
+            <Field label="Name" error={nameError}>
               <Input value={name} onChange={(event) => (setName(event.target.value), setNameError(null))} maxLength={60} />
             </Field>
             <Field label="Role">
               <Input value={role} onChange={(event) => setRole(event.target.value)} maxLength={40} />
             </Field>
           </div>
-          <Field label="Look" group>
+          <Field label="Accent colour" group>
             <div className="flex flex-wrap items-center gap-2">
-              {AVATAR_SHAPES.map((shape) => (
-                <button key={shape} onClick={() => setAvatar({ ...avatar, shape })} className={`rounded-xl p-1 ${avatar.shape === shape ? "ring-2 ring-accent" : "hover:bg-raised"}`} aria-label={shape}>
-                  <NodeAvatar avatar={{ ...avatar, shape }} size={32} />
-                </button>
-              ))}
-              <span className="mx-1 h-6 w-px bg-line" />
               {AVATAR_COLORS.map((color) => (
                 <button key={color} onClick={() => setAvatar({ ...avatar, color })} className={`h-7 w-7 rounded-full ${avatar.color === color ? "ring-2 ring-accent ring-offset-2 ring-offset-bg" : ""}`} style={{ background: color }} aria-label={color} />
               ))}
-              <span className="mx-1 h-6 w-px bg-line" />
-              {(["dot", "line", "wide"] as const).map((eyes) => (
-                <button key={eyes} onClick={() => setAvatar({ ...avatar, eyes })} className={`rounded-xl p-1 ${avatar.eyes === eyes ? "ring-2 ring-accent" : "hover:bg-raised"}`} aria-label={`${eyes} eyes`}>
-                  <NodeAvatar avatar={{ ...avatar, eyes }} size={28} />
-                </button>
-              ))}
             </div>
           </Field>
-          <Field label="Charter" hint="How this node works: what it owns, your conventions, your style. Only you see it.">
+          <Field label="Instructions" hint="Private guidelines for this node.">
             <Textarea value={charter} onChange={(event) => setCharter(event.target.value)} rows={9} maxLength={8000} />
           </Field>
           <Button onClick={() => void save()} busy={busy} disabled={!name.trim() || !role.trim()}>
@@ -131,21 +119,20 @@ function NodeEditor({ node }: { node: NodeFull }) {
 
         <section className="space-y-5 rounded-2xl border border-line bg-panel p-5">
           <div>
-            <h2 className="font-semibold">Model and what {node.name} may do</h2>
-            <p className="text-xs text-muted">These save as soon as you change them.</p>
+            <h2 className="flex items-center gap-1 font-semibold">Model & permissions <InfoTip text="Changes here save automatically. Computer work still uses your Ensemble run profile." /></h2>
           </div>
           <Field
             label="Chat model"
             group
-            hint="What the node talks and plans with: a model included with Ensemble (paid from your monthly credits; × is a typical turn's credits next to the 1× model), one on your own API key, or an AI plan on a paired computer. Work on your computer uses your run profile's agent."
           >
             <ModelPicker value={{ provider: node.provider, model: node.model }} onChange={(next) => change({ provider: next.provider, model: next.model }, "Model saved.")} />
           </Field>
           <Switch
             label="Read files on my computer"
+            hint="Read-only, in shared folders and private chats only."
             checked={computerFiles}
             onChange={(next) => void change({ autonomy: { computerFiles: next } }, next ? `${node.name} may read your shared folders now.` : `${node.name} no longer reads files on your computer.`)}
-            hint={
+            info={
               <>
                 Off by default. When on, {node.name} may look at files on your paired computer: read-only, and only inside the folders that computer shares with Ensemble. It does this only in chats with just you (this direct chat, your crews, Only me), never in a room with other people, and it never reads keys, secrets or <code className="rounded bg-raised px-1">.git</code>. The computer must allow it: run <code className="rounded bg-raised px-1">{CLI_COMMAND} browse on</code> there. Anything outside those folders becomes a task for an agent, which you approve.
               </>
@@ -182,7 +169,7 @@ function NodeEditor({ node }: { node: NodeFull }) {
 
         <section className="space-y-3">
           <h2 className="font-semibold">Memory</h2>
-          <p className="text-sm text-muted">What {node.name} keeps between conversations. It adds to this when you ask it to remember something.</p>
+          <p className="text-sm text-muted">What {node.name} remembers between chats.</p>
           <div className="flex gap-2">
             <Input value={memoryText} onChange={(event) => setMemoryText(event.target.value)} placeholder="Our docs use British spelling" maxLength={500} />
             <Button

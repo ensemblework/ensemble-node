@@ -108,7 +108,7 @@ export function Composer({
   };
 
   return (
-    <div className="relative mx-auto w-full max-w-3xl px-3 pb-3 md:px-6 md:pb-5">
+    <div className="relative mx-auto w-full max-w-3xl shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-6 md:pb-5">
       {matches.length ? (
         <ul className="absolute bottom-full left-3 right-3 mb-2 overflow-hidden rounded-2xl border border-line bg-panel shadow-xl md:left-6 md:right-auto md:w-80" role="listbox">
           {matches.map((option, at) => (

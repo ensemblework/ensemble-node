@@ -330,7 +330,7 @@ export function RoomView({ roomId }: { roomId: string }) {
 
   return (
     <div className="relative flex h-full flex-col">
-      <header className="flex items-center gap-3 border-b border-line px-3 py-2.5 md:px-5 lg:pr-14">
+      <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5 md:gap-3 md:px-5 lg:pr-14">
         {dmNode ? (
           <NodeAvatar avatar={dmNode.avatar} size={34} thinking={live.some((row) => row.nodeId === dmNode.id)} dim={dmNode.status === "paused"} />
         ) : (
@@ -430,7 +430,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           if (near && lastSeq) markRead(client, roomId, lastSeq);
           if (element.scrollTop < 40 && hasOlder && positioned.current && !pendingJump.current) void older();
         }}
-        className="scroll-thin min-h-0 flex-1 overflow-y-auto"
+        className="scroll-thin min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain"
         aria-live="polite"
         aria-relevant="additions"
       >

@@ -210,11 +210,11 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
             </div>
           </div>
           <p className="mt-0.5 text-xs leading-relaxed text-muted">
-            {facts.length ? <span className="whitespace-nowrap font-medium text-ink/80">{facts[0]}</span> : null}
+            {facts.length ? <span className="font-medium text-ink/80">{facts[0]}</span> : null}
             {[...facts.slice(1), computer ? `on ${computer}` : "on your computer"].map((fact, at) => (
               <Fragment key={fact}>
                 {at || facts.length ? " · " : ""}
-                <span className="whitespace-nowrap">{fact}</span>
+                <span>{fact}</span>
               </Fragment>
             ))}
             {!ended && detail?.startedAt ? (

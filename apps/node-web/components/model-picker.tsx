@@ -98,7 +98,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
 
   const Icon = GROUP_ICON[current?.group ?? "included"];
   return (
-    <div ref={box} className={`relative ${variant === "field" ? "w-full" : "inline-block"}`} onKeyDown={onKey}>
+    <div ref={box} className={`relative min-w-0 ${variant === "field" ? "w-full" : "inline-block"}`} onKeyDown={onKey}>
       {variant === "field" ? (
         <button
           type="button"
@@ -125,7 +125,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
           aria-label={`${label}: ${name}`}
           title={`${label}: ${name}`}
           onClick={() => setOpen(!open)}
-          className="inline-flex max-w-[52vw] items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs text-muted transition hover:bg-raised hover:text-ink disabled:opacity-50 sm:max-w-xs"
+          className="inline-flex max-w-full items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs text-muted transition hover:bg-raised hover:text-ink disabled:opacity-50 sm:max-w-xs"
         >
           <Icon size={12} className="shrink-0 text-accent" />
           <span className="truncate">{current ? shortModelName(current.label) : name}</span>
@@ -134,7 +134,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
       )}
 
       {open ? (
-        <div ref={list} role="listbox" aria-label={label} className="scroll-thin absolute left-0 z-40 mt-1 max-h-[min(70vh,520px)] w-[min(400px,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-line bg-panel p-1.5 shadow-2xl">
+        <div ref={list} role="listbox" aria-label={label} className="scroll-thin absolute left-0 z-40 mt-1 max-h-[min(70vh,520px)] w-[min(400px,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-line bg-panel p-1.5 shadow-2xl max-md:fixed max-md:inset-x-3 max-md:top-28 max-md:max-h-[60dvh] max-md:w-auto">
           {options.length > 8 ? (
             <div className="sticky top-0 z-10 bg-panel p-1 pb-1.5">
               <input

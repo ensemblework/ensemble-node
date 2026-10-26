@@ -67,14 +67,26 @@ body {
   scrollbar-color: rgb(var(--line)) transparent;
 }
 
-/* The signature stays still; only its status halo changes while thinking. */
+/* A node that is thinking breathes; reduced motion keeps it still. */
 @keyframes node-breathe {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgb(var(--accent) / 0);
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 rgb(var(--accent) / 0));
   }
   50% {
-    box-shadow: 0 0 0 3px rgb(var(--accent) / .12);
+    transform: scale(1.06);
+    filter: drop-shadow(0 0 10px rgb(var(--accent) / 0.45));
+  }
+}
+@keyframes node-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.1);
   }
 }
 @keyframes float-slow {
@@ -88,6 +100,11 @@ body {
 }
 .node-thinking {
   animation: node-breathe 1.6s ease-in-out infinite;
+}
+.node-eyes {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: node-blink 5s infinite;
 }
 
 .chat-sidebar { transition: width 180ms ease; }
@@ -111,6 +128,7 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .node-thinking,
+  .node-eyes,
   .float-slow {
     animation: none;
   }

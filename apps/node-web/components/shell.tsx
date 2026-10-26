@@ -18,7 +18,7 @@ import type { Bootstrap, Room } from "@/lib/types";
 import { ActivityPanel } from "./activity";
 import { Mark } from "./brand";
 import { SearchPanel } from "./chat/search";
-import { DefaultNodeModel, NodeAvatar, PersonAvatar } from "./node-avatar";
+import { NodeAvatar, PersonAvatar } from "./node-avatar";
 import { Drawer, IconButton, Spinner, Toaster } from "./ui";
 
 export function dmRoomOf(boot: Bootstrap | undefined, nodeId: string): Room | undefined {
@@ -222,7 +222,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <DefaultNodeModel.Provider value={boot.data.models.default}>
     <div ref={frame} data-needs-me={needsMe > 0} className="chat-shell flex overflow-hidden" style={{ height: "var(--node-viewport-height, 100dvh)" }}>
       <aside className={`chat-sidebar hidden shrink-0 border-r border-line bg-panel/70 md:block ${collapsed ? "w-[68px]" : "w-[304px]"}`} data-sidebar-collapsed={collapsed} aria-label="Chat sidebar">
         <Sidebar boot={boot.data} compact={collapsed} onCollapse={toggleCollapsed} onSearch={openSearch} needsMe={needsMe} />
@@ -276,7 +275,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Drawer>
       <Toaster />
     </div>
-    </DefaultNodeModel.Provider>
   );
 }
 

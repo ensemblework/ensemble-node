@@ -10,7 +10,7 @@
  * ComposerPendingApprovalPanel (MIT License, Copyright (c) 2026 T3 Tools Inc.).
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, CircleStop, ExternalLink, Hammer, SquareTerminal } from "lucide-react";
+import { ChevronRight, CircleStop, ExternalLink, Hammer } from "lucide-react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { approvalsForRun, decisionsForJob } from "@/lib/decisions";
 import { useApprovals, useDecisions, useJob, useRunSteps, useStopJob } from "@/lib/hooks";
@@ -23,6 +23,7 @@ import { External, Pill, Spinner } from "../ui";
 import type { MessageContext } from "./message";
 import { RichText } from "./rich-text";
 import { WorkLogView } from "./work-log";
+import { ModelLogo } from "../model-logo";
 
 const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "accent" | "muted"> = {
   succeeded: "ok",
@@ -189,7 +190,7 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
   return (
     <div ref={box} className="mt-1 rounded-2xl border border-line bg-panel p-3">
       <div className="flex items-start gap-2">
-        <SquareTerminal size={17} className={`mt-0.5 shrink-0 ${ended ? "text-muted" : "text-accent"} ${status === "running" ? "animate-pulse" : ""}`} aria-hidden />
+        <span className="mt-0.5 shrink-0"><ModelLogo provider={detail?.provider} model={detail?.provider === "ensemble" ? detail.model : undefined} size={19} /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
             <p className="min-w-0 break-words text-sm font-medium">{message.body}</p>

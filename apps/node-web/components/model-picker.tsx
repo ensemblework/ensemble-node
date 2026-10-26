@@ -1,16 +1,16 @@
 "use client";
 
-import { Check, ChevronDown, Cpu, KeyRound, Sparkles } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { useBootstrap, useModels } from "@/lib/hooks";
 import { filterModels, modelDetail, modelName, modelSections, sameModel, shortModelName } from "@/lib/models";
 import type { ModelOption } from "@/lib/types";
-import { External, Spinner } from "./ui";
+import { External, InfoTip, Spinner } from "./ui";
+import { ModelLogo } from "./model-logo";
 
 export type ModelChoice = { provider: string | null; model: string | null };
 
-const GROUP_ICON = { included: Sparkles, keys: KeyRound, plans: Cpu } as const;
 
 /** The models a node can use: included ones at once, own keys and AI plans once asked for. */
 export function useModelOptions(full: boolean): { options: ModelOption[]; fallback: string; loading: boolean; problems: string[] } {
@@ -36,6 +36,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
   const current = options.find((row) => sameModel(row, value.provider, value.model));
   const sections = useMemo(() => modelSections(filterModels(options, query)), [options, query]);
   const preset = options.find((row) => row.default);
+  const wasOpen = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -46,8 +47,14 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
     return () => document.removeEventListener("mousedown", away);
   }, [open]);
   useEffect(() => {
-    if (open) requestAnimationFrame(() => list.current?.querySelector<HTMLElement>("input, [aria-selected='true'], [data-option]")?.focus());
-    else setQuery("");
+    if (open) {
+      wasOpen.current = true;
+      requestAnimationFrame(() => list.current?.querySelector<HTMLElement>("input, [aria-selected='true'], [data-option]")?.focus());
+    } else {
+      setQuery("");
+      if (wasOpen.current && document.activeElement === document.body) box.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+      wasOpen.current = false;
+    }
   }, [open]);
 
   const choose = async (next: ModelChoice) => {
@@ -64,6 +71,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
   const onKey = (event: KeyboardEvent) => {
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       setOpen(false);
       return;
     }
@@ -87,6 +95,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
         onClick={() => void choose({ provider: option.provider, model: option.model })}
         className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm outline-none hover:bg-raised focus:bg-raised ${selected ? "text-accent" : ""}`}
       >
+        <ModelLogo model={option.model} provider={option.provider} size={20} decorative />
         <span className="min-w-0 flex-1">
           <span className="block truncate">{option.label}</span>
           <span className="block truncate text-xs text-muted">{modelDetail(option)}</span>
@@ -96,7 +105,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
     );
   };
 
-  const Icon = GROUP_ICON[current?.group ?? "included"];
+  const actualModel = value.model ?? preset?.model ?? fallback;
   return (
     <div ref={box} className={`relative min-w-0 ${variant === "field" ? "w-full" : "inline-block"}`} onKeyDown={onKey}>
       {variant === "field" ? (
@@ -109,7 +118,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
           onClick={() => setOpen(!open)}
           className="flex w-full items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2 text-left text-sm outline-none transition hover:border-muted focus:border-accent disabled:opacity-50"
         >
-          <Icon size={15} className="shrink-0 text-accent" />
+          <ModelLogo model={actualModel} provider={value.provider} size={20} decorative />
           <span className="min-w-0 flex-1">
             <span className="block truncate">{name}</span>
             {current ? <span className="block truncate text-xs text-muted">{modelDetail(current)}</span> : null}
@@ -127,8 +136,8 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
           onClick={() => setOpen(!open)}
           className="inline-flex max-w-full items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs text-muted transition hover:bg-raised hover:text-ink disabled:opacity-50 sm:max-w-xs"
         >
-          <Icon size={12} className="shrink-0 text-accent" />
-          <span className="truncate">{current ? shortModelName(current.label) : name}</span>
+          <ModelLogo model={actualModel} provider={value.provider} size={14} decorative />
+          <span className="truncate">{current ? shortModelName(current.label) : value.model ? name : shortModelName(preset?.label ?? fallback)}</span>
           {busy ? <Spinner className="h-3 w-3" /> : <ChevronDown size={12} className="shrink-0" />}
         </button>
       )}
@@ -155,9 +164,10 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
               onClick={() => void choose({ provider: null, model: null })}
               className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm outline-none hover:bg-raised focus:bg-raised ${!value.model ? "text-accent" : ""}`}
             >
+              <ModelLogo model={preset?.model ?? fallback} provider={preset?.provider} size={20} decorative />
               <span className="min-w-0 flex-1">
                 <span className="block truncate">Default{preset ? ` · ${shortModelName(preset.label)}` : ""}</span>
-                <span className="block truncate text-xs text-muted">Ensemble&apos;s pick for nodes, from your credits</span>
+                <span className="block truncate text-xs text-muted">Included with Ensemble</span>
               </span>
               {!value.model ? <Check size={15} className="shrink-0" /> : null}
             </button>
@@ -180,11 +190,11 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
               {problem}
             </p>
           ))}
-          <div className="mt-1 border-t border-line px-2.5 pb-1 pt-2 text-xs text-muted">
-            × is a typical turn&apos;s credits next to the 1× model. AI plans run the turn on that computer.{" "}
+          <div className="mt-1 flex items-center justify-between gap-2 border-t border-line px-2.5 pb-1 pt-2 text-xs text-muted">
             <External href={ENSEMBLE_LINKS.models} className="text-accent hover:underline" icon>
-              Keys and plans in Ensemble
+              Manage models
             </External>
+            <InfoTip label="About model costs" text="Included models use your monthly credits. Multipliers compare a typical turn with the 1× model. API keys use your provider account; AI plans run on your paired computer." />
           </div>
         </div>
       ) : null}

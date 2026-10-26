@@ -1,3 +1,5 @@
+/** @jsxRuntime automatic */
+/** @jsxImportSource react */
 import { TESTING } from "@/lib/config";
 
 /** Ensemble's Woven Chorus mark in Satin Gold, and the product name. */

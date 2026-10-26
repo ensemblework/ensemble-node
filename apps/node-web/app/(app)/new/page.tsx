@@ -232,7 +232,7 @@ function NewCrew({ boot }: { boot: Bootstrap }) {
               return (
                 <li key={row.key} className={`rounded-xl border p-3 ${isLead ? "border-accent/60 bg-accent/5" : "border-line bg-bg"}`}>
                   <div className="flex flex-wrap items-start gap-2">
-                    <NodeAvatar avatar={row.avatar} size={34} />
+                    <NodeAvatar node={row} size={34} />
                     <label className="min-w-[9rem] flex-1">
                       <span className="sr-only">Name</span>
                       <Input value={row.name} disabled={Boolean(row.createdId)} onChange={(event) => update(row.key, { name: event.target.value })} maxLength={60} placeholder="Name" aria-invalid={Boolean(problem)} />

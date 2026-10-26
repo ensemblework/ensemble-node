@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity as ActivityIcon, Hash, Inbox, Laptop, Lock, Menu, PanelRightClose, PanelRightOpen, Plug, Plus, Search, Settings, Users, X } from "lucide-react";
+import { Activity as ActivityIcon, Inbox, Laptop, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plug, Search, Settings, SquarePen, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { requestJump } from "@/lib/jump";
@@ -11,128 +11,122 @@ import { useBusyNodes } from "@/lib/live";
 import { keys, useActivity, useApprovals, useBootstrap, useDecisions, useMe, useNodeEvents } from "@/lib/hooks";
 import { modelName, shortModelName } from "@/lib/models";
 import { messagePreview } from "@/lib/chat";
+import { recentConversations, roomKindName, type ConversationFilter } from "@/lib/conversations";
+import { toastError } from "@/lib/toast";
 import { ago } from "@/lib/text";
 import type { Bootstrap, Room } from "@/lib/types";
 import { ActivityPanel } from "./activity";
 import { Mark } from "./brand";
 import { SearchPanel } from "./chat/search";
-import { CreditsMeter } from "./credits";
-import { NodeAvatar, PersonAvatar } from "./node-avatar";
+import { DefaultNodeModel, NodeAvatar, PersonAvatar } from "./node-avatar";
 import { Drawer, IconButton, Spinner, Toaster } from "./ui";
 
 export function dmRoomOf(boot: Bootstrap | undefined, nodeId: string): Room | undefined {
   return boot?.rooms.find((room) => room.kind === "dm" && room.members.some((member) => member.kind === "node" && member.node.id === nodeId));
 }
 
-const isMac = () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-
-function RoomRow({ room, boot, busy, active, onNavigate }: { room: Room; boot: Bootstrap; busy: Set<string>; active: boolean; onNavigate?: () => void }) {
-  const preview = room.last ? `${room.last.private ? "🔒 " : ""}${messagePreview(room.last)}` : "No messages yet";
+function RoomRow({ room, boot, busy, active, compact = false, onNavigate }: { room: Room; boot: Bootstrap; busy: Set<string>; active: boolean; compact?: boolean; onNavigate?: () => void }) {
+  const thinking = room.members.some(member => member.kind === "node" && busy.has(member.node.id));
+  const preview = thinking ? "Thinking…" : room.last ? `${room.last.failed ? "Not sent · " : room.last.sending ? "Sending · " : ""}${messagePreview(room.last)}` : "Start a conversation";
   let icon: ReactNode;
   let title = room.title;
   if (room.kind === "dm") {
     const member = room.members.find((row) => row.kind === "node");
     const node = boot.nodes.find((row) => member?.kind === "node" && row.id === member.node.id);
-    icon = <NodeAvatar avatar={node?.avatar} size={30} thinking={node ? busy.has(node.id) : false} dim={node?.status === "paused"} />;
+    icon = <NodeAvatar node={node} size={38} thinking={thinking} dim={node?.status === "paused"} />;
     if (node) title = `${node.name} (@${node.slug}) · ${modelName(boot.models.options, node.provider, node.model, boot.models.default)}`;
   } else {
-    icon = <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-xl bg-raised text-muted">{room.kind === "crew" ? <Users size={15} /> : <Hash size={15} />}</span>;
+    icon = <span className="flex size-[38px] shrink-0 items-center justify-center rounded-[13px] border border-line bg-raised text-muted"><Users size={18} strokeWidth={1.7} /></span>;
   }
   return (
-    <Link href={`/r/${room.id}`} onClick={onNavigate} title={title} aria-current={active ? "page" : undefined} className={`flex items-center gap-2.5 rounded-xl px-2 py-2 ${active ? "bg-raised" : "hover:bg-raised/60"}`}>
+    <Link href={`/r/${room.id}`} onClick={onNavigate} title={title} aria-label={`${room.title}${room.unread ? `, ${room.unread} unread` : ""}`} aria-current={active ? "page" : undefined}
+      data-conversation={room.id} className={`chat-room-row relative flex items-center gap-3 rounded-2xl ${compact ? "justify-center px-1 py-2" : "px-3 py-3"} ${active ? "bg-accent/10" : "hover:bg-raised/70"}`}>
       {icon}
-      <span className="min-w-0 flex-1">
+      {!compact ? <span className="min-w-0 flex-1">
         <span className="flex items-center justify-between gap-2">
           <span className={`truncate text-sm ${room.unread ? "font-semibold" : "font-medium"}`}>{room.title}</span>
           <span className="shrink-0 text-[11px] text-muted">{ago(room.lastMessageAt)}</span>
         </span>
         <span className="flex items-center justify-between gap-2">
-          <span className="truncate text-xs text-muted">{preview}</span>
+          <span className={`flex min-w-0 items-center gap-1.5 truncate text-xs ${room.last?.failed ? "text-danger" : thinking ? "text-accent" : "text-muted"}`}>
+            {room.last?.private && !thinking ? <Lock size={10} className="shrink-0" /> : null}
+            {room.kind !== "dm" ? <span className="shrink-0 text-[10px] text-muted">{roomKindName(room.kind)} ·</span> : null}
+            <span className="truncate">{preview}</span>
+          </span>
           {room.unread ? <span className="shrink-0 rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-ink">{room.unread}</span> : null}
         </span>
-      </span>
+      </span> : room.unread ? <span className="absolute right-1 top-1 size-2 rounded-full bg-accent ring-2 ring-panel" /> : null}
     </Link>
   );
 }
 
-function NavLink({ href, icon: Icon, label, badge, active, onNavigate }: { href: string; icon: typeof Inbox; label: string; badge?: number; active: boolean; onNavigate?: () => void }) {
+function NavLink({ href, icon: Icon, label, badge, active, compact, onNavigate }: { href: string; icon: typeof Inbox; label: string; badge?: number; active: boolean; compact?: boolean; onNavigate?: () => void }) {
   return (
-    <Link href={href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={`flex items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-sm ${active ? "bg-raised font-medium" : "text-muted hover:bg-raised/60 hover:text-ink"}`}>
+    <Link href={href} onClick={onNavigate} aria-label={label} title={compact ? label : undefined} aria-current={active ? "page" : undefined} className={`relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm ${compact ? "justify-center" : ""} ${active ? "bg-raised font-medium" : "text-muted hover:bg-raised/60 hover:text-ink"}`}>
       <Icon size={16} className="shrink-0" />
-      <span className="flex-1 truncate">{label}</span>
-      {badge ? <span className="rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-ink">{badge}</span> : null}
+      {!compact ? <span className="flex-1 truncate">{label}</span> : null}
+      {badge ? <span className={compact ? "absolute right-1 top-1 size-2 rounded-full bg-accent" : "rounded-full bg-accent px-1.5 text-[10px] font-semibold text-accent-ink"}>{compact ? null : badge}</span> : null}
     </Link>
   );
 }
 
-function Sidebar({ boot, onNavigate, onSearch, needsMe }: { boot: Bootstrap; onNavigate?: () => void; onSearch: () => void; needsMe: number }) {
+function Sidebar({ boot, onNavigate, onSearch, needsMe, compact = false, onCollapse }: { boot: Bootstrap; onNavigate?: () => void; onSearch: () => void; needsMe: number; compact?: boolean; onCollapse?: () => void }) {
   const pathname = usePathname();
   const busy = useBusyNodes();
-  const sections: Array<{ id: Room["kind"]; label: string; rooms: Room[]; make: string; empty: string }> = [
-    { id: "dm", label: "Direct chats", rooms: boot.rooms.filter((room) => room.kind === "dm"), make: "/new?tab=node", empty: "Make your first node" },
-    { id: "crew", label: "Crews", rooms: boot.rooms.filter((room) => room.kind === "crew"), make: "/new?tab=crew", empty: "Make a crew of your nodes" },
-    { id: "room", label: "Rooms", rooms: boot.rooms.filter((room) => room.kind === "room"), make: "/new?tab=room", empty: "Make a room with other people" },
-  ];
-  const online = boot.computers.some((row) => row.online);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<ConversationFilter>("all");
+  const rooms = recentConversations(boot.rooms, compact ? "all" : filter, compact ? "" : query);
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between px-4 pb-2 pt-4">
-        <Link href="/chat" onClick={onNavigate} className="flex items-center gap-2 font-semibold">
-          <Mark size={24} /> Node
-        </Link>
-        <Link href="/new" onClick={onNavigate} className="inline-flex h-8 items-center gap-1 rounded-lg border border-line px-2.5 text-xs font-medium hover:bg-raised">
-          <Plus size={14} /> New
-        </Link>
+    <div className="scroll-thin flex h-full min-h-0 flex-col overflow-y-auto">
+      <div className={`flex shrink-0 items-center gap-1 pb-3 pt-4 ${compact ? "flex-col px-2" : "px-4"}`}>
+        {!compact && onCollapse ? <Link href="/chat" onClick={onNavigate} className="flex min-w-0 flex-1 items-center gap-2 text-lg font-semibold"><Mark size={23} />Chats</Link> : null}
+        {onCollapse ? <IconButton label={compact ? "Expand conversations" : "Collapse conversations"} onClick={onCollapse}>{compact ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</IconButton> : null}
+        <Link href="/new" onClick={onNavigate} title="New conversation" aria-label="New conversation" className={`inline-flex shrink-0 items-center rounded-xl text-muted hover:bg-raised hover:text-ink ${compact || onCollapse ? "size-9 justify-center" : "flex-1 gap-2 px-3 py-2 text-sm"}`}><SquarePen size={18} />{!compact && !onCollapse ? "New conversation" : null}</Link>
+        <IconButton label="Search messages" onClick={onSearch}><Search size={18} /></IconButton>
       </div>
-      <div className="px-3 pb-2">
-        <button type="button" onClick={onSearch} className="flex w-full items-center gap-2 rounded-xl border border-line bg-bg/60 px-3 py-1.5 text-sm text-muted hover:border-muted hover:text-ink">
-          <Search size={15} /> <span className="flex-1 text-left">Search</span>
-          <kbd className="rounded border border-line px-1.5 font-sans text-[10px]">{isMac() ? "⌘" : "Ctrl"} K</kbd>
-        </button>
-      </div>
-
-      <nav className="scroll-thin flex-1 space-y-4 overflow-y-auto px-2 pb-4" aria-label="Conversations">
-        {sections.map((section) => (
-          <div key={section.id}>
-            <div className="flex items-center justify-between px-2 pb-1">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">{section.label}</span>
-              <Link href={section.make} onClick={onNavigate} className="rounded-md p-0.5 text-muted hover:bg-raised hover:text-ink" aria-label={`New: ${section.empty.toLowerCase()}`} title={section.empty}>
-                <Plus size={14} />
-              </Link>
-            </div>
-            {section.rooms.length ? (
-              section.rooms.map((room) => <RoomRow key={room.id} room={room} boot={boot} busy={busy} active={pathname === `/r/${room.id}`} onNavigate={onNavigate} />)
-            ) : (
-              <Link href={section.make} onClick={onNavigate} className="block px-2 py-1 text-xs text-muted hover:text-ink">
-                {section.empty}
-              </Link>
-            )}
-          </div>
-        ))}
+      {!compact ? <div className="space-y-3 px-4 pb-3">
+        <label className="flex items-center gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2 text-muted"><Search size={15} className="shrink-0" /><input aria-label="Filter conversations" placeholder="Search chats" value={query} onChange={event => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" /></label>
+        <div className="flex gap-1.5" role="group" aria-label="Conversation filters">{([["all", "All"], ["unread", "Unread"], ["groups", "Groups"]] as const).map(([id, title]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${filter === id ? "bg-accent/15 text-accent" : "text-muted hover:bg-raised"}`}>{title}</button>)}</div>
+      </div> : null}
+      <nav className="scroll-thin min-h-[120px] flex-1 overflow-y-auto px-2 pb-4" aria-label="Conversations">
+        {rooms.map(room => <RoomRow key={room.id} room={room} boot={boot} busy={busy} compact={compact} active={pathname === `/r/${room.id}`} onNavigate={onNavigate} />)}
+        {!rooms.length && !compact ? <p className="px-3 py-6 text-center text-xs text-muted">{query ? "No matching chats." : filter === "unread" ? "All caught up." : filter === "groups" ? "No groups yet." : "Your conversations will appear here."}</p> : null}
       </nav>
 
       <div className="space-y-0.5 border-t border-line px-2 pb-2 pt-2" role="navigation" aria-label="More">
-        <NavLink href="/requests" icon={Inbox} label="Requests to join" badge={boot.invites?.length ?? 0} active={pathname === "/requests"} onNavigate={onNavigate} />
-        <NavLink href="/computers" icon={Laptop} label="Computers & Needs me" badge={needsMe} active={pathname === "/computers"} onNavigate={onNavigate} />
-        <NavLink href="/connections" icon={Plug} label="Connections" active={pathname === "/connections"} onNavigate={onNavigate} />
-        <NavLink href="/settings" icon={Settings} label="Settings" active={pathname === "/settings"} onNavigate={onNavigate} />
+        <NavLink compact={compact} href="/chat" icon={MessageCircle} label="Your nodes" active={pathname === "/chat"} onNavigate={onNavigate} />
+        <NavLink compact={compact} href="/requests" icon={Inbox} label="Invites" badge={boot.invites?.length ?? 0} active={pathname === "/requests"} onNavigate={onNavigate} />
+        <NavLink compact={compact} href="/computers" icon={Laptop} label="Computers & Needs me" badge={needsMe} active={pathname === "/computers"} onNavigate={onNavigate} />
+        <NavLink compact={compact} href="/connections" icon={Plug} label="Connections" active={pathname === "/connections"} onNavigate={onNavigate} />
       </div>
 
-      <div className="space-y-3 border-t border-line p-3">
-        <CreditsMeter credits={boot.credits} compact />
-        <Link href="/settings" onClick={onNavigate} className="flex min-w-0 items-center gap-2 rounded-xl px-1 py-1 hover:bg-raised">
+      <div className="border-t border-line p-3">
+        <Link href="/settings" onClick={onNavigate} aria-label="Settings" title={compact ? "Settings" : undefined} className={`flex min-w-0 items-center gap-2.5 rounded-xl py-1 hover:bg-raised ${compact ? "justify-center" : "px-1"}`}>
           <PersonAvatar name={boot.me.name || boot.me.email} size={28} />
-          <span className="min-w-0">
+          {!compact ? <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium">{boot.me.name || boot.me.email}</span>
-            <span className="flex items-center gap-1 text-[11px] text-muted">
-              <span className={`h-1.5 w-1.5 rounded-full ${online ? "bg-ok" : "bg-muted"}`} />
-              {online ? "Computer online" : boot.computers.length ? "Computer offline" : "No computer"}
-            </span>
-          </span>
+          </span> : null}
+          {!compact ? <Settings size={15} className="shrink-0 text-muted" /> : null}
         </Link>
       </div>
     </div>
   );
+}
+
+function useNavigationPreference(key: string, initial: boolean) {
+  const [value, setValue] = useState(initial);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored !== null) setValue(stored === "true");
+    } catch (error) { toastError(error); }
+  }, [key]);
+  const toggle = () => {
+    const next = !value;
+    setValue(next);
+    try { localStorage.setItem(key, String(next)); } catch (error) { toastError(error); }
+  };
+  return [value, toggle] as const;
 }
 
 /** The signed-in app: conversations on the left, the conversation, and what needs you on the right. */
@@ -147,7 +141,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const approvals = useApprovals();
   const decisions = useDecisions();
   const [menu, setMenu] = useState(false);
-  const [panel, setPanel] = useState(true);
+  const [panel, togglePanel] = useNavigationPreference("node.activity-open", false);
+  const [collapsed, toggleCollapsed] = useNavigationPreference("node.sidebar-collapsed", false);
   const [search, setSearch] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const ready = Boolean(boot.data);
@@ -185,6 +180,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [boot.data, pathname, router]);
   useEffect(() => setMenu(false), [pathname]);
   useEffect(() => {
+    const desktop = matchMedia("(min-width: 768px)");
+    const closeOnDesktop = () => { if (desktop.matches) setMenu(false); };
+    desktop.addEventListener("change", closeOnDesktop);
+    return () => desktop.removeEventListener("change", closeOnDesktop);
+  }, []);
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -192,7 +193,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const openChats = () => setMenu(true);
+    window.addEventListener("node:open-chats", openChats);
+    return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("node:open-chats", openChats); };
   }, []);
 
   if (!boot.data) {
@@ -212,30 +215,24 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
   const waiting = activity.data?.approvals.length ?? 0;
-  const needsMe = (approvals.data?.length ?? 0) + (decisions.data?.length ?? 0);
+  const needsMe = (approvals.data?.length ?? 0) + (decisions.data?.length ?? 0) + waiting;
   const openSearch = () => {
     setMenu(false);
     setSearch(true);
   };
 
   return (
-    <div ref={frame} className="flex overflow-hidden" style={{ height: "var(--node-viewport-height, 100dvh)" }}>
-      <aside className="hidden w-72 shrink-0 border-r border-line bg-panel md:block">
-        <Sidebar boot={boot.data} onSearch={openSearch} needsMe={needsMe} />
+    <DefaultNodeModel.Provider value={boot.data.models.default}>
+    <div ref={frame} data-needs-me={needsMe > 0} className="chat-shell flex overflow-hidden" style={{ height: "var(--node-viewport-height, 100dvh)" }}>
+      <aside className={`chat-sidebar hidden shrink-0 border-r border-line bg-panel/70 md:block ${collapsed ? "w-[68px]" : "w-[304px]"}`} data-sidebar-collapsed={collapsed} aria-label="Chat sidebar">
+        <Sidebar boot={boot.data} compact={collapsed} onCollapse={toggleCollapsed} onSearch={openSearch} needsMe={needsMe} />
       </aside>
-      {menu ? (
-        <div className="fixed inset-0 z-40 flex md:hidden">
-          <div className="w-[84vw] max-w-xs border-r border-line bg-panel">
-            <Sidebar boot={boot.data} onNavigate={() => setMenu(false)} onSearch={openSearch} needsMe={needsMe} />
-          </div>
-          <button className="flex-1 bg-black/50" aria-label="Close menu" onClick={() => setMenu(false)} />
-        </div>
-      ) : null}
+      <Drawer open={menu} onClose={() => setMenu(false)} title="Chats" side="left"><Sidebar boot={boot.data} onNavigate={() => setMenu(false)} onSearch={openSearch} needsMe={needsMe} /></Drawer>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-center justify-between border-b border-line px-2 py-1.5 md:hidden">
+        <div className={`${pathname.startsWith("/r/") ? "hidden" : "flex"} shrink-0 items-center justify-between border-b border-line px-2 py-1.5 md:hidden`}>
           <IconButton label="Menu" onClick={() => setMenu(true)} className="relative">
-            {menu ? <X size={18} /> : <Menu size={18} />}
+            <Menu size={18} />
             {boot.data.invites?.length || needsMe ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent" /> : null}
           </IconButton>
           <Link href="/chat" className="flex items-center gap-1.5 text-sm font-semibold">
@@ -254,13 +251,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="relative flex min-h-0 flex-1">
           <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
           <div className="absolute right-2 top-2 z-10 hidden lg:block">
-            <IconButton label={panel ? "Hide activity" : "Show activity"} onClick={() => setPanel(!panel)} className="relative bg-panel/80">
+            <IconButton label={panel ? "Hide activity" : "Show activity"} onClick={togglePanel} className="relative bg-panel/80">
               {panel ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
               {!panel && waiting ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" /> : null}
             </IconButton>
           </div>
           {panel ? (
-            <aside className="scroll-thin hidden w-80 shrink-0 overflow-y-auto border-l border-line bg-panel/60 pt-10 lg:block">
+            <aside aria-label="Activity" className="scroll-thin hidden w-80 shrink-0 overflow-y-auto border-l border-line bg-panel/60 pt-10 lg:block">
               <ActivityPanel />
             </aside>
           ) : null}
@@ -276,16 +273,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             router.push(`/r/${room.id}#m-${message.id}`);
           }}
         />
-        <p className="mt-3 text-xs text-muted">
-          Every word must be in the message. Open the full page at{" "}
-          <Link href="/search" onClick={() => setSearch(false)} className="text-accent hover:underline">
-            Search
-          </Link>
-          .
-        </p>
       </Drawer>
       <Toaster />
     </div>
+    </DefaultNodeModel.Provider>
   );
 }
 
@@ -297,4 +288,4 @@ export function PrivateBadge() {
   );
 }
 
-export const shortModel = (boot: Bootstrap, node: { provider: string | null; model: string | null }) => shortModelName(modelName(boot.models.options, node.provider, node.model, boot.models.default));
+export const shortModel = (boot: Bootstrap, node: { provider: string | null; model: string | null }) => shortModelName(node.model ? modelName(boot.models.options, node.provider, node.model, boot.models.default) : boot.models.options.find(row => row.default)?.label ?? boot.models.default);

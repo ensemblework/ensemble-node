@@ -3,11 +3,12 @@
 import { ArrowUp, CornerUpLeft, Lock, Square, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { insertMention, matchHandles, typingMention } from "@/lib/text";
-import type { Avatar, MessageFile } from "@/lib/types";
+import type { Avatar, MessageFile, NodePublic } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { AttachButton, AttachmentShelf, DropHint, pasteFiles, useAttachments, useFileDrop } from "./attachments";
 
-export type MentionOption = { handle: string; label: string; detail: string; avatar?: Avatar; person?: boolean };
+export type MentionOption = { handle: string; label: string; detail: string; avatar?: Avatar; node?: NodePublic; person?: boolean };
+const drafts = new Map<string, { body: string; private: boolean }>();
 
 /** The message being replied to, shown above the composer. */
 export type ComposerReply = { id: string; author: string; excerpt: string; private: boolean };
@@ -17,6 +18,7 @@ export type ComposerDraft = { nonce: number; body: string; private: boolean; fil
 
 export function Composer({
   options,
+  draftKey,
   placeholder,
   canBePrivate,
   busy,
@@ -30,6 +32,7 @@ export function Composer({
   onStop,
 }: {
   options: MentionOption[];
+  draftKey: string;
   placeholder: string;
   canBePrivate: boolean;
   busy: boolean;
@@ -43,10 +46,10 @@ export function Composer({
   onSend: (body: string, isPrivate: boolean, files: MessageFile[]) => void;
   onStop: () => void;
 }) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(() => drafts.get(draftKey)?.body ?? "");
   const [cursor, setCursor] = useState(0);
   const [index, setIndex] = useState(0);
-  const [isPrivate, setPrivate] = useState(false);
+  const [isPrivate, setPrivate] = useState(() => drafts.get(draftKey)?.private ?? false);
   const area = useRef<HTMLTextAreaElement>(null);
   const attachments = useAttachments();
   const canAttach = Boolean(attachHint) && !disabled;
@@ -55,8 +58,12 @@ export function Composer({
   const typing = typingMention(value, cursor);
   const matches = typing ? matchHandles(options, typing.query) : [];
   // A public reply may not quote a private message, so a reply to one is private too.
-  const lockedPrivate = Boolean(reply?.private) && canBePrivate;
-  const privateNow = canBePrivate && (isPrivate || lockedPrivate);
+  const lockedPrivate = Boolean(reply?.private);
+  const privateNow = isPrivate || lockedPrivate;
+  useEffect(() => {
+    if (value) drafts.set(draftKey, { body: value, private: privateNow });
+    else drafts.delete(draftKey);
+  }, [draftKey, value, privateNow]);
 
   const replyId = reply?.id;
   useEffect(() => {
@@ -108,7 +115,7 @@ export function Composer({
   };
 
   return (
-    <div className="relative mx-auto w-full max-w-3xl shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-6 md:pb-5">
+    <div className="relative mx-auto w-full max-w-[840px] shrink-0 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-8 md:pb-6">
       {matches.length ? (
         <ul className="absolute bottom-full left-3 right-3 mb-2 overflow-hidden rounded-2xl border border-line bg-panel shadow-xl md:left-6 md:right-auto md:w-80" role="listbox">
           {matches.map((option, at) => (
@@ -118,7 +125,7 @@ export function Composer({
                 onMouseDown={(event) => (event.preventDefault(), choose(option.handle))}
                 className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm ${at === index ? "bg-raised" : ""}`}
               >
-                {option.person ? <PersonAvatar name={option.label} size={24} /> : <NodeAvatar avatar={option.avatar} size={24} />}
+                {option.person ? <PersonAvatar name={option.label} size={24} /> : <NodeAvatar node={option.node} avatar={option.avatar} size={24} />}
                 <span className="min-w-0">
                   <span className="block truncate font-medium">
                     {option.label} <span className="font-mono text-xs text-muted">@{option.handle}</span>
@@ -131,7 +138,7 @@ export function Composer({
         </ul>
       ) : null}
       {disabled && disabledReason ? <div className="mb-2 text-center text-sm text-muted">{disabledReason}</div> : null}
-      <div {...drop.bind} className={`relative rounded-3xl border bg-panel p-2 shadow-lg transition focus-within:border-accent/60 ${privateNow ? "border-private/50" : "border-line"}`}>
+      <div {...drop.bind} className={`chat-composer relative rounded-[22px] border bg-panel p-2 shadow-sm transition-colors focus-within:border-accent/50 ${privateNow ? "border-private/50" : "border-line"}`}>
         {drop.over ? <DropHint /> : null}
         {reply ? (
           <div className="mx-1 mb-1 flex items-start gap-2 rounded-2xl bg-bg/70 px-3 py-2 text-sm">
@@ -188,7 +195,7 @@ export function Composer({
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex min-w-0 items-center gap-1">
             {attachHint ? <AttachButton attachments={attachments} hint={attachHint} disabled={disabled} /> : null}
-            {canBePrivate ? (
+            {canBePrivate || privateNow ? (
               <button
                 type="button"
                 onClick={() => setPrivate(!isPrivate)}
@@ -204,9 +211,7 @@ export function Composer({
               <span id={blockerId} className="min-w-0 truncate text-xs text-warn" role="status" title={blocker}>
                 {blocker}
               </span>
-            ) : (
-              <span className="hidden text-xs text-muted sm:inline">@ to mention · Shift+Enter for a new line{reply ? " · Esc to cancel the reply" : ""}</span>
-            )}
+            ) : null}
           </div>
           {busy && !value.trim() && !attachments.items.length ? (
             <button type="button" onClick={onStop} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-raised text-ink hover:bg-line" aria-label="Stop">

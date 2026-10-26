@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, AtSign, Bot, Download, Ellipsis, Hash, Lock, MessagesSquare, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, Download, Ellipsis, Lock, MessagesSquare, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { messageFiles } from "@/lib/attachments";
 import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
@@ -16,7 +16,7 @@ import type { Member, Message, NodeFull, Room } from "@/lib/types";
 import { ModelPicker } from "../model-picker";
 import { NodeAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
-import { IconButton, MenuItem, Pill, Spinner, useDismiss } from "../ui";
+import { IconButton, MenuItem, Spinner, useDismiss } from "../ui";
 import { Composer, type ComposerDraft, type MentionOption } from "./composer";
 import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
 import { PinnedBar, PinsDrawer } from "./pins";
@@ -61,6 +61,7 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const scroller = useRef<HTMLDivElement>(null);
+  const content = useRef<HTMLDivElement>(null);
   const menuBox = useRef<HTMLDivElement>(null);
   const stuck = useRef(true);
   const positioned = useRef(false);
@@ -89,7 +90,7 @@ export function RoomView({ roomId }: { roomId: string }) {
   const loaded = messages.data ?? [];
   const meId = boot.data?.me.id ?? "";
   const list = filter === "mentions" ? loaded.filter((row) => mentionsMe(row, meId)) : loaded;
-  const lastSeq = loaded.reduce((max, row) => (row.sending ? max : Math.max(max, row.seq)), 0);
+  const lastSeq = loaded.reduce((max, row) => (row.sending || row.id.startsWith("local-") ? max : Math.max(max, row.seq)), 0);
   const firstReal = loaded.find((row) => !row.id.startsWith("local-"));
   const hasOlder = !olderDone && loaded.length >= PAGE && (firstReal?.seq ?? 0) > 1;
   const unreadId = useMemo(
@@ -207,6 +208,18 @@ export function RoomView({ roomId }: { roomId: string }) {
   }, [list.length, liveKey, filter]);
 
   useEffect(() => {
+    const viewport = scroller.current;
+    const body = content.current;
+    if (!viewport || !body || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (positioned.current && stuck.current) viewport.scrollTop = viewport.scrollHeight;
+    });
+    observer.observe(viewport);
+    observer.observe(body);
+    return () => observer.disconnect();
+  }, [messages.isLoading, roomId, Boolean(room)]);
+
+  useEffect(() => {
     if (lastSeq && stuck.current && document.visibilityState === "visible") markRead(client, roomId, lastSeq);
   }, [client, roomId, lastSeq]);
 
@@ -289,6 +302,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       label: row.node.name,
       detail: `${row.node.role}${row.accountId === me.id ? "" : ` · ${people.find((person) => person.accountId === row.accountId)?.name ?? "someone"}'s node`}`,
       avatar: row.node.avatar,
+      node: row.node,
     })),
     ...others.map((row) => ({ handle: row.handle, label: row.name, detail: row.responsibility ?? "person", person: true })),
     ...(nodeMembers.length > 1 ? [{ handle: "everyone", label: "Everyone", detail: "Every node in this conversation" }] : []),
@@ -297,7 +311,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     others.length > 0
       ? "Nodes read files only from their owner's messages. Others here see a file's name but cannot open it."
       : `${dmNode ? dmNode.name : "Your nodes"} read${dmNode ? "s" : ""} what you attach: the text of documents, and pictures when ${dmNode ? "its" : "their"} model can see images.`;
-  const placeholder = dmNode ? `Message ${dmNode.name}` : room.kind === "crew" ? `Message your crew${lead ? ` — @${lead.slug} takes it unless you @mention a node` : ""}` : `Message ${room.title}`;
+  const placeholder = dmNode ? `Message ${dmNode.name}` : room.kind === "crew" ? "Message your crew" : `Message ${room.title}`;
   const filterInfo = FILTERS.find((row) => row.id === filter)!;
 
   const grouped = (message: Message, previous: Message | undefined) =>
@@ -329,40 +343,31 @@ export function RoomView({ roomId }: { roomId: string }) {
   };
 
   return (
-    <div className="relative flex h-full flex-col">
-      <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5 md:gap-3 md:px-5 lg:pr-14">
+    <div className="chat-conversation relative flex h-full flex-col">
+      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-bg/95 px-3 py-3 md:gap-3 md:px-6 lg:pr-14">
+        <IconButton label="Open conversations" className="chat-open-conversations relative md:hidden" onClick={() => window.dispatchEvent(new Event("node:open-chats"))}><ArrowLeft size={19} /></IconButton>
         {dmNode ? (
-          <NodeAvatar avatar={dmNode.avatar} size={34} thinking={live.some((row) => row.nodeId === dmNode.id)} dim={dmNode.status === "paused"} />
+          <NodeAvatar node={dmNode} size={36} thinking={live.some((row) => row.nodeId === dmNode.id)} dim={dmNode.status === "paused"} />
         ) : (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-raised text-muted">{room.kind === "crew" ? <Users size={17} /> : <Hash size={17} />}</span>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-raised text-muted"><Users size={18} strokeWidth={1.7} /></span>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="truncate font-semibold">{room.title}</h1>
-            {dmNode ? <span className="hidden font-mono text-xs text-muted sm:inline">@{dmNode.slug}</span> : <Pill>{room.kind === "crew" ? "crew" : "room"}</Pill>}
+            <h1 className="min-w-0 truncate font-semibold"><button type="button" className="block max-w-full truncate text-left hover:text-accent" title="Conversation details" onClick={() => setPanel("settings")}>{room.title}</button></h1>
           </div>
           <div className="flex min-w-0 items-center gap-1 text-xs text-muted">
             {dmNode ? (
               <>
                 <ModelPicker variant="compact" label={`${dmNode.name}'s model`} value={{ provider: dmNode.provider, model: dmNode.model }} onChange={saveModel} />
-                <span aria-hidden>·</span>
-                <Link href={`/n/${dmNode.id}`} className="truncate hover:text-ink">
-                  {dmNode.status === "paused" ? "paused · " : ""}
-                  {dmNode.role} · settings
-                </Link>
+                {dmNode.status === "paused" ? <span className="shrink-0 text-warn">Paused</span> : null}
               </>
             ) : (
               <>
-                <span className="flex shrink-0 -space-x-1.5">
-                  {nodeMembers.slice(0, 6).map((row) => (
-                    <NodeAvatar key={row.id} avatar={row.node.avatar} size={18} />
-                  ))}
-                </span>
-                <span className="ml-1 truncate">
+                <button type="button" className="truncate text-left hover:text-ink" onClick={() => setPanel("settings")}>
                   {room.kind === "room"
-                    ? `${people.length} ${people.length === 1 ? "person" : "people"} · ${nodeMembers.length} node${nodeMembers.length === 1 ? "" : "s"} · ${people.map((row) => (row.accountId === me.id ? "you" : row.name)).join(", ")}`
-                    : `${nodeMembers.length} node${nodeMembers.length === 1 ? "" : "s"}${lead ? ` · @${lead.slug} leads` : ""}`}
-                </span>
+                    ? `${people.length} ${people.length === 1 ? "person" : "people"} · ${nodeMembers.length} ${nodeMembers.length === 1 ? "node" : "nodes"}`
+                    : `${nodeMembers.length} ${nodeMembers.length === 1 ? "node" : "nodes"}${lead ? ` · ${lead.name} leads` : ""}`}
+                </button>
               </>
             )}
           </div>
@@ -387,6 +392,7 @@ export function RoomView({ roomId }: { roomId: string }) {
               <MenuItem onClick={() => (setPanel("pins"), setMenu(false))}>
                 <Pin size={15} /> Pinned messages{room.pinned.length ? ` (${room.pinned.length})` : ""}
               </MenuItem>
+              <Link href="/activity" role="menuitem" onClick={() => setMenu(false)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm hover:bg-raised"><Activity size={15} />Activity</Link>
               <MenuItem onClick={exportRoom}>
                 <Download size={15} /> Export as Markdown
               </MenuItem>
@@ -430,11 +436,11 @@ export function RoomView({ roomId }: { roomId: string }) {
           if (near && lastSeq) markRead(client, roomId, lastSeq);
           if (element.scrollTop < 40 && hasOlder && positioned.current && !pendingJump.current) void older();
         }}
-        className="scroll-thin min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain"
+        className="chat-timeline scroll-thin min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain"
         aria-live="polite"
         aria-relevant="additions"
       >
-        <div className="mx-auto w-full max-w-3xl px-3 pb-6 pt-4 md:px-6">
+        <div ref={content} className="mx-auto w-full max-w-[840px] px-4 pb-8 pt-5 md:px-8">
           {hasOlder ? (
             <div className="flex justify-center pb-2">
               <button type="button" onClick={() => void older()} disabled={loadingOlder} className="inline-flex items-center gap-2 rounded-full border border-line bg-panel px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-60">
@@ -458,21 +464,21 @@ export function RoomView({ roomId }: { roomId: string }) {
           ) : !list.length ? (
             <div className="flex flex-col items-center py-16 text-center">
               {dmNode ? (
-                <NodeAvatar avatar={dmNode.avatar} size={84} />
+                <NodeAvatar node={dmNode} size={64} />
               ) : (
                 <span className="flex -space-x-3">
                   {nodeMembers.slice(0, 5).map((row) => (
-                    <NodeAvatar key={row.id} avatar={row.node.avatar} size={56} />
+                    <NodeAvatar key={row.id} node={row.node} size={48} />
                   ))}
                 </span>
               )}
               <h2 className="mt-4 text-xl font-semibold">{dmNode ? `Say hi to ${dmNode.name}` : `Welcome to ${room.title}`}</h2>
-              <p className="mt-1 max-w-md text-sm text-muted">
+              <p className="mt-2 max-w-md text-sm text-muted">
                 {dmNode
-                  ? `${dmNode.name} works in your Ensemble workspace, and asks before starting anything on your computer.`
+                  ? dmNode.role
                   : room.kind === "crew"
-                    ? "Your nodes, together. The lead plans and hands out work; @mention a node to ask it directly."
-                    : "People and their nodes. Each person's lead node answers for them and asks them before it posts."}
+                    ? "Your team, in one conversation."
+                    : "People and their nodes, together."}
               </p>
               <div className="mt-5 flex max-w-xl flex-wrap justify-center gap-2">
                 {SUGGESTIONS[room.kind].map((text) => (
@@ -492,13 +498,13 @@ export function RoomView({ roomId }: { roomId: string }) {
                   const previous = day.items[index - 1];
                   const divider = message.id === unreadId;
                   return (
-                    <Fragment key={message.id}>
+                    <Fragment key={message.clientId ?? message.id}>
                       {divider ? (
                         <div id="unread-divider" className="my-3 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-wide text-accent" role="separator">
                           <span className="h-px flex-1 bg-accent/40" /> New messages <span className="h-px flex-1 bg-accent/40" />
                         </div>
                       ) : null}
-                      <MessageItem message={message} ctx={ctx} grouped={!divider && grouped(message, previous)} highlighted={highlight === message.id} />
+                      <MessageItem message={message} ctx={ctx} grouped={!divider && grouped(message, previous)} highlighted={highlight === message.id} fresh={message.sending || message.seq > (opened.current?.last ?? lastSeq)} />
                     </Fragment>
                   );
                 })}
@@ -511,14 +517,14 @@ export function RoomView({ roomId }: { roomId: string }) {
                 const node = ctx.nodes.get(row.nodeId);
                 return (
                   <div key={row.nodeId} className="mt-4 flex gap-3">
-                    <NodeAvatar avatar={node?.avatar} size={36} thinking />
+                    <NodeAvatar node={node} size={32} thinking />
                     <div className="min-w-0 flex-1">
                       <div className="mb-0.5 text-sm">
-                        <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="text-xs text-muted">{row.text ? "is writing…" : "is thinking…"}</span>
+                        <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="ml-1 text-xs text-muted">{row.text ? "Writing…" : "Thinking…"}</span>
                       </div>
                       {row.tools.length ? (
-                        <div className="mb-1 flex flex-wrap gap-1.5">
-                          {row.tools.map((tool, at) => (
+                        <div className="mb-2 flex flex-wrap gap-1.5">
+                          {row.tools.slice(-2).map((tool, at) => (
                             <span key={at} className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg px-2 py-0.5 text-xs text-muted">
                               <ToolIcon name={tool.name} />
                               {TOOL_LABEL(tool.name)}
@@ -553,7 +559,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           onClick={() => {
             stuck.current = true;
             setAtBottom(true);
-            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: "smooth" });
+            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
           }}
           className="absolute -top-12 right-5 z-20 inline-flex h-10 items-center gap-1.5 rounded-full border border-line bg-panel px-3 text-sm shadow-xl hover:bg-raised md:right-8"
           aria-label={newBelow ? `Jump to the latest: ${newBelow} new` : "Jump to the latest"}
@@ -564,6 +570,8 @@ export function RoomView({ roomId }: { roomId: string }) {
       ) : null}
 
       <Composer
+        key={`${me.id}:${roomId}`}
+        draftKey={`${me.id}:${roomId}`}
         options={options}
         placeholder={placeholder}
         canBePrivate={others.length > 0}

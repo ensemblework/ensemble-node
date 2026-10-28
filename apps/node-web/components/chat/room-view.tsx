@@ -12,7 +12,7 @@ import { clearJump, useJump } from "@/lib/jump";
 import { useLiveRoom } from "@/lib/live";
 import { TOOL_LABEL } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
-import type { Member, Message, NodeFull, Room } from "@/lib/types";
+import type { Bootstrap, Member, Message, NodeFull, Room } from "@/lib/types";
 import { NodeAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
 import { IconButton, MenuItem, Spinner, useDismiss } from "../ui";
@@ -28,6 +28,7 @@ const SUGGESTIONS: Record<Room["kind"], string[]> = {
   dm: ["What's on my plate today?", "Add a task to review the onboarding flow next Monday", "Make a page with notes from what I tell you next", "Fix the failing tests in my repo on my laptop"],
   crew: ["Plan the login page and hand out the work", "@tester check the signup flow and file bugs", "@docs update the README for the new release"],
   room: ["Who can take the API changes this week?", "Here's what the client asked for: …"],
+  task: [],
 };
 
 const FILTERS: Array<{ id: ViewFilter; label: string; icon: typeof Users; empty: string }> = [
@@ -375,7 +376,9 @@ export function RoomView({ roomId }: { roomId: string }) {
             ) : (
               <>
                 <button type="button" className="truncate text-left hover:text-ink" onClick={() => setPanel("settings")}>
-                  {room.kind === "room"
+                  {room.kind === "task"
+                    ? "Helper room · read only"
+                    : room.kind === "room"
                     ? `${people.length} ${people.length === 1 ? "person" : "people"} · ${nodeMembers.length} ${nodeMembers.length === 1 ? "node" : "nodes"}`
                     : `${nodeMembers.length} ${nodeMembers.length === 1 ? "node" : "nodes"}${lead ? ` · ${lead.name} leads` : ""}`}
                 </button>
@@ -408,7 +411,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                 <Download size={15} /> Export as Markdown
               </MenuItem>
               <MenuItem onClick={() => (setPanel("settings"), setMenu(false))}>
-                <Settings2 size={15} /> {room.kind === "dm" ? "Node settings" : room.kind === "crew" ? "Crew settings" : "Room settings"}
+                <Settings2 size={15} /> {room.kind === "dm" ? "Node settings" : room.kind === "crew" ? "Crew settings" : room.kind === "task" ? "About this helper" : "Room settings"}
               </MenuItem>
             </div>
           ) : null}
@@ -489,7 +492,9 @@ export function RoomView({ roomId }: { roomId: string }) {
                   ? dmNode.role
                   : room.kind === "crew"
                     ? "Your team, in one conversation."
-                    : "People and their nodes, together."}
+                    : room.kind === "task"
+                      ? "A node and the helper it brought in for one task."
+                      : "People and their nodes, together."}
               </p>
               <div className="mt-5 flex max-w-xl flex-wrap justify-center gap-2">
                 {SUGGESTIONS[room.kind].map((text) => (
@@ -589,6 +594,9 @@ export function RoomView({ roomId }: { roomId: string }) {
         </button>
       ) : null}
 
+      {room.kind === "task" ? (
+        <HelperRoomNote room={room} boot={boot.data} />
+      ) : (
       <Composer
         key={`${me.id}:${roomId}`}
         draftKey={`${me.id}:${roomId}`}
@@ -616,9 +624,26 @@ export function RoomView({ roomId }: { roomId: string }) {
         }}
         onStop={() => void api(`/api/node/rooms/${roomId}/stop`, { body: {} }).catch(toastError)}
       />
+      )}
       </div>
       <RoomSettings key={room.id + room.title} room={room} boot={boot.data} open={panel === "settings"} onClose={() => setPanel(null)} onExport={exportRoom} />
       <PinsDrawer room={room} ctx={ctx} open={panel === "pins"} onClose={() => setPanel(null)} max={limits.pins} />
+    </div>
+  );
+}
+
+/** A helper's room is read-only: the owner talks to the node that made the helper, in its chat. */
+function HelperRoomNote({ room, boot }: { room: Room; boot: Bootstrap }) {
+  const helper = room.members.find((row): row is NodeMember => row.kind === "node" && Boolean(row.node.parentNodeId));
+  const parentId = helper?.node.parentNodeId ?? room.members.find((row): row is NodeMember => row.kind === "node" && !row.node.parentNodeId)?.node.id;
+  const parent = boot.nodes.find((node) => node.id === parentId);
+  const dm = parent ? boot.rooms.find((row) => row.kind === "dm" && row.members.some((member) => member.kind === "node" && member.node.id === parent.id)) : undefined;
+  return (
+    <div className="border-t border-line bg-panel/80 px-4 py-3 text-sm text-muted md:px-6">
+      <Lock size={13} className="mr-1.5 inline" />
+      {parent ? <>@{parent.slug} brought in {helper ? `@${helper.handle}` : "a helper"} for one task and tells you what it finds. You read along here; to steer it, </> : "You read along here. "}
+      {dm ? <Link href={`/r/${dm.id}`} className="text-accent">talk to {parent!.name}</Link> : "talk to its node"}.
+      {" "}It goes after 3 quiet days.
     </div>
   );
 }

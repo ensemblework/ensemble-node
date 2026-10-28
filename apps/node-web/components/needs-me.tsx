@@ -10,6 +10,7 @@ import { ago } from "@/lib/text";
 import type { AgentDecision, ApprovalRecord, Message, NodePublic } from "@/lib/types";
 import { ApprovalActions, DecisionActions } from "./decision-answer";
 import { NodeAvatar } from "./node-avatar";
+import { SecretBox } from "./secret-box";
 import { Button, External, Notice, Pill, Spinner } from "./ui";
 
 function Card({ children, tone = "warn" }: { children: React.ReactNode; tone?: "warn" | "line" }) {
@@ -61,7 +62,7 @@ function DecisionItem({ decision }: { decision: AgentDecision }) {
   );
 }
 
-const WANTS: Record<string, string> = { post: "wants to post for you", session: "wants to start work on your computer", tools: "wants to act for you" };
+const WANTS: Record<string, string> = { post: "wants to post for you", session: "wants to start work on your computer", tools: "wants to act for you", secret: "needs a secret" };
 
 /** One of my nodes' approval cards: answered right here, or opened in its conversation. */
 function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePublic; roomTitle: string }) {
@@ -79,9 +80,14 @@ function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePub
             </span>
             <span className="text-xs text-muted">{ago(card.createdAt)}</span>
           </div>
-          <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{card.body}</p>
-          {error ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
-          <div className="mt-3 flex flex-wrap items-center gap-2">
+          <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{type === "secret" ? `${String(card.data.name ?? "")}: ${card.body}` : card.body}</p>
+          {type === "secret" ? (
+            <div className="mt-3">
+              <SecretBox message={card} nodeName={node?.name ?? "The node"} />
+            </div>
+          ) : null}
+          {error && type !== "secret" ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
+          <div className={`mt-3 flex flex-wrap items-center gap-2 ${type === "secret" ? "hidden" : ""}`}>
             {type === "post" ? null : (
               <Button size="sm" busy={settle.isPending && settle.variables?.decision === "approve"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "approve" })}>
                 <Check size={14} /> {type === "session" ? "Start it" : "Approve"}

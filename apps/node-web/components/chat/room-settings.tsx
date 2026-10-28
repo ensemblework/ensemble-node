@@ -230,6 +230,38 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
     );
   }
 
+  if (room.kind === "task") {
+    const helper = nodeMembers.find((row) => Boolean(row.node.parentNodeId));
+    return (
+      <Drawer open={open} onClose={onClose} title="About this helper">
+        <div className="space-y-6">
+          <Section title="A helper's room" hint="A node brought in a temporary helper for one task. It only reads (your workspace, the web, connected apps), changes nothing, and reports to the node, which tells you. You read along here.">
+            <ul className="space-y-1.5">{nodeMembers.map((member) => nodeRow(member, member === helper ? <span className="px-2 text-xs text-muted">helper</span> : null))}</ul>
+          </Section>
+          <p className="text-sm text-muted">The helper and this room go after 3 quiet days, or when you delete them.</p>
+          <section className="flex flex-wrap gap-2 border-t border-line pt-4">
+            <Button tone="ghost" onClick={onExport}>
+              <Download size={15} /> Export as Markdown
+            </Button>
+            <Button
+              tone="danger"
+              busy={busy === "delete"}
+              onClick={() => {
+                if (!confirm(`Delete this helper and its room now?`)) return;
+                void act("delete", async () => {
+                  await api(`/api/node/rooms/${room.id}`, { method: "DELETE" });
+                  router.replace("/chat");
+                });
+              }}
+            >
+              <Trash2 size={15} /> Delete helper
+            </Button>
+          </section>
+        </div>
+      </Drawer>
+    );
+  }
+
   if (room.kind === "crew") {
     return (
       <Drawer open={open} onClose={onClose} title="Crew settings">

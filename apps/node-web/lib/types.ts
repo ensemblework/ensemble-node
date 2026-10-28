@@ -4,7 +4,8 @@ import type { EntityRef } from "./entity-text";
 export type AvatarShape = "orb" | "square" | "spark" | "hex" | "leaf" | "compass";
 export type Avatar = { shape: AvatarShape; color: string; eyes: "dot" | "line" | "wide" };
 
-export type NodePublic = { id: string; ownerId: string; slug: string; name: string; role: string; avatar: Avatar; status: "active" | "paused" };
+/** `parentNodeId`: a temporary helper's node (it works in a read-only task room and reports to that node). */
+export type NodePublic = { id: string; ownerId: string; slug: string; name: string; role: string; avatar: Avatar; status: "active" | "paused"; parentNodeId?: string | null };
 export type NodeFull = NodePublic & {
   charter: string;
   provider: string | null;
@@ -12,6 +13,8 @@ export type NodeFull = NodePublic & {
   runProfileId: string | null;
   /** computerWork "ask": starting work on the owner's computer waits for an approval card (default: on its own). */
   autonomy: { sharedRooms?: "ask" | "auto"; computerFiles?: boolean; computerWork?: "auto" | "ask" };
+  /** How long its chat model thinks, when the model takes a level (default low: nodes answer fast). */
+  effort?: "low" | "medium" | "high";
   templateId: string | null;
   createdAt: string;
 };
@@ -69,7 +72,8 @@ export type RoomInvite = {
 };
 
 /** dm: me and one node. crew: me and nodes I pick. room: other people too, each with their own nodes. */
-export type RoomKind = "dm" | "crew" | "room";
+/** task: a helper's room, where a node briefs a temporary helper; its owner reads it but does not write. */
+export type RoomKind = "dm" | "crew" | "room" | "task";
 
 export type Room = {
   id: string;

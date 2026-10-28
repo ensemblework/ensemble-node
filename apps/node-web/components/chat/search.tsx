@@ -9,7 +9,7 @@ import type { RoomKind, SearchResult } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { Segmented, Spinner } from "../ui";
 
-const KIND_ICON: Record<RoomKind, typeof Hash> = { dm: MessageSquare, crew: Users, room: Hash };
+const KIND_ICON: Record<RoomKind, typeof Hash> = { dm: MessageSquare, crew: Users, room: Hash, task: Users };
 
 export function useDebounced(value: string, ms = 250): string {
   const [debounced, setDebounced] = useState(value);

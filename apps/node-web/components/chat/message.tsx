@@ -11,6 +11,7 @@ import { toast, toastError } from "@/lib/toast";
 import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
+import { SecretBox } from "../secret-box";
 import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
 import { MessageFiles } from "./file-chips";
@@ -104,6 +105,8 @@ function ToolChips({ tools }: { tools: ToolChip[] }) {
 
 const STATUS_PILL: Record<string, { label: string; tone: "warn" | "ok" | "muted" | "danger" | "accent" }> = {
   pending: { label: "Waiting for you", tone: "warn" },
+  saving: { label: "Saving…", tone: "accent" },
+  saved: { label: "Saved", tone: "ok" },
   applying: { label: "Applying…", tone: "accent" },
   applied: { label: "Approved", tone: "ok" },
   partial: { label: "Partly applied", tone: "warn" },
@@ -124,7 +127,13 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
     <div className="mt-1 rounded-2xl border border-warn/40 bg-warn/5 p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-medium">
-          {data.type === "post" ? `Post this in “${ctx.roomTitle}” for you?` : data.type === "session" ? `@${node?.slug ?? "node"} wants to start work on your computer` : `@${node?.slug ?? "node"} wants to do this for you`}
+          {data.type === "post"
+            ? `Post this in “${ctx.roomTitle}” for you?`
+            : data.type === "session"
+              ? `@${node?.slug ?? "node"} wants to start work on your computer`
+              : data.type === "secret"
+                ? `@${node?.slug ?? "node"} needs a secret: ${data.name}`
+                : `@${node?.slug ?? "node"} wants to do this for you`}
         </span>
         <span className="flex items-center gap-2">
           <Pill tone="private">
@@ -133,7 +142,12 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
           <Pill tone={pill.tone}>{pill.label}</Pill>
         </span>
       </div>
-      {data.type === "session" ? (
+      {data.type === "secret" ? (
+        <div className="space-y-3">
+          <p className="text-sm">{message.body}</p>
+          <SecretBox message={message} nodeName={node?.name ?? "The node"} />
+        </div>
+      ) : data.type === "session" ? (
         <p className="whitespace-pre-wrap rounded-lg bg-bg/70 p-2 text-sm">{message.body.replace(/^@\S+ wants to /, "")}</p>
       ) : data.type === "post" && data.status === "posted" ? null : data.type === "post" ? (
         pending ? (
@@ -176,7 +190,7 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
       {data.result?.summary ? <p className="mt-2 text-sm text-ok">{formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
       {data.result?.failed?.length ? <p className="mt-1 text-sm text-danger">{data.result.failed.map((row: { name: string; error: string }) => `${TOOL_LABEL(row.name)}: ${row.error}`).join(" · ")}</p> : null}
       {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
-      {pending ? (
+      {pending && data.type !== "secret" ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             busy={settle.isPending && settle.variables?.decision === "approve"}

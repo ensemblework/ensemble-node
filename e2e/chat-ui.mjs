@@ -29,6 +29,18 @@ function fixture() {
   const message = (roomId, seq, body, human = false) => ({ id: `${roomId}-${seq}`, roomId, seq, body, kind: "text", authorKind: human ? "human" : "node", authorAccountId: "me", authorNodeId: human ? null : "scout", data: {}, private: false, mentions: [], rootMessageId: null, clientId: null, createdAt: stamp(1) });
   for (const row of rooms) {
     messages[row.id] = Array.from({ length: row.id === "dm" ? 40 : 3 }, (_, index) => message(row.id, index + 1, `Message ${index + 1}. ${"A thoughtful update from the project. ".repeat(7)}`, index % 2 === 0));
+    if (row.id === "dm") messages.dm[39].body = [
+      "## Assigned tasks",
+      "| Task | Owner | Status | Due date | Conversation | Notes |",
+      "| --- | :---: | --- | ---: | --- | --- |",
+      "| [Draft brief](/tasks/brief) | **@writer** | Ready | Tomorrow | [Launch crew](/r/crew) | Keep the project links working |",
+      "| [Review](https://example.com/review) | `team` | In progress | Friday | [Design room](/r/group) | Escaped \\| pipe |",
+      "",
+      "```text",
+      "| Not | a table |",
+      "| --- | --- |",
+      "```",
+    ].join("\n");
     row.lastSeq = messages[row.id].length;
     row.readSeq = row.lastSeq;
     row.last = { ...messages[row.id].at(-1), createdAt: row.lastMessageAt };
@@ -107,6 +119,27 @@ try {
 
     await page.goto(`${WEB}/r/dm`);
     await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
+    const table = page.locator("#m-dm-40").getByRole("table");
+    await table.waitFor();
+    assert.deepEqual(await table.getByRole("columnheader").allTextContents(), ["Task", "Owner", "Status", "Due date", "Conversation", "Notes"]);
+    assert.equal(await table.getByRole("row").count(), 3);
+    assert.equal(await table.getByRole("cell").count(), 12);
+    assert.ok((await table.getByRole("link", { name: "Draft brief", exact: true }).getAttribute("href")).endsWith("/tasks/brief"));
+    assert.equal(await table.getByRole("link", { name: "Review", exact: true }).getAttribute("rel"), "noopener noreferrer");
+    assert.equal(await table.getByRole("link", { name: "Launch crew", exact: true }).getAttribute("href"), "/r/crew");
+    assert.equal(await table.getByRole("cell", { name: "Escaped | pipe", exact: true }).count(), 1);
+    assert.equal(await table.locator("strong").textContent(), "@writer");
+    assert.equal(await table.locator("code").textContent(), "team");
+    assert.equal(await table.getByRole("columnheader", { name: "Owner", exact: true }).evaluate(el => getComputedStyle(el).textAlign), "center");
+    assert.equal(await table.getByRole("cell", { name: "Tomorrow", exact: true }).evaluate(el => getComputedStyle(el).textAlign), "right");
+    assert.equal(await page.locator("#m-dm-40 pre code").textContent(), "| Not | a table |\n| --- | --- |");
+    const tableRegion = page.locator("#m-dm-40").getByRole("region", { name: "Table", exact: true });
+    assert.ok(await tableRegion.evaluate(el => el.scrollWidth > el.clientWidth + 2), "wide tables scroll inside their message");
+    await tableRegion.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.waitForFunction(() => document.querySelector('#m-dm-40 [role="region"]').scrollLeft > 0);
+    await fits();
+    if (shots) await page.screenshot({ path: `${shots}/markdown-${width}.png` });
     await openChats();
     assert.deepEqual(await chats().locator("[data-conversation]").evaluateAll(els => els.map(el => el.dataset.conversation)), ["crew", "group", "dm", "writer-dm"]);
     await chats().getByRole("button", { name: "Groups", exact: true }).click();

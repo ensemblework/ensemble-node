@@ -31,6 +31,7 @@ ensemble-node/
 │   │   ├── email-chips.tsx      emails as chips
 │   │   ├── invites.tsx          the requests-to-join inbox
 │   │   ├── needs-me.tsx         Ensemble's Needs me: run approvals and agents' questions
+│   │   ├── secret-box.tsx       a node's request for a secret: password box sent straight to the computer
 │   │   ├── decision-answer.tsx  answering a Needs me card (shared by Needs me and run cards)
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      Node signature faces, shape/colour/eyes and thinking state

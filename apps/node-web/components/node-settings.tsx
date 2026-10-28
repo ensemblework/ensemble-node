@@ -13,7 +13,7 @@ import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { ModelPicker } from "./model-picker";
 import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "./node-avatar";
-import { Button, Field, Input, Notice, Switch, Textarea } from "./ui";
+import { Button, Field, Input, Notice, Segmented, Switch, Textarea } from "./ui";
 
 type Memory = { id: string; content: string; createdAt: string };
 
@@ -170,6 +170,14 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
 
       <Section title="Model" hint="The model this node thinks and talks with. The coding agents it runs on your computer use their own models, from your run profile unless you name one.">
         <ModelPicker value={{ provider: node.provider, model: node.model }} onChange={(next) => void change({ provider: next.provider, model: next.model }, "Model saved.")} />
+        <Field label="Thinking" group hint="Low answers fastest and is enough for most of what a node does: the hard work runs in your coding agents. Models without a thinking setting ignore it.">
+          <Segmented
+            label="Thinking"
+            value={node.effort ?? "low"}
+            onChange={(effort) => void change({ effort }, "Thinking saved.")}
+            options={[{ id: "low", label: "Low · fast" }, { id: "medium", label: "Medium" }, { id: "high", label: "High" }]}
+          />
+        </Field>
       </Section>
 
       <Section title="Permissions" hint="These save as soon as you change them.">

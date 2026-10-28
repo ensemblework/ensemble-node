@@ -97,12 +97,20 @@ export function RoomView({ roomId }: { roomId: string }) {
     }
   }, [boot.data, room, client]);
 
-  const loaded = messages.data ?? [];
+  const all = messages.data ?? [];
+  // Cards of plan steps show inside their plan's card, not in the timeline.
+  const loaded = useMemo(() => all.filter((row) => !row.planId), [all]);
+  const inPlan = useMemo(() => {
+    const byPlan = new Map<string, Message[]>();
+    for (const row of all) if (row.planId) byPlan.set(row.planId, [...(byPlan.get(row.planId) ?? []), row]);
+    return byPlan;
+  }, [all]);
   const meId = boot.data?.me.id ?? "";
   const list = filter === "mentions" ? loaded.filter((row) => mentionsMe(row, meId)) : loaded;
-  const lastSeq = loaded.reduce((max, row) => (row.sending || row.id.startsWith("local-") ? max : Math.max(max, row.seq)), 0);
-  const firstReal = loaded.find((row) => !row.id.startsWith("local-"));
-  const hasOlder = !olderDone && loaded.length >= PAGE && (firstReal?.seq ?? 0) > 1;
+  // Paging counts every message loaded, the ones shown inside plan cards too.
+  const lastSeq = all.reduce((max, row) => (row.sending || row.id.startsWith("local-") ? max : Math.max(max, row.seq)), 0);
+  const firstReal = all.find((row) => !row.id.startsWith("local-"));
+  const hasOlder = !olderDone && all.length >= PAGE && (firstReal?.seq ?? 0) > 1;
   const unreadId = useMemo(
     () => (filter === "all" && opened.current ? firstUnread(loaded.filter((row) => row.seq <= opened.current!.last), opened.current.read, meId) : null),
     [filter, loaded, meId],
@@ -281,8 +289,9 @@ export function RoomView({ roomId }: { roomId: string }) {
         const target = quoted ? client.getQueryData<Message[]>(keys.messages(roomId, "all"))?.find((row) => row.id === quoted) : undefined;
         if (target) setReply(target);
       },
+      inPlan,
     };
-  }, [boot.data, room, jumpTo, sendMessage, client, roomId]);
+  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan]);
 
   if (!boot.data || !ctx || !room) {
     return (

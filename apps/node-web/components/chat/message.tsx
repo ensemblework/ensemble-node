@@ -124,7 +124,7 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
     <div className="mt-1 rounded-2xl border border-warn/40 bg-warn/5 p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm font-medium">
-          {data.type === "post" ? `Post this in “${ctx.roomTitle}” for you?` : `@${node?.slug ?? "node"} wants to do this for you`}
+          {data.type === "post" ? `Post this in “${ctx.roomTitle}” for you?` : data.type === "session" ? `@${node?.slug ?? "node"} wants to start work on your computer` : `@${node?.slug ?? "node"} wants to do this for you`}
         </span>
         <span className="flex items-center gap-2">
           <Pill tone="private">
@@ -133,7 +133,9 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
           <Pill tone={pill.tone}>{pill.label}</Pill>
         </span>
       </div>
-      {data.type === "post" && data.status === "posted" ? null : data.type === "post" ? (
+      {data.type === "session" ? (
+        <p className="whitespace-pre-wrap rounded-lg bg-bg/70 p-2 text-sm">{message.body.replace(/^@\S+ wants to /, "")}</p>
+      ) : data.type === "post" && data.status === "posted" ? null : data.type === "post" ? (
         pending ? (
           <Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={Math.min(10, Math.max(3, body.split("\n").length + 1))} />
         ) : (
@@ -178,10 +180,10 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             busy={settle.isPending && settle.variables?.decision === "approve"}
-            disabled={settle.isPending || (data.type !== "post" && !chosen.size) || (data.type === "post" && !body.trim())}
-            onClick={() => settle.mutate({ messageId: message.id, decision: "approve", ...(data.type === "post" ? { body } : { callIds: [...chosen] }) })}
+            disabled={settle.isPending || (data.type === "tools" && !chosen.size) || (data.type === "post" && !body.trim())}
+            onClick={() => settle.mutate({ messageId: message.id, decision: "approve", ...(data.type === "post" ? { body } : data.type === "tools" ? { callIds: [...chosen] } : {}) })}
           >
-            <Check size={16} /> {data.type === "post" ? "Post" : chosen.size < calls.length ? `Approve ${chosen.size}` : "Approve"}
+            <Check size={16} /> {data.type === "post" ? "Post" : data.type === "session" ? "Start it" : chosen.size < calls.length ? `Approve ${chosen.size}` : "Approve"}
           </Button>
           <Button tone="ghost" disabled={settle.isPending} busy={settle.isPending && settle.variables?.decision === "discard"} onClick={() => settle.mutate({ messageId: message.id, decision: "discard" })}>
             <CircleSlash size={16} /> Discard

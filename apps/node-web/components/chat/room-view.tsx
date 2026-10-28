@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, Download, Ellipsis, Lock, MessagesSquare, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, Download, Ellipsis, Lock, MessagesSquare, Pause, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { messageFiles } from "@/lib/attachments";
 import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
@@ -13,7 +13,6 @@ import { useLiveRoom } from "@/lib/live";
 import { TOOL_LABEL } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
 import type { Member, Message, NodeFull, Room } from "@/lib/types";
-import { ModelPicker } from "../model-picker";
 import { NodeAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
 import { IconButton, MenuItem, Spinner, useDismiss } from "../ui";
@@ -79,6 +78,16 @@ export function RoomView({ roomId }: { roomId: string }) {
   const lastFilter = useRef(filter);
   const closeMenu = useCallback(() => setMenu(false), []);
   useDismiss(menu, closeMenu, menuBox);
+
+  // `?settings=1` (a node's settings address, /n/:id) opens the settings here once.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("settings") !== "1") return;
+    setPanel("settings");
+    params.delete("settings");
+    const rest = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
+  }, [roomId]);
 
   useEffect(() => {
     if (boot.data && !room && !missingChecked.current) {
@@ -326,12 +335,12 @@ export function RoomView({ roomId }: { roomId: string }) {
         Date.parse(message.createdAt) - Date.parse(previous.createdAt) < 5 * 60_000,
     );
 
-  const saveModel = async (next: { provider: string | null; model: string | null }) => {
+  const resume = async () => {
     if (!dmNode) return;
     try {
-      await api(`/api/node/nodes/${dmNode.id}`, { method: "PATCH", body: { provider: next.provider, model: next.model } });
+      await api(`/api/node/nodes/${dmNode.id}`, { method: "PATCH", body: { status: "active" } });
       await client.invalidateQueries({ queryKey: keys.bootstrap });
-      toast(`${dmNode.name} now talks with ${next.model ? "the model you picked" : "the default model"}.`, "ok");
+      toast(`${dmNode.name} is back.`, "ok");
     } catch (error) {
       toastError(error);
     }
@@ -347,20 +356,22 @@ export function RoomView({ roomId }: { roomId: string }) {
       <header className="flex shrink-0 items-center gap-2 border-b border-line bg-bg/95 px-3 py-3 md:gap-3 md:px-6 lg:pr-14">
         <IconButton label="Open conversations" className="chat-open-conversations relative md:hidden" onClick={() => window.dispatchEvent(new Event("node:open-chats"))}><ArrowLeft size={19} /></IconButton>
         {dmNode ? (
-          <NodeAvatar node={dmNode} size={36} thinking={live.some((row) => row.nodeId === dmNode.id)} dim={dmNode.status === "paused"} />
+          <button type="button" className="shrink-0 rounded-full" title={`${dmNode.name}'s settings`} aria-label={`${dmNode.name}'s settings`} onClick={() => setPanel("settings")}>
+            <NodeAvatar node={dmNode} size={36} thinking={live.some((row) => row.nodeId === dmNode.id)} dim={dmNode.status === "paused"} />
+          </button>
         ) : (
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-raised text-muted"><Users size={18} strokeWidth={1.7} /></span>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="min-w-0 truncate font-semibold"><button type="button" className="block max-w-full truncate text-left hover:text-accent" title="Conversation details" onClick={() => setPanel("settings")}>{room.title}</button></h1>
+            <h1 className="min-w-0 truncate font-semibold"><button type="button" className="block max-w-full truncate text-left hover:text-accent" title={dmNode ? `${dmNode.name}'s settings` : "Conversation details"} onClick={() => setPanel("settings")}>{room.title}</button></h1>
           </div>
           <div className="flex min-w-0 items-center gap-1 text-xs text-muted">
             {dmNode ? (
-              <>
-                <ModelPicker variant="compact" label={`${dmNode.name}'s model`} value={{ provider: dmNode.provider, model: dmNode.model }} onChange={saveModel} />
-                {dmNode.status === "paused" ? <span className="shrink-0 text-warn">Paused</span> : null}
-              </>
+              <button type="button" className="flex min-w-0 items-center gap-1 truncate text-left hover:text-ink" onClick={() => setPanel("settings")}>
+                <span className="truncate">@{dmNode.slug} · {dmNode.role}</span>
+                {dmNode.status === "paused" ? <span className="shrink-0 text-warn">· Paused</span> : null}
+              </button>
             ) : (
               <>
                 <button type="button" className="truncate text-left hover:text-ink" onClick={() => setPanel("settings")}>
@@ -397,7 +408,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                 <Download size={15} /> Export as Markdown
               </MenuItem>
               <MenuItem onClick={() => (setPanel("settings"), setMenu(false))}>
-                <Settings2 size={15} /> {room.kind === "dm" ? "Chat settings" : room.kind === "crew" ? "Crew settings" : "Room settings"}
+                <Settings2 size={15} /> {room.kind === "dm" ? "Node settings" : room.kind === "crew" ? "Crew settings" : "Room settings"}
               </MenuItem>
             </div>
           ) : null}
@@ -553,6 +564,15 @@ export function RoomView({ roomId }: { roomId: string }) {
       </div>
 
       <div className="relative">
+      {dmNode?.status === "paused" ? (
+        <div className="mx-auto flex w-full max-w-[840px] items-center gap-2 px-4 pb-1 text-xs text-muted md:px-8" role="status">
+          <Pause size={13} className="shrink-0 text-warn" />
+          <span className="min-w-0 flex-1">{dmNode.name} is paused. Your next message wakes it.</span>
+          <button type="button" className="shrink-0 rounded-lg px-2 py-1 text-accent hover:bg-raised" onClick={() => void resume()}>
+            Resume
+          </button>
+        </div>
+      ) : null}
       {!atBottom ? (
         <button
           type="button"

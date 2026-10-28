@@ -161,8 +161,9 @@ try {
     await openChats();
     await chats().locator('[data-conversation="dm"]').click();
     await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
+    assert.equal(await page.locator("header").getByRole("button", { name: /^Scout's model:/ }).count(), 0, "a DM header shows no model");
     await page.getByRole("button", { name: "Scout", exact: true }).click();
-    const details = page.getByRole("dialog", { name: "Direct chat", exact: true });
+    const details = page.getByRole("dialog", { name: "Node settings", exact: true });
     await details.getByRole("button", { name: /^Chat model:/ }).click();
     await page.getByRole("listbox", { name: "Chat model", exact: true }).waitFor();
     assert.ok(await page.getByRole("listbox").locator('[data-model-brand="claude"]').count(), "the picker uses real model marks too");
@@ -195,18 +196,20 @@ try {
       await page.setViewportSize({ width, height: 844 });
     }
     await page.goto(`${WEB}/n/scout`);
-    const appearance = page.getByRole("group", { name: "Appearance", exact: true });
+    const settings = page.getByRole("dialog", { name: "Node settings", exact: true });
+    const appearance = settings.getByRole("group", { name: "Appearance", exact: true });
     await appearance.getByRole("button", { name: "hex", exact: true }).click();
     await appearance.getByRole("button", { name: "line eyes", exact: true }).click();
     await appearance.getByRole("button", { name: "#B39DDB", exact: true }).click();
-    const preview = page.locator("main svg[data-node-avatar]").first();
+    const preview = settings.locator("svg[data-node-avatar]").first();
     assert.equal(await preview.locator(".node-eyes rect").count(), 2);
     assert.equal(await preview.locator("stop").nth(1).getAttribute("stop-color"), "#B39DDB");
-    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await settings.getByRole("button", { name: "Save", exact: true }).click();
     await page.getByText("Saved.", { exact: true }).waitFor();
     assert.deepEqual(state.boot.nodes[0].avatar, { shape: "hex", eyes: "line", color: "#B39DDB" });
     await page.reload();
-    await page.getByRole("group", { name: "Appearance", exact: true }).waitFor();
+    await page.getByRole("button", { name: "Scout's settings", exact: true }).click();
+    await appearance.waitFor();
     assert.equal(await appearance.getByRole("button", { name: "hex", exact: true }).getAttribute("aria-pressed"), "true");
     assert.equal(await appearance.getByRole("button", { name: "line eyes", exact: true }).getAttribute("aria-pressed"), "true");
     await fits();

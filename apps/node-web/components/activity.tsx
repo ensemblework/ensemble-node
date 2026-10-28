@@ -95,8 +95,8 @@ export function ActivityPanel() {
       <section className="space-y-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Computers</h3>
         <ComputerList computers={computers} />
-        <Link href="/computers" className="text-sm text-accent hover:underline">
-          {computers.length ? "Computers & Needs me" : "Connect one"}
+        <Link href="/settings#computers" className="text-sm text-accent hover:underline">
+          {computers.length ? "Computers" : "Connect one"}
         </Link>
       </section>
 

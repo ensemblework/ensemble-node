@@ -151,7 +151,8 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
             {AVATAR_COLORS.map((color) => (
               <button key={color} type="button" onClick={() => setAvatar({ ...avatar, color })} className={`h-7 w-7 rounded-full ${avatar.color === color ? "ring-2 ring-accent ring-offset-2 ring-offset-bg" : ""}`} style={{ background: color }} aria-label={color} aria-pressed={avatar.color === color} />
             ))}
-            <span className="mx-1 h-6 w-px bg-line" />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {(["dot", "line", "wide"] as const).map((eyes) => (
               <button key={eyes} type="button" onClick={() => setAvatar({ ...avatar, eyes })} className={`rounded-xl p-1 ${avatar.eyes === eyes ? "ring-2 ring-accent" : "hover:bg-raised"}`} aria-label={`${eyes} eyes`} aria-pressed={avatar.eyes === eyes}>
                 <NodeAvatar avatar={{ ...avatar, eyes }} size={26} />

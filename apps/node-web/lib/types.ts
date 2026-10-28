@@ -24,7 +24,12 @@ export type NodeMember = { id: string; kind: "node"; handle: string; accountId: 
 export type PersonMember = { id: string; kind: "person"; handle: string; accountId: string; role: string; name: string; responsibility: string | null; me: boolean };
 export type Member = NodeMember | PersonMember;
 
-export type MessageKind = "text" | "approval" | "run" | "status" | "error";
+/** plan: a lead's plan for its crew, with its steps; cards of the steps carry its id in `planId`. */
+export type MessageKind = "text" | "approval" | "run" | "status" | "error" | "plan";
+
+export type PlanStepStatus = "waiting" | "working" | "done" | "blocked" | "skipped" | "stopped";
+export type PlanStep = { id: string; nodeId: string; handle: string; name: string; brief: string; after: string[]; status: PlanStepStatus; result: string | null; progress: string | null; startedAt: string | null; endedAt: string | null };
+export type PlanData = { type: "plan"; leadNodeId: string; leadHandle: string; status: "draft" | "running" | "reporting" | "done" | "stopped"; steps: PlanStep[] };
 
 /** `refs`: the records the call's result names (Ensemble's AssistantRef): ids for links, titles to show. */
 export type ToolChip = { id: string; name: string; state?: string; summary: string | null; href: string | null; refs?: EntityRef[] };
@@ -54,6 +59,8 @@ export type Message = {
   mentions: Array<{ kind: "human" | "node"; id: string }>;
   rootMessageId: string | null;
   clientId: string | null;
+  /** A card shown inside this plan's card, not in the timeline. */
+  planId?: string | null;
   createdAt: string;
   /** Set while a message this tab sent is on its way. */
   sending?: boolean;

@@ -1,8 +1,6 @@
 "use client";
 
 import { Crown } from "lucide-react";
-import { useBootstrap } from "@/lib/hooks";
-import { modelName, shortModelName } from "@/lib/models";
 import type { NodeFull } from "@/lib/types";
 import { NodeAvatar } from "./node-avatar";
 
@@ -29,9 +27,6 @@ export function NodePicker({
   label: string;
   leadHint?: string;
 }) {
-  const boot = useBootstrap();
-  const options = boot.data?.models.options ?? [];
-  const fallback = boot.data?.models.default ?? "gpt-5-mini";
   const full = selected.size >= max;
   if (!nodes.length) return <p className="text-sm text-muted">You have no nodes yet.</p>;
   return (
@@ -60,7 +55,7 @@ export function NodePicker({
                   {node.name} <span className="font-mono text-xs font-normal text-muted">@{node.slug}</span>
                 </span>
                 <span className="block truncate text-xs text-muted">
-                  {node.role} · {shortModelName(modelName(options, node.provider, node.model, fallback))}
+                  {node.role}
                   {node.status === "paused" ? " · paused" : ""}
                 </span>
               </span>

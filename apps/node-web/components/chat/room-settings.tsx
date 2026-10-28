@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,8 +9,8 @@ import { keys, limitsOf, putRoom } from "@/lib/hooks";
 import { ago } from "@/lib/text";
 import { toast } from "@/lib/toast";
 import type { Bootstrap, Member, NodeFull, Room, RoomInvite } from "@/lib/types";
-import { ModelPicker } from "../model-picker";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
+import { NodeSettings } from "../node-settings";
 import { Button, Drawer, Field, Input, Notice, Pill } from "../ui";
 
 type NodeMember = Extract<Member, { kind: "node" }>;
@@ -222,36 +221,11 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
   );
 
   if (room.kind === "dm") {
+    // A direct chat's settings are its node's: one place for all of them.
     const node = boot.nodes.find((row) => row.id === nodeMembers[0]?.node.id);
     return (
-      <Drawer open={open} onClose={onClose} title="Direct chat">
-        <div className="space-y-6">
-          {node ? (
-            <>
-              <div className="flex items-center gap-3">
-                <NodeAvatar node={node} size={48} dim={node.status === "paused"} />
-                <div>
-                  <div className="font-semibold">{node.name}</div>
-                  <div className="text-sm text-muted">
-                    @{node.slug} · {node.role}
-                    {node.status === "paused" ? " · paused" : ""}
-                  </div>
-                </div>
-              </div>
-              <Field label="Chat model" group>
-                <ModelPicker
-                  value={{ provider: node.provider, model: node.model }}
-                  onChange={(next) => act("model", () => api(`/api/node/nodes/${node.id}`, { method: "PATCH", body: { provider: next.provider, model: next.model } }), "Model saved.").then(() => undefined)}
-                />
-              </Field>
-              <Link href={`/n/${node.id}`} onClick={onClose} className="inline-flex text-sm text-accent hover:underline">
-                Name, look, charter, memory and more
-              </Link>
-            </>
-          ) : null}
-          {error ? <Notice tone="error">{error}</Notice> : null}
-          {footer}
-        </div>
+      <Drawer open={open} onClose={onClose} title="Node settings">
+        {node ? <NodeSettings key={node.id} node={node} onExport={onExport} /> : <Notice tone="error">This node is not available.</Notice>}
       </Drawer>
     );
   }

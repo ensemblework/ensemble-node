@@ -26,7 +26,7 @@ Rules that do not bend:
         ├─ /api/node/*            Node module: nodes, rooms, messages, approvals, runs, SSE   (hub-api src/node)
         │     └─ node turn  ──►  runAssistantTurn (assistant/agent.ts): every Hub tool + node tools
         │                          ├─ Hub writes (tasks, pages, projects…) ── owner's write policy
-        │                          └─ hub_assign_to_agent ── always held ── WorkspaceJob
+        │                          └─ node_session_* ── the owner's coding agent ── WorkspaceJob on their computer
         ├─ /api/bridge/node       read-only overview for the CLI's Node tab
         └─ included AI (Azure AI Foundry; nodes default to gpt-5-mini) ── 20,000 credits / account / month
                                      ▲
@@ -42,7 +42,7 @@ The first plan ([design/pre-v0](design/pre-v0/)) had its own API, database and a
 | Sign-in | New OAuth server in Ensemble, token exchange, second session | Same session cookie; Node is just another allowed origin |
 | Credits | New "model turn" relay with metering | Already metered per account; Node's calls are ordinary included calls |
 | Tools | Re‑expose ~100 assistant tools over HTTP | Call `runAssistantTurn` with the node's persona |
-| Assign to agent | New job API, webhooks back to Node | Same `hub_assign_to_agent`; watch `WorkspaceJob` rows |
+| Assign to agent | New job API, webhooks back to Node | Ensemble's own planning and `createJob` behind the node's session tools; watch `WorkspaceJob` rows |
 | Ops | Second API service, database, backups | Nothing new in the API; one env var |
 | Cost | Separate small model calls through a relay | Same included models, same budget |
 
@@ -55,7 +55,7 @@ The cost is coupling: Node's backend ships with Ensemble's releases and must fol
 | Accounts, sessions, OAuth, email verification, Turnstile | Sign-in and sign-up on Node call the same routes. `?return=node` brings a provider sign-in back to Node. |
 | Session cookie on `ensemblework.com` + CORS allowlist | `ENSEMBLE_NODE_WEB_ORIGIN` joins the allowlist (production refuses it unless it is https and shares the cookie domain). |
 | Assistant loop (`runAssistantTurn`), tools, playbooks/skills, write policy, Apply, undo, ledger | A node turn is an assistant turn in the owner's space with `agentPersona`, `extraTools` and `purpose: "Ensemble Node"`. Held calls are applied through `POST /api/assistant/apply`. |
-| `hub_assign_to_agent`, run profiles, `WorkspaceJob`, device protocol, sandbox, Needs me | Computer work is exactly an Ensemble assignment. Node only adds the run card and the report afterwards. |
+| Run profiles, agent sessions, `WorkspaceJob`, device protocol, sandbox, Needs me | Computer work is an Ensemble job in an agent session. Node adds which node owns a session, queue/steer/replace/stop, the run card and the report afterwards. |
 | Included AI and credits (`includedUsage`, `assertIncludedOpen`) | Node turns and room routing are included calls on the owner's/author's account. One allowance across all three apps. |
 | Account export and deletion (generic over `userId`) | Every Node table has `user_id`, so export and erasure cover it. |
 | Sharing policy classes | `/api/node/*` is `personal`: it acts for the signed-in account whichever space is open. |
@@ -102,11 +102,13 @@ Mira writes "Plan the login page and hand out the work" in the crew. The lead (`
 
 ### 4.6 Work on a computer
 
-`hub_assign_to_agent` always waits. When Mira approves, Ensemble's Apply creates the `WorkspaceJob` for her run profile and computer. Node records a `node_runs` row and posts a run card, owner‑only in shared rooms. Every 15 s the watcher mirrors status, progress and summary onto the card. When the job ends, the node gets a turn with the result and reports to whoever asked. The card shows the run's work log from Ensemble's engine trace, and the person whose computer runs it can stop it there. Questions the run asks (permissions, choices) are Ensemble's Needs me cards: they are answered on the run card itself, on Node's Computers & Needs me page, or in Ensemble (the Hub, the CLI's Tasks tab or the phone); the first answer counts.
+Mira tells her Assistant "fix the login redirect in ensemble". The node is the controller; the coding is done by Mira's own agent on her laptop and her own subscription. The node reads its sessions (`node_sessions`), sees none on that work and calls `node_session_start`: her run profile's agent (Claude Code) in the laptop's shared `ensemble` folder. The run's record is an internal task that stays off her board. Node records a `node_runs` row (the session, the prompt) and posts a run card. "Then add tests" goes to the same session, queued (`node_session_send`, `queue`); "use the new API instead" steers the run going on (`steer`: it is interrupted and goes on with only the change, in the same conversation); "stop that and do the PDF export" replaces it; "stop" stops it. Another of Mira's nodes never sees that session.
+
+Every 15 s the watcher mirrors status, progress and summary onto the card. When the job ends, the node gets a turn with the result (and what is still queued) and reports to whoever asked. The card shows the run's work log from Ensemble's engine trace, and Mira can stop it there. Questions the run asks (permissions, choices) are Ensemble's Needs me cards: they are answered on the run card itself, on Node's Needs me page, or in Ensemble (the Hub, the CLI or the phone); the first answer counts. With the node set to **Ask me first**, or when someone else in a room asks, the work waits for Mira's card. Ensemble's backend guide has the details ([docs/35 §8](https://github.com/ensemblework/ensemble/blob/main/docs/35_ENSEMBLE_NODE.md#8-work-on-a-computer)).
 
 ### 4.7 The CLI's Node tab
 
-`ensemble` → Tab to **Node**. It shows nodes (working or idle), rooms with unread counts and their newest line, approvals waiting, requests to join, the computer runs nodes started, and the credits left. It is read‑only; typing there points to the website.
+`ensemble` → Tab to **Node**. It shows nodes (working or idle), rooms with unread counts and their newest line, approvals waiting (with the node and conversation), requests to join, the computer runs nodes started, and the credits left. It is read‑only; typing there points to the website. `ensemble needs` lists the same approvals after the computer's own questions.
 
 ### 4.8 Chat tools
 
@@ -114,7 +116,7 @@ Every conversation has search (`GET /api/node/search?q&roomId&author`; ⌘K sear
 
 ### 4.9 Ensemble from Node
 
-**Computers & Needs me** lists the paired computers (revoked ones left out) with the folders each shares, and what waits in Ensemble's Needs me. Run approvals take Approve or Reject. A permission takes Allow once (`scope: "once"`) or Deny; a run that is not on a paired computer also takes Allow for this run (`scope: "session"`), except a push. A run's question takes one of its options, or the person's own words when it allows them, sent as `reason`; Skip denies it and the agent chooses. A risky allow asks the person to confirm and then sends `confirmed: true`. Ones only that computer may approve take Deny here. An editor's own multiple-choice questions and ones someone else must answer link to Ensemble's Needs me instead. The rules are in `lib/decisions.ts`; the run card and this page share `components/decision-answer.tsx`. **Connections** lists what the account has connected in Ensemble and what it can connect; Connect and Manage open Ensemble's connections settings in a new tab.
+**Needs me** is the same list as Ensemble's (the Hub shows the nodes' cards too, under *From your nodes*): questions from agents, the nodes' approval cards (approved or discarded in place, or opened in their conversation), run approvals and board tasks waiting for you (`GET /api/node/activity`'s `waitingTasks`, opened in Ensemble). **Settings → Computers** lists the paired computers (revoked ones left out) with the folders each shares. Run approvals take Approve or Reject. A permission takes Allow once (`scope: "once"`) or Deny; a run that is not on a paired computer also takes Allow for this run (`scope: "session"`), except a push. A run's question takes one of its options, or the person's own words when it allows them, sent as `reason`; Skip denies it and the agent chooses. A risky allow asks the person to confirm and then sends `confirmed: true`. Ones only that computer may approve take Deny here. An editor's own multiple-choice questions and ones someone else must answer link to Ensemble's Needs me instead. The rules are in `lib/decisions.ts`; the run card and this page share `components/decision-answer.tsx`. **Connections** lists what the account has connected in Ensemble and what it can connect; Connect and Manage open Ensemble's connections settings in a new tab.
 
 ### 4.10 Files on messages
 
@@ -122,7 +124,7 @@ Mira drops a PDF and a screenshot on her Assistant's DM composer. Each uploads t
 
 ## 5. Models and credits
 
-- Chat model: any model the owner can use, chosen per node with one picker (new node, new nodes in a crew, the node page, and the DM header's model menu). Groups: **Included with Ensemble** (Everyday and Step-up, with name, version and relative credits as on the Hub; Ensemble's own list, `ENSEMBLE_INCLUDED_MODELS`), **Your API keys** (Ensemble's model catalog for the account's keys) and **Your AI plans on ‹computer›** (Claude Code, Codex, Cursor or Copilot on a paired computer, which runs the turn there). The bootstrap carries only the included models; the picker asks `GET /api/node/models` for the rest when it opens. Saving is `PATCH /api/node/nodes/:id {provider, model}` (`model: null` is the default). Default: **gpt‑5‑mini**, else the first everyday model. When included AI is off (local dev), the owner's own medium tier is used.
+- Chat model: any model the owner can use, chosen per node with one picker (new node, new nodes in a crew, and the node's settings, the only place an existing node's model shows). Groups: **Included with Ensemble** (Everyday and Step-up, with name, version and relative credits as on the Hub; Ensemble's own list, `ENSEMBLE_INCLUDED_MODELS`), **Your API keys** (Ensemble's model catalog for the account's keys) and **Your AI plans on ‹computer›** (Claude Code, Codex, Cursor or Copilot on a paired computer, which runs the turn there). The bootstrap carries only the included models; the picker asks `GET /api/node/models` for the rest when it opens. Saving is `PATCH /api/node/nodes/:id {provider, model}` (`model: null` is the default). Default: **gpt‑5‑mini**, else the first everyday model. When included AI is off (local dev), the owner's own medium tier is used.
 - Every account gets **20,000 credits per UTC month** (`ENSEMBLE_INCLUDED_MONTHLY_CREDITS`, default 20000), shared by every Ensemble app: the Hub, the desktop app, the CLI and Node. The operator's global ceiling (`ENSEMBLE_INCLUDED_TOTAL_MONTHLY_USD`) protects the overall budget.
 - Metrics show Node's spend as purposes `Ensemble Node` and `Ensemble Node routing`.
 - Work on the computer uses the run profile's engine on the person's own sign‑in (Claude Code, Codex, Cursor) or Ensemble's agent. It is not a Node chat cost.

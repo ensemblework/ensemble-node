@@ -17,6 +17,7 @@ import { Button, External, Pill, Textarea } from "../ui";
 import { MessageFiles } from "./file-chips";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
+import { PlanCard } from "./plan-card";
 
 export type MessageContext = {
   meId: string;
@@ -34,6 +35,8 @@ export type MessageContext = {
   /** A message that was not sent: send it again as it was, or put it back in the composer. */
   onRetry: (message: Message) => void;
   onEdit: (message: Message) => void;
+  /** Cards of plan steps, by plan: shown inside the plan card. */
+  inPlan: Map<string, Message[]>;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -487,6 +490,8 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
             <ApprovalCard message={message} ctx={ctx} node={node} />
           ) : message.kind === "run" ? (
             <RunCard message={message} ctx={ctx} node={node} />
+          ) : message.kind === "plan" ? (
+            <PlanCard message={message} ctx={ctx} />
           ) : message.kind === "error" ? (
             <div className="flex items-start gap-2 rounded-2xl border border-danger/30 bg-danger/5 px-3 py-2 text-sm">
               <AlertTriangle size={16} className="mt-0.5 shrink-0 text-danger" />

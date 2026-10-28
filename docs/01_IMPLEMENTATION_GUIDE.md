@@ -88,7 +88,7 @@ The cost is coupling: Node's backend ships with Ensemble's releases and must fol
 
 Mira makes the crew "Software team" on New → Crew. The suggestion fills in a manager, a feature engineer, a tester and a docs writer as new nodes; she renames one, drops the docs writer, ticks the Tester she already has, and keeps the manager as lead. The website creates each new node (`POST /api/node/nodes`, names unique per account; a clash shows next to that row), then the crew (`POST /api/node/crews {title, nodeIds, leadNodeId}`).
 
-Mira writes "Plan the login page and hand out the work" in the crew. The lead (`@manager`) plans in Ensemble, then calls `node_delegate {to: "builder", brief}` and `{to: "tester", brief}`. Each brief is a message that mentions the node, which wakes it. Workers do their part: Hub writes, or `hub_assign_to_agent` for work on Mira's laptop, which Mira approves. Workers finish by mentioning `@manager`, and the manager reports once. Brakes stop runaway chains: 8 node messages in a row, or 12 deep under one human message. In the crew's settings Mira adds any of her nodes, removes some, renames the crew and changes the lead.
+Mira writes "@manager coordinate this: @builder takes the login page, @tester tests it, @docs updates the docs" in the crew. In a crew one node answers her: the one she mentions alone, else the lead, so only `@manager` takes a turn (her mention resumes a paused node it names). The manager calls `node_delegate {to: "builder", brief}`, `{to: "tester", brief, after: ["builder"]}` and `{to: "docs", brief, after: ["tester"]}`; nothing is posted. When its turn ends its reply opens a **plan card** (`kind: "plan"`) and the builder's step starts. A step is a quiet turn of its node: it works (in Ensemble, or in one agent session on Mira's laptop, whose run card sits inside the plan card), and its reply is its report to the plan, never a chat message. The tester starts when the builder's step is done, with its report; then docs. When nothing is left, the manager gets every report at once and posts one summary. Mira sees her message, the plan card updating live, and the report. Nodes' messages in a crew wake nobody, so they never talk among themselves. Stop on the plan card (`POST /api/node/plans/:id/stop`) or the room's Stop ends it with its runs. Backend: [docs/35 §6.2](https://github.com/ensemblework/ensemble/blob/main/docs/35_ENSEMBLE_NODE.md#62-crew-plans). In the crew's settings Mira adds any of her nodes, removes some, renames the crew and changes the lead.
 
 ### 4.5 People and their nodes in one room
 
@@ -147,14 +147,14 @@ Mira drops a PDF and a screenshot on her Assistant's DM composer. Each uploads t
 - **Helpers:** no node tools and no writes; their room takes no messages from people; at most 4 working per node and 8 per account.
 - **Requests to join:** only a room's creator asks people, by the email of an existing Ensemble account. A room holds 10 people, counting open requests; a decline blocks asking the same person again for 30 days; people read only what is said after they join.
 - **Exactly once:** cards settle with a JSON‑guarded `pending → applying` update. Ensemble's Apply dedupes calls by id and locks them.
-- **Brakes:** node streak 8, depth 12, mention fan‑out 6 (people) / 3 (nodes), relevance picks ≤ 2, per‑node serial turns, `ENSEMBLE_NODE_PARALLEL` turns per process.
+- **Brakes:** one node answers a person in a crew, and nodes never wake each other there; elsewhere node streak 8, depth 12 (the brake line is posted once), mention fan‑out 6 (people) / 3 (nodes), relevance picks ≤ 2, per‑node serial turns, `ENSEMBLE_NODE_PARALLEL` turns per process. A plan holds 12 steps, and a step starts at most 4 agent runs. A turn the model's rate limit cuts off is retried quietly. A session's model is resolved by name on the computer, an unsupported thinking level is refused before a run starts, and a session is continued only on a computer running Ensemble 0.4.18 or later.
 
 ## 7. Phases
 
 | Phase | Scope |
 | --- | --- |
 | **v0 (done)** | Everything in [00](00_OVERVIEW.md#v0-19-oct-2026). |
-| v1 | Web push for approvals and finished runs (PWA service worker is in place). Invite links. Room ↔ Ensemble project binding (a room's default project and board). A plan card (manager's plan as live checklist). Node's own run profile (`run_profile_id`). Nodes working in a shared Ensemble space (`space_id`). |
+| v1 | Web push for approvals and finished runs (PWA service worker is in place). Invite links. Room ↔ Ensemble project binding (a room's default project and board). Node's own run profile (`run_profile_id`). Nodes working in a shared Ensemble space (`space_id`). |
 | v2 | Routines (schedules and Ensemble events) with "test now". Per‑node autonomy matrix (from design/pre-v0/11). Peer requests between people's nodes with expiry. Activity feed. |
 | v3 | Native iOS/Android shells. Voice notes. Browser broker on the paired computer. Guardian review model. Templates marketplace. |
 

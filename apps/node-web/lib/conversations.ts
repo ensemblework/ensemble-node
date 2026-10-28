@@ -16,6 +16,8 @@ export function recentConversations(rooms: readonly Room[], filter: Conversation
 
 /** Reactions and old message edits change their preview, never the conversation's position or count. */
 export function roomWithMessage(room: Room, message: Message, meId: string): Room {
+  // A plan step's card is shown inside its plan card: no preview, no unread.
+  if (message.planId) return room;
   const same = room.last?.id === message.id || Boolean(message.clientId && room.last?.clientId === message.clientId);
   const pending = Boolean(message.sending || message.failed);
   const newer = !pending && message.seq > room.lastSeq;

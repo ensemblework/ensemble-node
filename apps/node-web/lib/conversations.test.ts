@@ -35,6 +35,11 @@ test("new messages update the preview and unread once; reactions and earlier edi
   assert.equal(edited.unread, 1);
 });
 
+test("a plan step's card shows inside its plan card: no preview and no unread", () => {
+  const initial = room("a", "crew", "2026-10-25");
+  assert.equal(roomWithMessage(initial, { ...message("run", 11), kind: "run", planId: "plan-1" }, "me"), initial);
+});
+
 test("sending moves a chat immediately; confirmation replaces its pending preview without unread or duplicate ordering", () => {
   const initial = room("a", "dm", "2026-10-25");
   const local = optimisticMessage("a", "me", { body: "My draft", private: true, clientId: "c1" });

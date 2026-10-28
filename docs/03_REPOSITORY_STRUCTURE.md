@@ -21,7 +21,7 @@ ensemble-node/
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, sign out
 │   ├── components/
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
-│   │   │                        run card and its work log (run-card.tsx, work-log.tsx), composer, attachments
+│   │   │                        run card and its work log (run-card.tsx, work-log.tsx), plan card (plan-card.tsx), composer, attachments
 │   │   │                        (attachments.tsx: paperclip menu, Files picker, shelf, drop and paste; also on the
 │   │   │                        start page), files on a message (file-chips.tsx), rich text and code blocks
 │   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer

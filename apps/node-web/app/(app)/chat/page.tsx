@@ -12,7 +12,7 @@ import { recentConversations } from "@/lib/conversations";
 import { ago } from "@/lib/text";
 import { toastError } from "@/lib/toast";
 import { AttachButton, AttachmentShelf, DropHint, pasteFiles, useAttachments, useFileDrop } from "@/components/chat/attachments";
-import { dmRoomOf, shortModel } from "@/components/shell";
+import { dmRoomOf } from "@/components/shell";
 import { NodeAvatar } from "@/components/node-avatar";
 import { Spinner } from "@/components/ui";
 
@@ -119,7 +119,7 @@ export default function Home() {
         ) : null}
 
         {waiting ? (
-          <Link href="/activity" className="mx-auto flex max-w-2xl items-center gap-3 rounded-2xl border border-warn/40 bg-warn/5 px-4 py-3 text-sm hover:border-warn/70">
+          <Link href="/needs-me" className="mx-auto flex max-w-2xl items-center gap-3 rounded-2xl border border-warn/40 bg-warn/5 px-4 py-3 text-sm hover:border-warn/70">
             <ShieldQuestion className="text-warn" size={18} />
             {waiting} thing{waiting === 1 ? "" : "s"} waiting for your approval
           </Link>
@@ -136,9 +136,7 @@ export default function Home() {
                   <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{node.name}</span>
                   <span className="mt-0.5 block truncate text-xs text-muted">{node.status === "paused" ? "Paused" : busy.has(node.id) ? "Working…" : node.role}</span>
-                  <span className="mt-1 block truncate text-[11px] text-muted" title="Chat model">
-                    {shortModel(boot.data, node)}
-                  </span>
+                  <span className="mt-1 block truncate font-mono text-[11px] text-muted">@{node.slug}</span>
                   </span>
                 </Link>
               );

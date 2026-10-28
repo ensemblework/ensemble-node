@@ -3,17 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Inbox, Laptop, LogOut, Plug, Search } from "lucide-react";
+import { ChevronRight, Inbox, LogOut, Plug, Search, ShieldQuestion } from "lucide-react";
 import { api } from "@/lib/api";
 import { ENSEMBLE_LINKS } from "@/lib/config";
-import { useBootstrap } from "@/lib/hooks";
-import { ComputerList } from "@/components/connect-computer";
+import { liveDevices } from "@/lib/ensemble";
+import { useBootstrap, useDevices } from "@/lib/hooks";
+import { ComputerList, DeviceList, PairComputer } from "@/components/connect-computer";
 import { CreditsMeter } from "@/components/credits";
 import { PersonAvatar } from "@/components/node-avatar";
 import { Button, External, InfoTip, Spinner } from "@/components/ui";
 
 export default function SettingsPage() {
   const boot = useBootstrap();
+  const devices = useDevices();
   const client = useQueryClient();
   const router = useRouter();
   if (!boot.data) {
@@ -29,8 +31,9 @@ export default function SettingsPage() {
     client.clear();
     router.replace("/login");
   };
-  const places: Array<[string, string, typeof Laptop, string]> = [
-    ["/computers", "Computers & Needs me", Laptop, "Paired computers, their shared folders, and what waits for your answer"],
+  const list = liveDevices(devices.data ?? []);
+  const places: Array<[string, string, typeof Plug, string]> = [
+    ["/needs-me", "Needs me", ShieldQuestion, "What your nodes and agents ask you, the same list as in Ensemble"],
     ["/connections", "Connections", Plug, "The apps your nodes can read, the same as in Ensemble"],
     ["/requests", "Requests to join", Inbox, "Rooms other people asked you to join"],
     ["/search", "Search", Search, "Every conversation you are in"],
@@ -77,19 +80,21 @@ export default function SettingsPage() {
           ))}
         </nav>
 
-        <section id="computers" className="space-y-3">
-          <h2 className="font-semibold">Computers</h2>
-          <ComputerList computers={computers} />
-          <p className="text-sm text-muted">
-            Pairing happens in Ensemble.{" "}
-            <External href={ENSEMBLE_LINKS.pairComputer} icon className="text-accent hover:underline">
-              Connect a computer in Ensemble
-            </External>{" "}
-            ·{" "}
-            <External href={ENSEMBLE_LINKS.download} icon className="text-accent hover:underline">
-              Download Ensemble
-            </External>
-          </p>
+        <section id="computers" className="scroll-mt-6 space-y-3">
+          <div>
+            <h2 className="font-semibold">Computers</h2>
+            <p className="mt-1 text-sm text-muted">Your nodes run your own coding agents (Claude Code, Codex, GitHub Copilot and the rest) on these computers, with your own subscriptions, inside the folders each one shares. Nothing runs on Ensemble&apos;s servers.</p>
+          </div>
+          {devices.isLoading ? (
+            <div className="flex justify-center py-4 text-muted">
+              <Spinner />
+            </div>
+          ) : devices.error ? (
+            <ComputerList computers={computers} />
+          ) : (
+            <DeviceList devices={list} />
+          )}
+          <PairComputer paired={list.length > 0 || computers.length > 0} />
         </section>
 
         <section className="space-y-2 rounded-2xl border border-line bg-panel p-5 text-sm">

@@ -38,6 +38,14 @@ const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "accent" | "muted"> = 
   queued: "muted",
 };
 
+/** A run its node took over with a newer call in the same session (Ensemble's node/sessions.ts). */
+const QUIET: Record<string, { label: string; note: string }> = {
+  steered: { label: "Updated", note: "You changed this work: it goes on with your update in the run below." },
+  replaced: { label: "Replaced", note: "Replaced by newer work in the same session." },
+  stopped: { label: "Stopped", note: "Stopped. What it changed so far stays." },
+  paused: { label: "Stopped", note: "Stopped when you paused the node. What it changed so far stays." },
+};
+
 /** True while the element is on screen (or near it). */
 function useOnScreen(ref: React.RefObject<HTMLElement | null>): boolean {
   const [visible, setVisible] = useState(false);
@@ -179,7 +187,10 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
   const facts = detail ? runFacts(detail) : [];
   const took = ended ? elapsedSeconds(detail?.startedAt, detail?.finishedAt) : null;
   const toolCalls = detail?.toolCalls ?? 0;
-  const canStop = !ended && status !== "stopping" && node?.ownerId === ctx.meId && detail?.yours !== false;
+  const quiet = typeof data.quiet === "string" ? QUIET[data.quiet] : undefined;
+  const canStop = !ended && status !== "stopping" && !quiet && node?.ownerId === ctx.meId && detail?.yours !== false;
+  const pill = quiet && (ended || status === "stopping") ? { label: quiet.label, tone: "muted" as const } : { label: RUN_LABEL[status] ?? status, tone: RUN_TONE[status] ?? "muted" };
+  const queuedNote = status === "queued" && data.delivery === "queue" ? "Queued in the session: it starts when the run before it ends." : null;
   const waiting = status === "waiting_approval";
 
   const stopRun = () => {
@@ -195,7 +206,7 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
             <p className="min-w-0 break-words text-sm font-medium">{message.body}</p>
             <div className="flex shrink-0 items-center gap-1.5">
-              <Pill tone={RUN_TONE[status] ?? "muted"}>{RUN_LABEL[status] ?? status}</Pill>
+              <Pill tone={pill.tone}>{pill.label}</Pill>
               {canStop ? (
                 <button
                   type="button"
@@ -233,7 +244,9 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
         </div>
       </div>
 
-      {progress && !ended && !asks.length && !runApprovals.length ? (
+      {quiet ? <p className="mt-2 text-[13px] text-muted">{quiet.note}</p> : queuedNote ? <p className="mt-2 text-[13px] text-muted">{queuedNote}</p> : null}
+
+      {progress && !ended && !quiet && !queuedNote && !asks.length && !runApprovals.length ? (
         <p className={`mt-2 truncate text-[13px] ${status === "running" || status === "claimed" ? "live-shine" : "text-muted"}`} title={progress} aria-live="polite">
           {progress}
         </p>

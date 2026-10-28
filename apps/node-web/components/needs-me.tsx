@@ -1,16 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { ShieldQuestion } from "lucide-react";
+import { Check, CircleSlash, ShieldQuestion } from "lucide-react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { previewText, SOURCE_LABEL } from "@/lib/ensemble";
-import { nodesById, useActivity, useApprovals, useBootstrap, useDecisions } from "@/lib/hooks";
+import { nodesById, useActivity, useApprovals, useBootstrap, useDecisions, useSettle } from "@/lib/hooks";
 import { requestJump } from "@/lib/jump";
 import { ago } from "@/lib/text";
-import type { AgentDecision, ApprovalRecord } from "@/lib/types";
+import type { AgentDecision, ApprovalRecord, Message, NodePublic } from "@/lib/types";
 import { ApprovalActions, DecisionActions } from "./decision-answer";
 import { NodeAvatar } from "./node-avatar";
-import { External, Notice, Pill, Spinner } from "./ui";
+import { Button, External, Notice, Pill, Spinner } from "./ui";
 
 function Card({ children, tone = "warn" }: { children: React.ReactNode; tone?: "warn" | "line" }) {
   return <li className={`rounded-2xl border p-4 ${tone === "warn" ? "border-warn/30 bg-warn/5" : "border-line bg-panel"}`}>{children}</li>;
@@ -61,7 +61,53 @@ function DecisionItem({ decision }: { decision: AgentDecision }) {
   );
 }
 
-/** What waits for me in Ensemble's Needs me, plus my nodes' approval cards, answerable here. */
+const WANTS: Record<string, string> = { post: "wants to post for you", session: "wants to start work on your computer", tools: "wants to act for you" };
+
+/** One of my nodes' approval cards: answered right here, or opened in its conversation. */
+function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePublic; roomTitle: string }) {
+  const settle = useSettle();
+  const type = typeof card.data.type === "string" ? card.data.type : "tools";
+  const error = settle.error?.message ?? (typeof card.data.error === "string" ? card.data.error : null);
+  return (
+    <Card>
+      <div className="flex gap-3">
+        <NodeAvatar node={node} size={30} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-medium">
+              @{node?.slug ?? "node"} {WANTS[type] ?? WANTS.tools}
+            </span>
+            <span className="text-xs text-muted">{ago(card.createdAt)}</span>
+          </div>
+          <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{card.body}</p>
+          {error ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {type === "post" ? null : (
+              <Button size="sm" busy={settle.isPending && settle.variables?.decision === "approve"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "approve" })}>
+                <Check size={14} /> {type === "session" ? "Start it" : "Approve"}
+              </Button>
+            )}
+            {type === "post" ? null : (
+              <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "discard" })}>
+                <CircleSlash size={14} /> Discard
+              </Button>
+            )}
+            <Link href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="text-xs text-accent hover:underline">
+              {type === "post" ? "Review the draft" : "Open in"} “{roomTitle}”
+            </Link>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+const TASK_STATUS: Record<string, string> = { blocked: "Blocked", waiting_approval: "Awaiting approval" };
+
+/**
+ * Needs me, the same list as Ensemble's (the Hub and the CLI show it too): agents' questions, my
+ * nodes' requests, run approvals and board tasks waiting on me. Everything is answerable here.
+ */
 export function NeedsMe() {
   const boot = useBootstrap();
   const activity = useActivity();
@@ -70,48 +116,15 @@ export function NeedsMe() {
   const nodes = nodesById(boot.data);
   const rooms = new Map((boot.data?.rooms ?? []).map((room) => [room.id, room]));
   const cards = activity.data?.approvals ?? [];
-  const loading = approvals.isLoading || decisions.isLoading;
-  const empty = !loading && !cards.length && !(approvals.data ?? []).length && !(decisions.data ?? []).length;
+  const tasks = activity.data?.waitingTasks ?? [];
+  const loading = approvals.isLoading || decisions.isLoading || activity.isLoading;
+  const empty = !loading && !cards.length && !tasks.length && !(approvals.data ?? []).length && !(decisions.data ?? []).length;
   return (
     <div className="space-y-6">
-      {cards.length ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">From your nodes ({cards.length})</h3>
-          <ul className="space-y-2">
-            {cards.map((card) => {
-              const node = card.authorNodeId ? nodes.get(card.authorNodeId) : undefined;
-              return (
-                <li key={card.id}>
-                  <Link href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="flex gap-3 rounded-2xl border border-warn/30 bg-warn/5 p-3 text-sm hover:border-warn/60">
-                    <NodeAvatar node={node} size={28} />
-                    <span className="min-w-0">
-                      <span className="block font-medium">{card.data.type === "post" ? `@${node?.slug ?? "node"} wants to post for you` : `@${node?.slug ?? "node"} wants to act for you`}</span>
-                      <span className="line-clamp-2 text-muted">{card.body}</span>
-                      <span className="text-xs text-muted">in {rooms.get(card.roomId)?.title ?? "a conversation"} · answer it there</span>
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ) : null}
-
       {loading ? (
         <div className="flex justify-center py-6 text-muted">
           <Spinner />
         </div>
-      ) : null}
-      {approvals.error ? <Notice tone="error">Run approvals: {approvals.error.message}</Notice> : null}
-      {(approvals.data ?? []).length ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Run approvals ({approvals.data!.length})</h3>
-          <ul className="space-y-2">
-            {approvals.data!.map((row) => (
-              <ApprovalItem key={row.id} approval={row} />
-            ))}
-          </ul>
-        </section>
       ) : null}
       {decisions.error ? <Notice tone="error">Questions from agents: {decisions.error.message}</Notice> : null}
       {(decisions.data ?? []).length ? (
@@ -124,9 +137,50 @@ export function NeedsMe() {
           </ul>
         </section>
       ) : null}
+
+      {cards.length ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">From your nodes ({cards.length})</h3>
+          <ul className="space-y-2">
+            {cards.map((card) => (
+              <NodeCardItem key={card.id} card={card} node={card.authorNodeId ? nodes.get(card.authorNodeId) : undefined} roomTitle={rooms.get(card.roomId)?.title ?? "the conversation"} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {approvals.error ? <Notice tone="error">Run approvals: {approvals.error.message}</Notice> : null}
+      {(approvals.data ?? []).length ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Run approvals ({approvals.data!.length})</h3>
+          <ul className="space-y-2">
+            {approvals.data!.map((row) => (
+              <ApprovalItem key={row.id} approval={row} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {tasks.length ? (
+        <section className="space-y-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Waiting tasks ({tasks.length})</h3>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {tasks.map((task) => (
+              <li key={task.id}>
+                <External href={ENSEMBLE_LINKS.task(task.id)} className="flex h-full flex-col gap-1 rounded-2xl border border-line bg-panel p-3 text-sm hover:border-warn/50">
+                  <Pill tone="warn">{TASK_STATUS[task.status] ?? task.status}</Pill>
+                  <span className="font-medium">{task.title}</span>
+                  <span className="text-xs text-muted">{ago(task.updatedAt)} · open in Ensemble</span>
+                </External>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {empty ? (
         <div className="flex items-center gap-3 rounded-2xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-          <ShieldQuestion size={20} className="shrink-0" /> Nothing needs you right now. Questions from runs on your computers show up here, in Ensemble and on your phone.
+          <ShieldQuestion size={20} className="shrink-0" /> All caught up. What your nodes and the agents on your computers ask you shows up here, in Ensemble and in the CLI.
         </div>
       ) : null}
     </div>

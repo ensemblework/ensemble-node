@@ -10,7 +10,8 @@ export type NodeFull = NodePublic & {
   provider: string | null;
   model: string | null;
   runProfileId: string | null;
-  autonomy: { sharedRooms?: "ask" | "auto"; computerFiles?: boolean };
+  /** computerWork "ask": starting work on the owner's computer waits for an approval card (default: on its own). */
+  autonomy: { sharedRooms?: "ask" | "auto"; computerFiles?: boolean; computerWork?: "auto" | "ask" };
   templateId: string | null;
   createdAt: string;
 };
@@ -151,7 +152,10 @@ export type Run = {
 
 export type Turn = { id: string; nodeId: string; roomId: string | null; reason: string; status: string; model: string | null; credits: number | null; error: string | null; private: boolean; createdAt: string; finishedAt: string | null };
 
-export type Activity = { approvals: Message[]; runs: Run[]; turns: Turn[]; computers: Computer[]; credits: Credits };
+/** A board task blocked or waiting for an approval: Ensemble's Needs me lists the same. */
+export type WaitingTask = { id: string; title: string; status: "blocked" | "waiting_approval"; updatedAt: string };
+
+export type Activity = { approvals: Message[]; runs: Run[]; turns: Turn[]; computers: Computer[]; credits: Credits; waitingTasks?: WaitingTask[] };
 
 export type AuthStatus = {
   providers: Array<"google" | "github" | "microsoft">;

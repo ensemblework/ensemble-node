@@ -3,13 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity as ActivityIcon, Inbox, Laptop, Lock, Menu, MessageCircle, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plug, Search, Settings, SquarePen, Users } from "lucide-react";
+import { Activity as ActivityIcon, Inbox, Lock, Menu, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plug, Search, Settings, ShieldQuestion, SquarePen, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { requestJump } from "@/lib/jump";
 import { useBusyNodes } from "@/lib/live";
 import { keys, useActivity, useApprovals, useBootstrap, useDecisions, useMe, useNodeEvents } from "@/lib/hooks";
-import { modelName, shortModelName } from "@/lib/models";
 import { messagePreview } from "@/lib/chat";
 import { recentConversations, roomKindName, type ConversationFilter } from "@/lib/conversations";
 import { toastError } from "@/lib/toast";
@@ -34,7 +33,7 @@ function RoomRow({ room, boot, busy, active, compact = false, onNavigate }: { ro
     const member = room.members.find((row) => row.kind === "node");
     const node = boot.nodes.find((row) => member?.kind === "node" && row.id === member.node.id);
     icon = <NodeAvatar node={node} size={38} thinking={thinking} dim={node?.status === "paused"} />;
-    if (node) title = `${node.name} (@${node.slug}) · ${modelName(boot.models.options, node.provider, node.model, boot.models.default)}`;
+    if (node) title = `${node.name} (@${node.slug})${node.status === "paused" ? " · paused" : ""}`;
   } else {
     icon = <span className="flex size-[38px] shrink-0 items-center justify-center rounded-[13px] border border-line bg-raised text-muted"><Users size={18} strokeWidth={1.7} /></span>;
   }
@@ -94,9 +93,8 @@ function Sidebar({ boot, onNavigate, onSearch, needsMe, compact = false, onColla
       </nav>
 
       <div className="space-y-0.5 border-t border-line px-2 pb-2 pt-2" role="navigation" aria-label="More">
-        <NavLink compact={compact} href="/chat" icon={MessageCircle} label="Your nodes" active={pathname === "/chat"} onNavigate={onNavigate} />
+        <NavLink compact={compact} href="/needs-me" icon={ShieldQuestion} label="Needs me" badge={needsMe} active={pathname === "/needs-me"} onNavigate={onNavigate} />
         <NavLink compact={compact} href="/requests" icon={Inbox} label="Invites" badge={boot.invites?.length ?? 0} active={pathname === "/requests"} onNavigate={onNavigate} />
-        <NavLink compact={compact} href="/computers" icon={Laptop} label="Computers & Needs me" badge={needsMe} active={pathname === "/computers"} onNavigate={onNavigate} />
         <NavLink compact={compact} href="/connections" icon={Plug} label="Connections" active={pathname === "/connections"} onNavigate={onNavigate} />
       </div>
 
@@ -215,7 +213,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
   const waiting = activity.data?.approvals.length ?? 0;
-  const needsMe = (approvals.data?.length ?? 0) + (decisions.data?.length ?? 0) + waiting;
+  // The same count as Ensemble's Needs me: run approvals, agents' questions, nodes' cards and waiting tasks.
+  const needsMe = (approvals.data?.length ?? 0) + (decisions.data?.length ?? 0) + waiting + (activity.data?.waitingTasks?.length ?? 0);
   const openSearch = () => {
     setMenu(false);
     setSearch(true);
@@ -286,4 +285,3 @@ export function PrivateBadge() {
   );
 }
 
-export const shortModel = (boot: Bootstrap, node: { provider: string | null; model: string | null }) => shortModelName(node.model ? modelName(boot.models.options, node.provider, node.model, boot.models.default) : boot.models.options.find(row => row.default)?.label ?? boot.models.default);

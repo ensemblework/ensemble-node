@@ -48,4 +48,4 @@ export function mergeConversationSnapshot(current: readonly Room[], fresh: reado
   });
 }
 
-export const roomKindName = (kind: RoomKind) => kind === "dm" ? "Direct chat" : kind === "crew" ? "Crew" : "Room";
+export const roomKindName = (kind: RoomKind) => kind === "dm" ? "Direct chat" : kind === "crew" ? "Crew" : kind === "task" ? "Helper" : "Room";

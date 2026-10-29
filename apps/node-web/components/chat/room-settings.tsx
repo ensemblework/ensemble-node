@@ -3,9 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Crown, Download, LogOut, MailPlus, Plus, Trash2, UserMinus, UserPlus, X } from "lucide-react";
+import { Check, Crown, Download, Handshake, LogOut, MailPlus, Plus, ShieldCheck, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { keys, limitsOf, putRoom } from "@/lib/hooks";
+import { keys, limitsOf, putRoom, useRoomRequests, useRoomStatus } from "@/lib/hooks";
+import { awayLine, presenceBadge, requestKind, requestState, requestUndecided } from "@/lib/rooms";
 import { ago } from "@/lib/text";
 import { grantLabel, helperThread } from "@/lib/threads";
 import { toast } from "@/lib/toast";
@@ -14,6 +15,8 @@ import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { NodeSettings } from "../node-settings";
 import { Button, Drawer, Field, Input, Notice, Pill } from "../ui";
 import { useKeepHelper } from "./helper-thread";
+import { PresenceDot } from "./room-cards";
+import { MyStatus } from "./room-people";
 
 type NodeMember = Extract<Member, { kind: "node" }>;
 type PersonMember = Extract<Member, { kind: "person" }>;
@@ -81,9 +84,32 @@ function InviteRow({ invite, onWithdraw, busy }: { invite: RoomInvite; onWithdra
   );
 }
 
-/** Settings for a conversation: a DM's node, a crew's nodes and lead, a room's people, nodes and requests to join. */
-export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Room; boot: Bootstrap; open: boolean; onClose: () => void; onExport: () => void }) {
+/**
+ * Settings for a conversation: a DM's node, a crew's nodes and lead, a room's people (here or away), their
+ * nodes, my status, my lead's rules, open requests and requests to join. `onPanel` opens a room's own
+ * sheets (what my lead may share, a new request) in its place; `onJump` goes to a card.
+ */
+export function RoomSettings({
+  room,
+  boot,
+  open,
+  onClose,
+  onExport,
+  onPanel,
+  onJump,
+}: {
+  room: Room;
+  boot: Bootstrap;
+  open: boolean;
+  onClose: () => void;
+  onExport: () => void;
+  onPanel?: (panel: "trust" | "request") => void;
+  onJump?: (messageId: string) => void;
+}) {
   const client = useQueryClient();
+  const people = room.kind === "room";
+  const status = useRoomStatus(room.id, open && people);
+  const requests = useRoomRequests(room.id, open && people);
   const router = useRouter();
   const me = boot.me.id;
   const limits = limitsOf(boot);
@@ -339,11 +365,56 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
         {titleField}
         {error ? <Notice tone="error">{error}</Notice> : null}
 
+        <MyStatus roomId={room.id} meId={me} open={open} />
+
+        <Section title="Your lead here" hint="Only a lead answers in the Room, and only when someone names it. Your other nodes answer you in My crew. A message that names no node wakes nobody.">
+          <div className="flex flex-wrap gap-2">
+            <Button tone="ghost" onClick={() => onPanel?.("trust")}>
+              <ShieldCheck size={15} /> What your lead may share
+            </Button>
+            {peopleMembers.length > 1 ? (
+              <Button tone="ghost" onClick={() => onPanel?.("request")}>
+                <Handshake size={15} /> Ask someone here…
+              </Button>
+            ) : null}
+          </div>
+        </Section>
+
+        {(requests.data ?? []).some((row) => requestUndecided(row.status) && (row.from.accountId === me || row.to.accountId === me)) ? (
+          <Section title="Open requests" hint="Asked through a lead, waiting for an answer or a yes.">
+            <ul className="space-y-1.5">
+              {(requests.data ?? [])
+                .filter((row) => requestUndecided(row.status) && (row.from.accountId === me || row.to.accountId === me))
+                .map((row) => {
+                  const state = requestState(row.status, row.to.accountId === me ? "you" : row.to.name);
+                  const target = row.to.accountId === me && row.status === "awaiting_owner" && row.ownerCardId ? row.ownerCardId : row.cardId;
+                  return (
+                    <li key={row.id}>
+                      <button type="button" disabled={!target} onClick={() => target && onJump?.(target)} className="flex w-full items-start gap-2 rounded-xl border border-line bg-bg px-2.5 py-2 text-left text-sm hover:border-accent disabled:hover:border-line">
+                        <Handshake size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                            <span className="font-medium text-ink">{requestKind(row.kind)}</span>
+                            {row.from.accountId === me ? `to ${row.to.name}` : `from ${row.from.name}`}
+                            <Pill tone={state.tone}>{state.label}</Pill>
+                          </span>
+                          <span className="mt-0.5 block truncate">{row.text}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+          </Section>
+        ) : null}
+
         <Section title="People and their nodes" hint={`Each person brings 1–${limits.nodesPerPerson} of their own nodes; their lead answers for them. You only see other people's nodes by name and role.`}>
           <ul className="space-y-3">
             {peopleMembers.map((person) => {
               const theirs = nodeMembers.filter((row) => row.accountId === person.accountId);
               const mineNow = person.accountId === me;
+              const card = status.data?.find((row) => row.accountId === person.accountId);
+              const away = card?.away ? awayLine(card.away) : null;
               return (
                 <li key={person.id} className="space-y-1.5">
                   <div className="flex items-center gap-2">
@@ -351,9 +422,16 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 text-sm font-medium">
                         {person.name}
+                        {card ? (
+                          <span title={presenceBadge(card.presence).label} className="inline-flex">
+                            <PresenceDot presence={card.presence} />
+                            <span className="sr-only">{presenceBadge(card.presence).label}</span>
+                          </span>
+                        ) : null}
                         {mineNow ? <Pill>you</Pill> : null}
                         {person.accountId === room.createdBy ? <Pill>made this room</Pill> : null}
                       </span>
+                      {away ? <span className="block truncate text-xs text-warn">{away}</span> : null}
                       {person.responsibility ? <span className="block truncate text-xs text-muted">Handles: {person.responsibility}</span> : null}
                     </span>
                     {creator && !mineNow ? (

@@ -83,6 +83,7 @@ try {
       if (path === "/api/agent/jobs/job") return json({ job: { id: "job", taskId: "task", title: "Build the landing page", kind: "code", status: "succeeded", provider: "copilot-cli", model: "gpt-6.1-sol", modelUsed: null, reasoningEffort: "high", progress: null, summary: "Updated the landing page.", error: null, turns: 1, toolCalls: 2, runId: null, deviceName: "Development laptop", yours: true, folder: "website", branch: "feature/landing", files: [], createdAt: stamp(1), startedAt: stamp(1), finishedAt: stamp(2) }, events: [] });
       if (path.endsWith("/memory")) return json({ memories: [] });
       if (path === "/api/node/routines") return json({ routines: [] });
+      if (/^\/api\/node\/rooms\/[^/]+\/requests$/.test(path)) return json({ requests: [] });
       const node = /^\/api\/node\/nodes\/([^/]+)$/.exec(path);
       if (node && request.method() === "PATCH") {
         const saved = state.boot.nodes.find(row => row.id === node[1]);
@@ -190,8 +191,10 @@ try {
     await chats().locator('[data-conversation="group"]').click();
     const groupText = page.getByRole("textbox", { name: "Message Design room", exact: true });
     await groupText.waitFor();
-    await page.getByRole("button", { name: "Only me", exact: true }).click();
-    await groupText.fill("A private unsent draft");
+    // A room with other people: Ask my nodes keeps it to me and my nodes.
+    await page.getByRole("radio", { name: "Ask my nodes", exact: true }).click();
+    const privateText = page.getByRole("textbox", { name: "Ask your nodes privately", exact: true });
+    await privateText.fill("A private unsent draft");
     await openChats();
     await chats().locator('[data-conversation="dm"]').click();
     await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
@@ -209,8 +212,8 @@ try {
     await openChats();
     await chats().locator('[data-conversation="group"]').click();
     await page.locator("header").getByRole("button", { name: "1 person · 1 node", exact: true }).waitFor();
-    assert.equal(await groupText.inputValue(), "A private unsent draft");
-    assert.equal(await page.getByRole("button", { name: "Only me", exact: true }).getAttribute("aria-pressed"), "true", "restored draft cannot become public");
+    assert.equal(await privateText.inputValue(), "A private unsent draft");
+    assert.equal(await page.getByRole("radio", { name: "Ask my nodes", exact: true }).getAttribute("aria-checked"), "true", "restored draft cannot become public");
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/chat-${width}.png` });
 
@@ -221,8 +224,8 @@ try {
       await page.getByRole("button", { name: "Expand conversations", exact: true }).click();
     } else {
       await page.setViewportSize({ width, height: 420 });
-      await page.waitForFunction(() => document.querySelector('textarea[aria-label="Message Design room"]').getBoundingClientRect().bottom <= innerHeight);
-      assert.ok((await groupText.boundingBox()).y + (await groupText.boundingBox()).height <= 420, "composer remains above keyboard-sized viewport");
+      await page.waitForFunction(() => document.querySelector('textarea[aria-label="Ask your nodes privately"]').getBoundingClientRect().bottom <= innerHeight);
+      assert.ok((await privateText.boundingBox()).y + (await privateText.boundingBox()).height <= 420, "composer remains above keyboard-sized viewport");
       await openChats();
       assert.ok(await chats().locator(".chat-drawer").evaluate(el => el.scrollWidth <= el.clientWidth + 2), "short phone chat sheet stays in bounds");
       await page.setViewportSize({ width: 768, height: 844 });

@@ -1,6 +1,7 @@
 /** Pure helpers for the conversation view: filters, reactions, days, unread, search highlights, emails, sending. */
 import { messageFiles } from "./attachments";
 import { readableBody } from "./entity-text";
+import { evidenceCount, mediaItems } from "./evidence";
 import type { Message, MessageFile, ReplyTo } from "./types";
 
 /** All: everything. people: what people wrote, and system lines. nodes: what nodes wrote. mentions: messages that mention me. */
@@ -160,13 +161,15 @@ export function plainPreview(text: string): string {
     .trim();
 }
 
-/** A message list's one-line preview: the words, else the files it carries. */
+/** A message list's one-line preview: the words, else the files or media it carries. */
 export function messagePreview(message: Pick<Message, "authorKind" | "body" | "data">): string {
   if (isDeleted(message)) return "Message deleted";
   const text = plainPreview(readableBody(message));
   if (text) return text;
   const files = messageFiles(message);
-  return files.length === 1 ? `📎 ${files[0]!.name}` : files.length ? `📎 ${files.length} files` : "";
+  if (files.length) return files.length === 1 ? `📎 ${files[0]!.name}` : `📎 ${files.length} files`;
+  const media = message.authorKind === "node" ? mediaItems(message.data?.media) : [];
+  return media.length ? `📎 ${evidenceCount(media)}` : "";
 }
 
 /** What I send to a room. `files` are already in my Files; only their ids go to the server. */

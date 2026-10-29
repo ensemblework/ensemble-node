@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, Download, Ellipsis, Lock, MessagesSquare, Pause, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Download, Ellipsis, Lock, MessagesSquare, Pause, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { messageFiles } from "@/lib/attachments";
 import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
@@ -11,18 +11,22 @@ import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, u
 import { clearJump, useJump } from "@/lib/jump";
 import { useLiveRoom } from "@/lib/live";
 import { TOOL_LABEL } from "@/lib/text";
+import { helperThreads, looseThreads, threadLabel, threadsOfMessage, type HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
 import type { Bootstrap, Member, Message, NodeFull, Room } from "@/lib/types";
+import { workBoard } from "@/lib/work";
 import { NodeAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
-import { IconButton, MenuItem, Spinner, useDismiss } from "../ui";
+import { Drawer, IconButton, MenuItem, Spinner, useDismiss } from "../ui";
 import { Composer, type ComposerDraft, type MentionOption } from "./composer";
+import { HelperThreadView } from "./helper-thread";
 import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
 import { PinnedBar, PinsDrawer } from "./pins";
 import { RichText } from "./rich-text";
 import { readableBody } from "@/lib/entity-text";
 import { RoomSettings } from "./room-settings";
 import { SearchPanel } from "./search";
+import { WorkStrip } from "./work-strip";
 
 const SUGGESTIONS: Record<Room["kind"], string[]> = {
   dm: ["What's on my plate today?", "Add a task to review the onboarding flow next Monday", "Make a page with notes from what I tell you next", "Fix the failing tests in my repo on my laptop"],
@@ -48,12 +52,16 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [filter, setFilter] = useState<ViewFilter>("all");
   const author: Author = serverAuthor(filter);
   const messages = useMessages(roomId, author);
+  // The whole conversation, whatever the filter shows: what runs here and which message brought in a helper.
+  const everything = useMessages(roomId, "all");
   const send = useSend(roomId);
   const sendMessage = send.mutate;
   const live = useLiveRoom(roomId);
   const [panel, setPanel] = useState<null | "settings" | "pins">(null);
   const [menu, setMenu] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [helper, setHelper] = useState<HelperThread | null>(null);
+  const [stopping, setStopping] = useState(false);
   const [reply, setReply] = useState<Message | null>(null);
   const [draft, setDraft] = useState<ComposerDraft | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -107,6 +115,43 @@ export function RoomView({ roomId }: { roomId: string }) {
   }, [all]);
   const meId = boot.data?.me.id ?? "";
   const list = filter === "mentions" ? loaded.filter((row) => mentionsMe(row, meId)) : loaded;
+  const nodes = useMemo(() => nodesById(boot.data, room), [boot.data, room]);
+  const whole = everything.data ?? all;
+  // What runs here, from what is loaded: Stop asks first when it is more than a reply being written.
+  const board = useMemo(() => workBoard(whole, meId, (id) => (id ? (nodes.get(id)?.ownerId ?? null) : null)), [whole, meId, nodes]);
+  const working = board.length > 0;
+  // Helpers' rooms show as threads under the message that brought them in, or in the strip.
+  const rooms = boot.data?.rooms;
+  const threads = useMemo(() => helperThreads(rooms ?? []), [rooms]);
+  const attached = useMemo(() => {
+    const byMessage = new Map<string, HelperThread[]>();
+    for (const row of whole) {
+      const found = row.authorKind === "node" && !row.planId ? threadsOfMessage(row, threads) : [];
+      if (found.length) byMessage.set(row.id, found);
+    }
+    return byMessage;
+  }, [whole, threads]);
+  const helperRows = useMemo(() => {
+    if (!room) return [];
+    const under = new Map<string, string>();
+    for (const [messageId, found] of attached) for (const thread of found) under.set(thread.roomId, messageId);
+    return [
+      ...threads.filter((thread) => under.has(thread.roomId)).map((thread) => ({ thread, messageId: under.get(thread.roomId) ?? null })),
+      ...looseThreads(threads, new Set(under.keys()), room).map((thread) => ({ thread, messageId: null })),
+    ];
+  }, [attached, threads, room]);
+  const stopRoom = useCallback(async () => {
+    if (working && !confirm("Stop this conversation's work? Its plans, agent runs and the replies being written stop. What was changed so far stays.")) return;
+    setStopping(true);
+    try {
+      const result = await api<{ stopped?: number } | undefined>(`/api/node/rooms/${roomId}/stop`, { body: {} });
+      toast(result?.stopped ? "Stopped. What was changed so far stays." : "Nothing was running here.", result?.stopped ? "ok" : "info");
+    } catch (error) {
+      toastError(error);
+    } finally {
+      setStopping(false);
+    }
+  }, [roomId, working]);
   // Paging counts every message loaded, the ones shown inside plan cards too.
   const lastSeq = all.reduce((max, row) => (row.sending || row.id.startsWith("local-") ? max : Math.max(max, row.seq)), 0);
   const firstReal = all.find((row) => !row.id.startsWith("local-"));
@@ -275,7 +320,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       roomTitle: room.title,
       roomKind: room.kind,
       handles: new Set(room.members.map((row) => row.handle)),
-      nodes: nodesById(boot.data, room),
+      nodes,
       people,
       reactions: limitsOf(boot.data).reactions,
       pinned: new Set(room.pinned ?? []),
@@ -290,8 +335,9 @@ export function RoomView({ roomId }: { roomId: string }) {
         if (target) setReply(target);
       },
       inPlan,
+      threadsOf: (message: Message) => attached.get(message.id) ?? [],
     };
-  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan]);
+  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan, nodes, attached]);
 
   if (!boot.data || !ctx || !room) {
     return (
@@ -395,6 +441,19 @@ export function RoomView({ roomId }: { roomId: string }) {
             )}
           </div>
         </div>
+        {working || myBusy ? (
+          <button
+            type="button"
+            onClick={() => void stopRoom()}
+            disabled={stopping}
+            aria-label="Stop this conversation's work"
+            title="Stop this conversation's work"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-danger/40 px-2.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
+          >
+            {stopping ? <Spinner className="h-3.5 w-3.5" /> : <CircleStop size={16} aria-hidden />}
+            <span className="hidden sm:inline">Stop</span>
+          </button>
+        ) : null}
         <IconButton label="Search this conversation" onClick={() => setSearching(!searching)} className={searching ? "bg-raised text-ink" : ""}>
           <Search size={18} />
         </IconButton>
@@ -422,6 +481,10 @@ export function RoomView({ roomId }: { roomId: string }) {
               <MenuItem onClick={() => (setPanel("settings"), setMenu(false))}>
                 <Settings2 size={15} /> {room.kind === "dm" ? "Node settings" : room.kind === "crew" ? "Crew settings" : room.kind === "task" ? "About this helper" : "Room settings"}
               </MenuItem>
+              <div className="my-1 border-t border-line" />
+              <MenuItem tone="danger" onClick={() => (setMenu(false), void stopRoom())}>
+                <CircleStop size={15} /> Stop this conversation&apos;s work
+              </MenuItem>
             </div>
           ) : null}
         </div>
@@ -440,6 +503,7 @@ export function RoomView({ roomId }: { roomId: string }) {
         </div>
       ) : null}
       <PinnedBar room={room} ctx={ctx} onAll={() => setPanel("pins")} />
+      <WorkStrip items={board} helpers={helperRows} onJump={(messageId) => void jumpTo(messageId)} onHelper={setHelper} />
       {filter !== "all" ? (
         <div className="flex items-center justify-center gap-2 border-b border-line bg-accent/5 px-3 py-1.5 text-xs">
           <filterInfo.icon size={13} className="text-accent" /> Showing {filterInfo.label.toLowerCase()}
@@ -631,12 +695,15 @@ export function RoomView({ roomId }: { roomId: string }) {
           send.mutate({ body, private: isPrivate, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}), ...(files.length ? { files } : {}) });
           setReply(null);
         }}
-        onStop={() => void api(`/api/node/rooms/${roomId}/stop`, { body: {} }).catch(toastError)}
+        onStop={() => void stopRoom()}
       />
       )}
       </div>
       <RoomSettings key={room.id + room.title} room={room} boot={boot.data} open={panel === "settings"} onClose={() => setPanel(null)} onExport={exportRoom} />
       <PinsDrawer room={room} ctx={ctx} open={panel === "pins"} onClose={() => setPanel(null)} max={limits.pins} />
+      <Drawer open={Boolean(helper)} onClose={() => setHelper(null)} title={helper ? threadLabel(helper, false).split(" · ")[0]! : "Helper"}>
+        {helper ? <HelperThreadView thread={helper} /> : null}
+      </Drawer>
     </div>
   );
 }

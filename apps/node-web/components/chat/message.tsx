@@ -7,6 +7,8 @@ import { ENSEMBLE_APP } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, TOOL_LABEL } from "@/lib/text";
 import { formatEntityText, messageRefs, readableBody } from "@/lib/entity-text";
+import { mediaItems } from "@/lib/evidence";
+import type { HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
 import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { toolChipSummary } from "@/lib/work-log";
@@ -14,7 +16,9 @@ import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { SecretBox } from "../secret-box";
 import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
+import { EvidenceGallery } from "./evidence";
 import { MessageFiles } from "./file-chips";
+import { HelperThreadChip } from "./helper-thread";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 import { PlanCard } from "./plan-card";
@@ -37,6 +41,8 @@ export type MessageContext = {
   onEdit: (message: Message) => void;
   /** Cards of plan steps, by plan: shown inside the plan card. */
   inPlan: Map<string, Message[]>;
+  /** Helpers' threads a message brought in, shown under it (lib/threads.ts). */
+  threadsOf?: (message: Message) => HelperThread[];
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -507,8 +513,12 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
           ) : (
             <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
               {message.body ? <RichText text={message.body} handles={ctx.handles} {...(message.authorKind === "node" ? { refs: messageRefs(message.data), showIds: message.data.showIds === true } : {})} /> : null}
+              {message.authorKind === "node" ? <EvidenceGallery items={mediaItems(message.data.media)} label="Media" className={message.body ? "mt-2" : ""} /> : null}
               <MessageFiles message={message} meId={ctx.meId} sender={person?.name} />
               <ToolChips tools={Array.isArray(message.data.tools) ? message.data.tools : []} />
+              {(ctx.threadsOf?.(message) ?? []).map((thread) => (
+                <HelperThreadChip key={thread.roomId} thread={thread} />
+              ))}
             </div>
           )}
         </div>

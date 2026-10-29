@@ -1,5 +1,5 @@
 import { ENSEMBLE_API } from "./config";
-import type { FileRecord, SessionAction, SessionDetail } from "./types";
+import type { FileRecord, Message, Routine, RoutineRun, SessionAction, SessionDetail } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -157,6 +157,28 @@ export const sessions = {
   reorder: (id: string, order: string[]) => api<{ ok: true }>(`${sessionPath(id)}/queue`, { body: { order } }),
   cancel: (id: string, jobId: string) => api<void>(`${sessionPath(id)}/queue/${encodeURIComponent(jobId)}`, { method: "DELETE" }),
 };
+
+const routinePath = (id: string) => `/api/node/routines/${encodeURIComponent(id)}`;
+
+/**
+ * The owner's routines (Ensemble docs/35 §6.5). A webhook routine's token comes back only from
+ * `create` and `token`, once: it is shown then and never kept.
+ */
+export const routines = {
+  list: () => api<{ routines: Routine[] }>("/api/node/routines").then((result) => result.routines),
+  create: (body: Record<string, unknown>) => api<{ routine: Routine; token?: string }>("/api/node/routines", { body }),
+  update: (id: string, body: Record<string, unknown>) => api<{ routine: Routine }>(routinePath(id), { method: "PATCH", body }).then((result) => result.routine),
+  remove: (id: string) => api<void>(routinePath(id), { method: "DELETE" }),
+  /** Runs it now, whatever its trigger, paused or not. */
+  run: (id: string) => api<{ run: RoutineRun }>(`${routinePath(id)}/run`, { body: {} }).then((result) => result.run),
+  /** A new webhook token; the old one stops working. */
+  token: (id: string) => api<{ token: string }>(`${routinePath(id)}/token`, { body: {} }).then((result) => result.token),
+  /** Its newest 50 runs, each with its mission's status. */
+  runs: (id: string) => api<{ runs: RoutineRun[] }>(`${routinePath(id)}/runs`).then((result) => result.runs),
+};
+
+/** One message I may see (`GET /api/node/messages/:id`): a routine run's plan card, which is not in the chat. */
+export const messageById = (id: string) => api<{ message: Message }>(`/api/node/messages/${encodeURIComponent(id)}`).then((result) => result.message);
 
 export const oauthStartUrl = (provider: string): string => `${ENSEMBLE_API}/api/auth/oauth/${provider}/start?return=node`;
 

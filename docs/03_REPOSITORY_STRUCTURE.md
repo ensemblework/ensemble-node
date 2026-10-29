@@ -16,6 +16,7 @@ ensemble-node/
 │   │       ├── requests/        requests to join rooms: accept with 1–3 nodes and a lead, or decline
 │   │       ├── search/          search every conversation
 │   │       ├── computers/       Computers & Needs me: paired computers, shared folders, Ensemble's Needs me
+│   │       ├── routines/        routines by node: pause, run now, edit, delete, runs and a run's card
 │   │       ├── connections/     connected apps, the same list as in Ensemble
 │   │       ├── activity/        approvals, runs, turns, computers, credits (mobile)
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, sign out
@@ -29,6 +30,8 @@ ensemble-node/
 │   │   │                        start page), files on a message (file-chips.tsx), rich text and code blocks
 │   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer
 │   │   ├── shell.tsx            collapsible recent-chat sidebar, phone sheet, layout, auth guard, ⌘K search
+│   │   ├── routines.tsx         routines: the list, the form (schedules in a time zone, events, webhooks),
+│   │   │                        a webhook's token shown once, runs and a run's card; a node's routines
 │   │   ├── model-picker.tsx     every model a node can use, grouped (included, own keys, AI plans)
 │   │   ├── node-picker.tsx      my nodes as checkboxes with a Lead radio
 │   │   ├── email-chips.tsx      emails as chips
@@ -53,10 +56,12 @@ ensemble-node/
 │   │   ├── live.ts              who is thinking / writing right now (text batched per frame, per room)
 │   │   ├── jump.ts, toast.ts    open a conversation at a message; short notes on screen
 │   │   ├── entity-text.ts       node replies name records by title, not id (tested)
-│   │   ├── plan.ts, session.ts, evidence.ts, threads.ts, work.ts
+│   │   ├── plan.ts, session.ts, evidence.ts, threads.ts, work.ts, routines.ts
 │   │   │                        pure helpers (tested): a plan card's statuses, outcomes, held steps, attempts and
-│   │   │                        ledger; a session's settings, actions and queue edits; which evidence shows inline
-│   │   │                        and which only downloads; helper threads; what is working in a room
+│   │   │                        ledger; a session's settings, actions, queue edits and its agent's name and id;
+│   │   │                        which evidence shows inline and which only downloads; helper threads, where they
+│   │   │                        show and what a helper may do; what is working in a room; a routine's schedule
+│   │   │                        presets and cron, the form's checks and what it sends, runs in words, time zones
 │   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts, decisions.ts, work-log.ts, attachments.ts
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        what a message sends and a retry sends again, the attachment shelf and pasted
@@ -74,7 +79,7 @@ ensemble-node/
                                  actions/vercel-deploy (publish main on Vercel)
 ```
 
-`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work. Usage is in [05](05_UI_AND_UX.md#browser-regression).
+`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work; `e2e/routines.mjs` for Routines. Usage is in [05](05_UI_AND_UX.md#browser-regression).
 
 ## Where a change belongs
 

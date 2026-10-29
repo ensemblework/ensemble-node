@@ -10,7 +10,8 @@
  * Plans made before outcomes (contract 1) show what they have.
  */
 import { useState } from "react";
-import { AlertTriangle, Check, ChevronRight, Circle, CircleStop, CircleX, Hourglass, MinusCircle } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, Check, ChevronRight, Circle, CircleStop, CircleX, Hourglass, MinusCircle, Repeat } from "lucide-react";
 import { api } from "@/lib/api";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { formatEntityText } from "@/lib/entity-text";
@@ -18,7 +19,7 @@ import { evidenceCount, evidenceOfCards } from "@/lib/evidence";
 import { attemptLabel, attemptsToShow, checkTally, isWorkCard, ledgerSummary, missionView, outcomeBadge, planProgress, requirementBadge, stepBadges, stepKindLine, stepName, stepOutcome, stepRequirements } from "@/lib/plan";
 import { settingsLine } from "@/lib/session";
 import { toast, toastError } from "@/lib/toast";
-import type { Attempt, Message, PlanData, PlanStep } from "@/lib/types";
+import type { Attempt, Message, PlanData, PlanRoutine, PlanStep } from "@/lib/types";
 import { NodeAvatar } from "../node-avatar";
 import { Pill, Spinner } from "../ui";
 import { EvidenceGallery, type RequirementLink } from "./evidence";
@@ -45,6 +46,26 @@ function StepIcon({ step, held }: { step: PlanStep; held: boolean }) {
   if (step.status === "blocked") return <AlertTriangle size={15} className="text-warn" aria-hidden />;
   if (step.status === "skipped" || step.status === "stopped") return <MinusCircle size={15} className="text-muted" aria-hidden />;
   return <Circle size={15} className="text-muted" aria-hidden />;
+}
+
+/** The routine a card's mission ran for, when it is one (`data.routine`). */
+function routineOf(value: unknown): PlanRoutine | null {
+  const raw = value as Partial<PlanRoutine> | null | undefined;
+  return raw && typeof raw.id === "string" && typeof raw.title === "string" ? (raw as PlanRoutine) : null;
+}
+
+/** "Routine · Morning summary": a routine's run names its routine, which opens in Routines. */
+function RoutineChip({ routine }: { routine: PlanRoutine }) {
+  return (
+    <Link
+      href={`/routines#routine-${routine.id}`}
+      title={routine.trigger ? `${routine.title} · ${routine.trigger}` : routine.title}
+      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-line px-2 py-0.5 text-[11px] text-muted transition hover:border-accent/50 hover:text-ink"
+    >
+      <Repeat size={11} className="shrink-0 text-accent" aria-hidden />
+      <span className="truncate">Routine · {routine.title}</span>
+    </Link>
+  );
 }
 
 /** Stops a plan or a piece of work, after a confirm: Stop shows only while it runs. */
@@ -287,6 +308,7 @@ function WorkCard({ message, plan, cards, ctx }: { message: Message; plan: PlanD
   const current = step ? sorted(step.attempts).at(-1) : undefined;
   const kindLine = step ? stepKindLine({ kind: step.kind }) : "";
   const bodyId = `work-${message.id}`;
+  const routine = routineOf(plan.routine);
   return (
     <div className="space-y-2 rounded-2xl border border-line bg-panel px-3 py-3">
       {opening && opening !== title ? <RichText text={opening} handles={ctx.handles} /> : null}
@@ -297,6 +319,7 @@ function WorkCard({ message, plan, cards, ctx }: { message: Message; plan: PlanD
         <Pill tone={mission.tone}>{mission.label}</Pill>
         {badges?.outcome && !mission.live ? <Pill tone={badges.outcome.tone}>{badges.outcome.label}</Pill> : null}
         {current && current.n > 1 ? <span>{attemptLabel(current)}</span> : null}
+        {routine ? <RoutineChip routine={routine} /> : null}
         {mission.live && message.authorAccountId === ctx.meId ? <StopButton onStop={() => void stop()} stopping={stopping} label="Stop this work" /> : null}
       </div>
       <p className="break-words text-sm font-medium">{title}</p>
@@ -348,6 +371,7 @@ export function PlanCard({ message, ctx }: { message: Message; ctx: MessageConte
   if (isWorkCard(plan)) return <WorkCard message={message} plan={plan} cards={cards} ctx={ctx} />;
   const progress = planProgress(plan);
   const counting = mission.status === "running" && mission.live;
+  const routine = routineOf(plan.routine);
   return (
     <div className="space-y-2.5 rounded-2xl border border-line bg-panel px-3 py-3">
       {message.body && message.body !== "Plan" ? <RichText text={message.body} handles={ctx.handles} /> : null}
@@ -355,6 +379,7 @@ export function PlanCard({ message, ctx }: { message: Message; ctx: MessageConte
         <span className="font-semibold uppercase tracking-wide">Plan</span>
         {counting ? <Pill tone="accent">{progress.done} of {progress.total} done</Pill> : <Pill tone={mission.tone}>{mission.label}</Pill>}
         {!counting && progress.total && mission.status !== "succeeded" ? <span>{progress.done} of {progress.total} done</span> : null}
+        {routine ? <RoutineChip routine={routine} /> : null}
         {mission.live && message.authorAccountId === ctx.meId ? <StopButton onStop={() => void stop()} stopping={stopping} label="Stop this plan" /> : null}
       </div>
       {plan.goal?.trim() ? (

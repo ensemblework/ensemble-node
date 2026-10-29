@@ -6,13 +6,18 @@ export type Avatar = { shape: AvatarShape; color: string; eyes: "dot" | "line" |
 
 /** `parentNodeId`: a temporary helper's node (it works in a read-only task room and reports to that node). */
 export type NodePublic = { id: string; ownerId: string; slug: string; name: string; role: string; avatar: Avatar; status: "active" | "paused"; parentNodeId?: string | null };
+/** What a helper may do: read (the default), run its own agent sessions, or use the computer's tools too. */
+export type HelperGrant = "read" | "sessions" | "computer";
 export type NodeFull = NodePublic & {
   charter: string;
   provider: string | null;
   model: string | null;
   runProfileId: string | null;
-  /** computerWork "ask": starting work on the owner's computer waits for an approval card (default: on its own). */
-  autonomy: { sharedRooms?: "ask" | "auto"; computerFiles?: boolean; computerWork?: "auto" | "ask" };
+  /**
+   * computerWork "ask": starting work on the owner's computer waits for an approval card (default: on its own).
+   * `grant`: what a helper may do, as its parent granted (read when not said).
+   */
+  autonomy: { sharedRooms?: "ask" | "auto"; computerFiles?: boolean; computerWork?: "auto" | "ask"; grant?: HelperGrant };
   /** How long its chat model thinks, when the model takes a level (default low: nodes answer fast). */
   effort?: "low" | "medium" | "high";
   templateId: string | null;
@@ -93,6 +98,9 @@ export type PlanStep = {
   sessionId?: string | null;
 };
 
+/** The routine whose run started a mission (`data.routine` on its card): `trigger` is the routine's "when" in words. */
+export type PlanRoutine = { id: string; runId: string; title: string; notify: RoutineNotify; trigger?: string };
+
 /**
  * A plan card (`kind: "plan"`): Ensemble's projection of a mission. `kind: "self"` is a node's own
  * piece of work, one step. Contract 1 cards have only the type, lead, status and steps.
@@ -113,6 +121,8 @@ export type PlanData = {
   requirements?: Requirement[];
   deferred?: Array<{ requirementId: string; reason: string }>;
   steps: PlanStep[];
+  /** A routine's run: its card is listed with the routine, not in the chat (its message's `planId` is the routine's id). */
+  routine?: PlanRoutine | null;
 };
 
 /** Agent settings of a run, as asked (`requested`), as sent to the engine (`resolved`) and as the engine said (`observed`). */
@@ -121,9 +131,13 @@ export type RunSettings = { requested?: RunSettingValues | null; resolved?: RunS
 
 /** A queued message of an agent session, in the order it will run. */
 export type QueuedRun = { jobId: string; title: string; prompt: string; position: number };
-/** The agent session a run card belongs to (`data.session`), kept current by Ensemble. */
-export type RunSession = { id: string; status: string; agent?: string | null; model?: string | null; computer?: string | null; folder?: string | null; queue: QueuedRun[] };
-/** `GET /api/node/sessions/:id`. */
+/**
+ * The agent session a run card belongs to (`data.session`), kept current by Ensemble. `agent` is the
+ * name shown ("Claude Code") and `agentId` the agent's id ("claude-code"); cards from before
+ * `agentId` carry the id in `agent`.
+ */
+export type RunSession = { id: string; status: string; agent?: string | null; agentId?: string | null; model?: string | null; computer?: string | null; folder?: string | null; queue: QueuedRun[] };
+/** `GET /api/node/sessions/:id`. Here `agent` is the agent's id and `agentName` the name shown: the other way round from a card's `data.session`. */
 export type SessionDetail = {
   id: string;
   nodeId: string;
@@ -212,12 +226,13 @@ export type Room = {
   readSeq?: number;
   last?: Message | null;
   /**
-   * A helper's task room: where its parent was asked and the message that brought the helper in, when
-   * Ensemble sends them (top level, or in `helper` or `settings`). Older servers send neither.
+   * A helper's task room: whose helper it is and where its parent was asked (`helper`, from Ensemble's
+   * room view; `originPrivate` when it was asked privately). Older servers sent neither; the fields at
+   * the top level and in `settings` are read too.
    */
   originRoomId?: string | null;
   originMessageId?: string | null;
-  helper?: { parentNodeId?: string | null; helperNodeId?: string | null; originRoomId?: string | null; originMessageId?: string | null } | null;
+  helper?: { parentNodeId?: string | null; helperNodeId?: string | null; originRoomId?: string | null; originMessageId?: string | null; originPrivate?: boolean } | null;
   settings?: Record<string, unknown> | null;
 };
 
@@ -284,6 +299,56 @@ export type Run = {
 };
 
 export type Turn = { id: string; nodeId: string; roomId: string | null; reason: string; status: string; model: string | null; credits: number | null; error: string | null; private: boolean; createdAt: string; finishedAt: string | null };
+
+export type RoutineTrigger = "schedule" | "event" | "webhook";
+/** always: the node posts the result; needed: only when something failed, changed or needs the owner; never: it is only listed with the routine. */
+export type RoutineNotify = "always" | "needed" | "never";
+/** What an event routine watches: tasks or pages changing in a space (`space`: its id; the owner's own when left out), gathered over `windowSeconds`. */
+export type RoutineEvent = { on: "task" | "page"; actions?: string[]; space?: string; windowSeconds: number };
+
+/**
+ * One occurrence of a routine (Ensemble's `node_routine_runs`): `missionId` is the plan card it
+ * started (`GET /api/node/messages/:missionId`), `missionStatus` that mission's status, `items` how
+ * many changes or webhook calls it gathered.
+ */
+export type RoutineRun = {
+  id: string;
+  trigger: RoutineTrigger | "manual";
+  status: "pending" | "starting" | "started" | "skipped" | "failed";
+  missionId: string | null;
+  missionStatus: string | null;
+  error: string | null;
+  dueAt: string;
+  startedAt: string | null;
+  createdAt: string;
+  items: number;
+};
+
+/**
+ * Work a node does by itself (`GET /api/node/routines`, Ensemble docs/35 §6.5): an instruction it does
+ * as its own work (`action: "prompt"`) or a saved plan its nodes run (`action: "plan"`). `when` is
+ * Ensemble's own words for its trigger; `runs` the newest five.
+ */
+export type Routine = {
+  id: string;
+  title: string;
+  nodeId: string;
+  roomId: string;
+  action: "prompt" | "plan";
+  instruction: string | null;
+  template: unknown | null;
+  trigger: RoutineTrigger;
+  cron: string | null;
+  timezone: string;
+  event: RoutineEvent | null;
+  webhook: { path: string; hasToken: boolean } | null;
+  notify: RoutineNotify;
+  status: "active" | "paused";
+  when: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  runs: RoutineRun[];
+};
 
 /** A board task blocked or waiting for an approval: Ensemble's Needs me lists the same. */
 export type WaitingTask = { id: string; title: string; status: "blocked" | "waiting_approval"; updatedAt: string };

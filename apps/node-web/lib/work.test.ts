@@ -46,3 +46,9 @@ test("the work board lists my live plans, work and sessions, newest first, from 
   const reporting = message("p", 1, { kind: "plan", body: "Here is the plan. It has steps.", data: { type: "plan", leadNodeId: "lead", leadHandle: "lead", status: "reporting", steps: [step("a")] } });
   assert.deepEqual(workBoard([reporting], "me", ownerOf), [{ kind: "plan", id: "p", messageId: "p", title: "Here is the plan.", detail: "Reporting" }]);
 });
+
+test("a routine's run is on the board, marked so its chip opens its card: it is not in the timeline", () => {
+  const run = message("m1", 3, { kind: "plan", planId: "routine-1", body: "Work", data: { type: "plan", kind: "self", leadNodeId: "lead", leadHandle: "lead", status: "running", goal: "Morning summary", routine: { id: "routine-1", runId: "run-1", title: "Morning summary", notify: "always" }, steps: [step("lead", { status: "working", progress: "Reading the board" })] } });
+  assert.deepEqual(workBoard([run], "me", ownerOf), [{ kind: "work", id: "m1", messageId: "m1", title: "Morning summary", detail: "Reading the board", routineId: "routine-1" }]);
+  assert.equal(workBoard([{ ...run, data: { ...run.data, routine: undefined } }], "me", ownerOf)[0]?.routineId, "routine-1", "its planId says so too");
+});

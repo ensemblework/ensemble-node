@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { helperThread, helperThreads, isHelperRoom, looseThreads, threadLabel, threadsOfMessage } from "./threads";
+import { grantLabel, helperThread, helperThreads, isHelperRoom, looseThreads, threadLabel, threadsOfMessage } from "./threads";
 import type { Member, NodePublic, Room } from "./types";
 
 const avatar = { shape: "orb" as const, color: "#fff", eyes: "dot" as const };
@@ -18,7 +18,7 @@ const crew = room("crew", "crew", [member(lead), member(node("builder"))]);
 test("a helper's task room is a thread: its helper, its parent, and Ensemble's marks when they come", () => {
   assert.equal(isHelperRoom(task), true);
   assert.equal(isHelperRoom(dm), false);
-  assert.deepEqual(helperThread(task), { roomId: "task", title: "Lead · Scout", helper: scout, parent: lead, originRoomId: null, originMessageId: null, count: 4, lastMessageAt: "2026-10-29T10:00:00Z" });
+  assert.deepEqual(helperThread(task), { roomId: "task", title: "Lead · Scout", helper: scout, parent: lead, originRoomId: null, originMessageId: null, originPrivate: false, grant: "read", kept: false, count: 4, lastMessageAt: "2026-10-29T10:00:00Z" });
   const marked = helperThread({ ...task, settings: { originRoomId: "crew", helperNodeId: "lead-scout", parentNodeId: "lead" }, originMessageId: "m9" });
   assert.equal(marked?.originRoomId, "crew");
   assert.equal(marked?.originMessageId, "m9");
@@ -47,4 +47,29 @@ test("threads no loaded message shows stay reachable in their conversation", () 
   const marked = helperThreads([{ ...task, originRoomId: "crew" }]);
   assert.deepEqual(looseThreads(marked, new Set(), crew).map((row) => row.roomId), ["task"]);
   assert.deepEqual(looseThreads(marked, new Set(), dm), []);
+});
+
+test("Ensemble's helper view places the thread: its origin room, its parent, its privacy and what it may do", () => {
+  const kept = { ...scout, parentNodeId: null };
+  const helper = { ...scout, autonomy: { grant: "sessions" as const } } as NodePublic;
+  const viewed = (extra: Partial<Room>, helperNode: NodePublic = helper) => room("task", "task", [member(lead), member(helperNode)], { title: "Lead · Scout", helper: { parentNodeId: "lead", helperNodeId: "lead-scout", originRoomId: "launch", originPrivate: false }, ...extra });
+  const thread = helperThread(viewed({}))!;
+  assert.equal(thread.originRoomId, "launch");
+  assert.equal(thread.grant, "sessions");
+  assert.equal(grantLabel(thread.grant), "can run sessions");
+  assert.equal(grantLabel(helperThread(task)!.grant), "can read", "a helper from before grants only reads");
+  assert.equal(grantLabel("computer"), "can use the computer");
+  const keptThread = helperThread(viewed({}, kept))!;
+  assert.equal(keptThread.helper?.id, "lead-scout", "a kept helper is still found: by Ensemble's word, not its parent");
+  assert.equal(keptThread.parent?.id, "lead");
+  assert.equal(keptThread.kept, true);
+  assert.equal(thread.kept, false);
+  const reply = { id: "m1", roomId: "launch", authorNodeId: "lead", private: false, data: { tools: [{ id: "c1", name: "node_helper", summary: "@lead-scout is on it in “Lead · Scout”.", href: null }] } };
+  const privately = helperThreads([viewed({ helper: { parentNodeId: "lead", helperNodeId: "lead-scout", originRoomId: "launch", originPrivate: true } })]);
+  assert.equal(privately[0]!.originPrivate, true);
+  assert.deepEqual(threadsOfMessage(reply, privately), [], "a helper asked for privately never shows under a shared message");
+  assert.deepEqual(threadsOfMessage({ ...reply, private: true }, privately).map((row) => row.roomId), ["task"]);
+  assert.deepEqual(threadsOfMessage(reply, helperThreads([viewed({})])).map((row) => row.roomId), ["task"]);
+  assert.deepEqual(threadsOfMessage({ ...reply, roomId: "dm" }, helperThreads([viewed({})])), [], "only in the room it was asked in");
+  assert.deepEqual(looseThreads(privately, new Set(), room("launch", "room", [member(lead)])).map((row) => row.roomId), ["task"]);
 });

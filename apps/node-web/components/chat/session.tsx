@@ -7,12 +7,38 @@
  * Queue…, Stop and send… and Stop, keeping or dropping the queue. Each control calls the same code as
  * the node's own session tools, so the node always knows. Changes show at once; refusals show here.
  */
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ScrollText, SlidersHorizontal, X } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useSession, useSessionControl, useSessionQueue } from "@/lib/hooks";
 import { observedMissing, queuedLine, queueOrder, sessionActions, sessionStatus, settingsRows } from "@/lib/session";
 import type { RunSession, RunSettings, SessionAction } from "@/lib/types";
 import { Button, Input, Pill, Textarea } from "../ui";
+import { RichText } from "./rich-text";
+
+/** What the agent was told: the packet Ensemble compiled for it (`data.told`, Markdown with its parts as small labels), scrolling inside the card. */
+export function ToldView({ told, handles, id }: { told: string; handles: ReadonlySet<string>; id?: string }) {
+  return (
+    <div id={id} role="region" aria-label="What the agent was told" tabIndex={0} className="scroll-thin mt-1.5 max-h-80 overflow-auto rounded-lg border border-line bg-bg/60 px-2.5 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
+      <RichText text={told} handles={handles} small kindLinks labelHeadings />
+    </div>
+  );
+}
+
+/** "What the agent was told", folded, for a run whose session panel is not showing it. */
+export function ToldDisclosure({ told, handles }: { told: string; handles: ReadonlySet<string> }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <div className="mt-1">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={id} className="inline-flex max-w-full items-center gap-1 rounded-md text-xs text-muted hover:text-ink">
+        <ScrollText size={12} className="shrink-0" aria-hidden />
+        <span>What the agent was told</span>
+        <ChevronDown size={12} className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+      </button>
+      {open ? <ToldView told={told} handles={handles} id={id} /> : null}
+    </div>
+  );
+}
 
 /** The settings asked for (requested), sent to the engine (resolved) and reported by it (observed). */
 export function SettingsView({ settings }: { settings: RunSettings | null | undefined }) {
@@ -201,6 +227,10 @@ function QueueButton({ label, onClick, inert, children }: { label: string; onCli
 }
 
 const LIVE_RUN: ReadonlySet<string> = new Set(["running", "claimed", "waiting_approval", "stopping"]);
+
+/** Whether a run card's session panel shows (its run is live or queued); it then shows what the run was told. */
+export const sessionPanelShows = (runStatus: string): boolean => LIVE_RUN.has(runStatus) || runStatus === "queued";
+
 const DONE: Record<string, (queued: SessionAction["queued"]) => string> = {
   steer: () => FORMS.steer.done,
   queue: () => FORMS.queue.done,
@@ -210,16 +240,17 @@ const DONE: Record<string, (queued: SessionAction["queued"]) => string> = {
 
 /**
  * The agent session of a run card, while its run is live: on the run going on, the session's status,
- * what it is doing, its queue and the controls; on a queued run, its place in line and Cancel.
+ * what it is doing (and what it was told: the card's packet, `told`, before the session's own prompt),
+ * its queue and the controls; on a queued run, its place in line and Cancel.
  */
-export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, owner }: { session: RunSession; jobId: string; runStatus: string; runTitle: string; onScreen: boolean; owner: boolean }) {
-  const live = LIVE_RUN.has(runStatus) || runStatus === "queued";
+export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, owner, told, handles }: { session: RunSession; jobId: string; runStatus: string; runTitle: string; onScreen: boolean; owner: boolean; told?: string | null; handles: ReadonlySet<string> }) {
+  const live = sessionPanelShows(runStatus);
   const query = useSession(session.id, { enabled: owner && onScreen && live, poll: owner && onScreen && live });
   const detail = query.data;
   const queue = useSessionQueue(session.id, queueOrder(detail?.queue ?? session.queue));
   const control = useSessionControl(session.id, jobId);
   const [mode, setMode] = useState<Mode | null>(null);
-  const [told, setTold] = useState(false);
+  const [showTold, setShowTold] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [moved, setMoved] = useState("");
   const status = detail?.status ?? session.status;
@@ -228,22 +259,27 @@ export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, ow
   if (!live) return null;
 
   if (!current) {
-    if (runStatus !== "queued") return null;
+    // What it was told stays on the card when the session shows another run as the one going on.
+    const toldHere = told ? <ToldDisclosure told={told} handles={handles} /> : null;
+    if (runStatus !== "queued") return toldHere;
     const place = queue.queue.findIndex((row) => row.jobId === jobId);
     return (
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
-        <span aria-live="polite">{place >= 0 ? `Number ${place + 1} of ${queue.queue.length} in the session's queue.` : "Taken out of the queue."}</span>
-        {owner && place >= 0 ? (
-          <button type="button" disabled={queue.busy} onClick={() => queue.cancel(jobId)} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs hover:bg-raised hover:text-danger disabled:opacity-50">
-            <X size={12} aria-hidden /> Cancel this message
-          </button>
-        ) : null}
-        {queue.error ? (
-          <span role="alert" className="w-full text-xs text-danger">
-            {queue.error}
-          </span>
-        ) : null}
-      </div>
+      <>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
+          <span aria-live="polite">{place >= 0 ? `Number ${place + 1} of ${queue.queue.length} in the session's queue.` : "Taken out of the queue."}</span>
+          {owner && place >= 0 ? (
+            <button type="button" disabled={queue.busy} onClick={() => queue.cancel(jobId)} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs hover:bg-raised hover:text-danger disabled:opacity-50">
+              <X size={12} aria-hidden /> Cancel this message
+            </button>
+          ) : null}
+          {queue.error ? (
+            <span role="alert" className="w-full text-xs text-danger">
+              {queue.error}
+            </span>
+          ) : null}
+        </div>
+        {toldHere}
+      </>
     );
   }
 
@@ -277,13 +313,15 @@ export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, ow
           <span className="text-muted">Now: </span>
           {running?.title || runTitle}
         </span>
-        {running?.prompt ? (
-          <button type="button" onClick={() => setTold(!told)} aria-expanded={told} className="text-xs text-accent hover:underline">
-            {told ? "Hide what it was told" : "What it was told"}
+        {told || running?.prompt ? (
+          <button type="button" onClick={() => setShowTold(!showTold)} aria-expanded={showTold} className="text-xs text-accent hover:underline">
+            {showTold ? "Hide what it was told" : "What it was told"}
           </button>
         ) : null}
       </div>
-      {told && running?.prompt ? (
+      {showTold && told ? (
+        <ToldView told={told} handles={handles} />
+      ) : showTold && running?.prompt ? (
         <pre className="scroll-thin mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-bg p-2 font-sans text-xs" tabIndex={0} aria-label="What the agent was told">
           {running.prompt}
         </pre>

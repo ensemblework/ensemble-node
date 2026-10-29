@@ -3,20 +3,31 @@
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Crown, Download, LogOut, MailPlus, Plus, Trash2, UserMinus, X } from "lucide-react";
+import { Check, Crown, Download, LogOut, MailPlus, Plus, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { keys, limitsOf, putRoom } from "@/lib/hooks";
 import { ago } from "@/lib/text";
+import { grantLabel, helperThread } from "@/lib/threads";
 import { toast } from "@/lib/toast";
-import type { Bootstrap, Member, NodeFull, Room, RoomInvite } from "@/lib/types";
+import type { Bootstrap, Member, NodeFull, NodePublic, Room, RoomInvite } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { NodeSettings } from "../node-settings";
 import { Button, Drawer, Field, Input, Notice, Pill } from "../ui";
+import { useKeepHelper } from "./helper-thread";
 
 type NodeMember = Extract<Member, { kind: "node" }>;
 type PersonMember = Extract<Member, { kind: "person" }>;
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+function KeepHelperButton({ helper }: { helper: NodePublic }) {
+  const { keep, keeping } = useKeepHelper(helper);
+  return (
+    <Button tone="ghost" busy={keeping} onClick={() => void keep()}>
+      <UserPlus size={15} /> Keep as a node
+    </Button>
+  );
+}
 
 function Section({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -231,15 +242,19 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
   }
 
   if (room.kind === "task") {
-    const helper = nodeMembers.find((row) => Boolean(row.node.parentNodeId));
+    const thread = helperThread(room);
+    const helper = nodeMembers.find((row) => row.node.id === thread?.helper?.id) ?? nodeMembers.find((row) => Boolean(row.node.parentNodeId));
+    const kept = Boolean(thread?.kept || (helper && boot.nodes.some((node) => node.id === helper.node.id)));
+    const can = thread?.grant === "sessions" ? "It reads (your workspace, the web, connected apps) and may run its own coding-agent session on your computer." : thread?.grant === "computer" ? "It reads (your workspace, the web, connected apps) and may use your computer's tools." : "It only reads (your workspace, the web, connected apps) and changes nothing.";
     return (
       <Drawer open={open} onClose={onClose} title="About this helper">
         <div className="space-y-6">
-          <Section title="A helper's room" hint="A node brought in a temporary helper for one task. It only reads (your workspace, the web, connected apps), changes nothing, and reports to the node, which tells you. You read along here.">
-            <ul className="space-y-1.5">{nodeMembers.map((member) => nodeRow(member, member === helper ? <span className="px-2 text-xs text-muted">helper</span> : null))}</ul>
+          <Section title="A helper's room" hint={kept ? "A node brought in a helper for one task, and you kept it as a lasting node with its own chat. This room stays as its history." : `A node brought in a temporary helper for one task. ${can} It reports to the node, which tells you. You read along here.`}>
+            <ul className="space-y-1.5">{nodeMembers.map((member) => nodeRow(member, member === helper ? <span className="px-2 text-xs text-muted">{kept ? "kept" : `helper · ${grantLabel(thread?.grant ?? "read")}`}</span> : null))}</ul>
           </Section>
-          <p className="text-sm text-muted">The helper and this room go after 3 quiet days, or when you delete them.</p>
+          {kept ? null : <p className="text-sm text-muted">The helper and this room go after 3 quiet days, or when you delete them. Keep it as a node to have it for good.</p>}
           <section className="flex flex-wrap gap-2 border-t border-line pt-4">
+            {!kept && helper ? <KeepHelperButton helper={helper.node} /> : null}
             <Button tone="ghost" onClick={onExport}>
               <Download size={15} /> Export as Markdown
             </Button>
@@ -247,14 +262,15 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
               tone="danger"
               busy={busy === "delete"}
               onClick={() => {
-                if (!confirm(`Delete this helper and its room now?`)) return;
+                // A kept helper is a lasting node now: deleting its old room leaves the node.
+                if (!confirm(kept ? `Delete this room? ${helper ? `@${helper.handle} stays as your node.` : ""}`.trim() : "Delete this helper and its room now?")) return;
                 void act("delete", async () => {
                   await api(`/api/node/rooms/${room.id}`, { method: "DELETE" });
                   router.replace("/chat");
                 });
               }}
             >
-              <Trash2 size={15} /> Delete helper
+              <Trash2 size={15} /> {kept ? "Delete this room" : "Delete helper"}
             </Button>
           </section>
         </div>

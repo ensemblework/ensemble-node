@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Inbox, LogOut, Plug, Search, ShieldQuestion } from "lucide-react";
+import { ChevronRight, Inbox, LogOut, Plug, Repeat, Search, ShieldQuestion } from "lucide-react";
 import { api } from "@/lib/api";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { liveDevices } from "@/lib/ensemble";
@@ -34,6 +34,7 @@ export default function SettingsPage() {
   const list = liveDevices(devices.data ?? []);
   const places: Array<[string, string, typeof Plug, string]> = [
     ["/needs-me", "Needs me", ShieldQuestion, "What your nodes and agents ask you, the same list as in Ensemble"],
+    ["/routines", "Routines", Repeat, "Work your nodes do on a schedule, on a change or when a webhook calls"],
     ["/connections", "Connections", Plug, "The apps your nodes can read, the same as in Ensemble"],
     ["/requests", "Requests to join", Inbox, "Rooms other people asked you to join"],
     ["/search", "Search", Search, "Every conversation you are in"],

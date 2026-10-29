@@ -82,6 +82,7 @@ try {
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
       if (path === "/api/agent/jobs/job") return json({ job: { id: "job", taskId: "task", title: "Build the landing page", kind: "code", status: "succeeded", provider: "copilot-cli", model: "gpt-6.1-sol", modelUsed: null, reasoningEffort: "high", progress: null, summary: "Updated the landing page.", error: null, turns: 1, toolCalls: 2, runId: null, deviceName: "Development laptop", yours: true, folder: "website", branch: "feature/landing", files: [], createdAt: stamp(1), startedAt: stamp(1), finishedAt: stamp(2) }, events: [] });
       if (path.endsWith("/memory")) return json({ memories: [] });
+      if (path === "/api/node/routines") return json({ routines: [] });
       const node = /^\/api\/node\/nodes\/([^/]+)$/.exec(path);
       if (node && request.method() === "PATCH") {
         const saved = state.boot.nodes.find(row => row.id === node[1]);

@@ -11,7 +11,7 @@ import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, u
 import { clearJump, useJump } from "@/lib/jump";
 import { useLiveRoom } from "@/lib/live";
 import { TOOL_LABEL } from "@/lib/text";
-import { helperThreads, looseThreads, threadLabel, threadsOfMessage, type HelperThread } from "@/lib/threads";
+import { helperThread, helperThreads, looseThreads, threadLabel, threadsOfMessage, type HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
 import type { Bootstrap, Member, Message, NodeFull, Room } from "@/lib/types";
 import { workBoard } from "@/lib/work";
@@ -22,6 +22,7 @@ import { Composer, type ComposerDraft, type MentionOption } from "./composer";
 import { HelperThreadView } from "./helper-thread";
 import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
 import { PinnedBar, PinsDrawer } from "./pins";
+import { PlanCard } from "./plan-card";
 import { RichText } from "./rich-text";
 import { readableBody } from "@/lib/entity-text";
 import { RoomSettings } from "./room-settings";
@@ -61,6 +62,8 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [menu, setMenu] = useState(false);
   const [searching, setSearching] = useState(false);
   const [helper, setHelper] = useState<HelperThread | null>(null);
+  // A routine run's card, opened from the strip: it is not in the timeline.
+  const [cardId, setCardId] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [reply, setReply] = useState<Message | null>(null);
   const [draft, setDraft] = useState<ComposerDraft | null>(null);
@@ -117,6 +120,12 @@ export function RoomView({ roomId }: { roomId: string }) {
   const list = filter === "mentions" ? loaded.filter((row) => mentionsMe(row, meId)) : loaded;
   const nodes = useMemo(() => nodesById(boot.data, room), [boot.data, room]);
   const whole = everything.data ?? all;
+  // Every plan's step cards from the whole conversation, for a card opened on its own.
+  const inPlanAll = useMemo(() => {
+    const byPlan = new Map<string, Message[]>();
+    for (const row of whole) if (row.planId) byPlan.set(row.planId, [...(byPlan.get(row.planId) ?? []), row]);
+    return byPlan;
+  }, [whole]);
   // What runs here, from what is loaded: Stop asks first when it is more than a reply being written.
   const board = useMemo(() => workBoard(whole, meId, (id) => (id ? (nodes.get(id)?.ownerId ?? null) : null)), [whole, meId, nodes]);
   const working = board.length > 0;
@@ -503,7 +512,7 @@ export function RoomView({ roomId }: { roomId: string }) {
         </div>
       ) : null}
       <PinnedBar room={room} ctx={ctx} onAll={() => setPanel("pins")} />
-      <WorkStrip items={board} helpers={helperRows} onJump={(messageId) => void jumpTo(messageId)} onHelper={setHelper} />
+      <WorkStrip items={board} helpers={helperRows} onJump={(messageId) => void jumpTo(messageId)} onCard={setCardId} onHelper={setHelper} />
       {filter !== "all" ? (
         <div className="flex items-center justify-center gap-2 border-b border-line bg-accent/5 px-3 py-1.5 text-xs">
           <filterInfo.icon size={13} className="text-accent" /> Showing {filterInfo.label.toLowerCase()}
@@ -704,20 +713,41 @@ export function RoomView({ roomId }: { roomId: string }) {
       <Drawer open={Boolean(helper)} onClose={() => setHelper(null)} title={helper ? threadLabel(helper, false).split(" · ")[0]! : "Helper"}>
         {helper ? <HelperThreadView thread={helper} /> : null}
       </Drawer>
+      <Drawer open={Boolean(cardId)} onClose={() => setCardId(null)} title="Routine run">
+        {cardId ? <DetachedCard message={whole.find((row) => row.id === cardId)} ctx={{ ...ctx, inPlan: inPlanAll }} /> : null}
+      </Drawer>
     </div>
   );
 }
 
-/** A helper's room is read-only: the owner talks to the node that made the helper, in its chat. */
+/** A card that is not in the timeline (a routine run's), shown on its own. */
+function DetachedCard({ message, ctx }: { message: Message | undefined; ctx: MessageContext }) {
+  if (!message) return <p className="text-sm text-muted">This run&apos;s card is not loaded any more. Its routine lists it under Routines.</p>;
+  return <PlanCard message={message} ctx={ctx} />;
+}
+
+/** A helper's room is read-only: the owner talks to the node that made the helper, in its chat (or to the helper's own chat once kept). */
 function HelperRoomNote({ room, boot }: { room: Room; boot: Bootstrap }) {
-  const helper = room.members.find((row): row is NodeMember => row.kind === "node" && Boolean(row.node.parentNodeId));
-  const parentId = helper?.node.parentNodeId ?? room.members.find((row): row is NodeMember => row.kind === "node" && !row.node.parentNodeId)?.node.id;
-  const parent = boot.nodes.find((node) => node.id === parentId);
-  const dm = parent ? boot.rooms.find((row) => row.kind === "dm" && row.members.some((member) => member.kind === "node" && member.node.id === parent.id)) : undefined;
+  const thread = helperThread(room);
+  const helper = thread?.helper;
+  const parent = boot.nodes.find((node) => node.id === thread?.parent?.id);
+  const keptNode = helper ? boot.nodes.find((node) => node.id === helper.id) : undefined;
+  const dmOf = (nodeId: string) => boot.rooms.find((row) => row.kind === "dm" && row.members.some((member) => member.kind === "node" && member.node.id === nodeId));
+  if (keptNode) {
+    const chat = dmOf(keptNode.id);
+    return (
+      <div className="border-t border-line bg-panel/80 px-4 py-3 text-sm text-muted md:px-6">
+        <Lock size={13} className="mr-1.5 inline" />
+        You kept @{keptNode.slug} as a node; this room is its history.{" "}
+        {chat ? <Link href={`/r/${chat.id}`} className="text-accent">Talk to {keptNode.name}</Link> : null}
+      </div>
+    );
+  }
+  const dm = parent ? dmOf(parent.id) : undefined;
   return (
     <div className="border-t border-line bg-panel/80 px-4 py-3 text-sm text-muted md:px-6">
       <Lock size={13} className="mr-1.5 inline" />
-      {parent ? <>@{parent.slug} brought in {helper ? `@${helper.handle}` : "a helper"} for one task and tells you what it finds. You read along here; to steer it, </> : "You read along here. "}
+      {parent ? <>@{parent.slug} brought in {helper ? `@${helper.slug}` : "a helper"} for one task and tells you what it finds. You read along here; to steer it, </> : "You read along here. "}
       {dm ? <Link href={`/r/${dm.id}`} className="text-accent">talk to {parent!.name}</Link> : "talk to its node"}.
       {" "}It goes after 3 quiet days.
     </div>

@@ -2,7 +2,7 @@
  * An agent session as its card shows it (build blocks B3, B16): the settings asked for, sent to the
  * engine and reported back, the session's state, what it may be told now, and edits to its queue.
  */
-import type { QueuedRun, RunSettingValues, RunSettings, SessionAction, StepRun } from "./types";
+import type { QueuedRun, RunSession, RunSettingValues, RunSettings, SessionAction, SessionDetail, StepRun } from "./types";
 
 /** What an engine that does not say its settings reports for each (Ensemble's run settings). */
 export const NOT_REPORTED = "not_reported";
@@ -24,6 +24,21 @@ const AGENTS: Record<string, string> = {
 
 /** An agent's name: "claude-code" → "Claude Code"; names it does not know stay as given. */
 export const agentName = (value: string): string => AGENTS[value.trim().toLowerCase()] ?? value.trim();
+
+const text = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : null);
+
+/**
+ * A session's agent: its id for logic (marks, settings) and its name for people. The two places that
+ * carry it disagree on which field is which: a run card's `data.session` has the name in `agent` and
+ * the id in `agentId`, while `GET /api/node/sessions/:id` has the id in `agent` and the name in
+ * `agentName`. Cards from before `agentId` carry the id in `agent`. What the session read says wins.
+ */
+export function sessionAgent(card?: Pick<RunSession, "agent" | "agentId"> | null, detail?: Pick<SessionDetail, "agent" | "agentName"> | null): { id: string | null; name: string | null } {
+  const shown = text(card?.agent);
+  const id = text(detail?.agent) ?? text(card?.agentId) ?? (shown && Object.hasOwn(AGENTS, shown.toLowerCase()) ? shown.toLowerCase() : null);
+  const name = text(detail?.agentName) ?? (shown ? agentName(shown) : null) ?? (id ? agentName(id) : null);
+  return { id, name };
+}
 
 export type SettingKey = "agent" | "model" | "effort" | "context" | "fast";
 const KEYS: readonly SettingKey[] = ["agent", "model", "effort", "context", "fast"];

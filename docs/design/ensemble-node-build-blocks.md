@@ -1101,3 +1101,8 @@ The plan's W11 covers the rest: channels (Slack, Teams, text messages), voice, f
 | 15 | Free-form answers by your lead to other people (C1) | Allowed within a per-room budget you set; status answers are free (code-built) |
 | 16 | Shared tasks (C4): default to "private work, shared result" or "shared run"? | Private work, shared result |
 | 17 | Video format when no system H.264 encoder exists (B19) | VP9 in WebM from an LGPL build, after a licensing check |
+
+**Outcomes from the B0 evaluation** (Ensemble `apps/hub-api/scripts/node-plan-eval.mjs`; results in Ensemble docs/35 §11). Ten planning requests went to a crew lead on each model. Sol low and Sol medium handled all ten, with every expected deliverable named. Luna low handled seven, and named 10 of 14 deliverables. It sent three build requests straight to one coding run, without the checks that were asked for.
+
+- Decision 2: the lead keeps Sol medium.
+- Decision 8: a node with no model of its own talks with Sol at low thinking. Luna stays the fast model that a turn cut off by a rate limit answers with.

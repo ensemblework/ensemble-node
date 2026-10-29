@@ -1,8 +1,10 @@
 /**
  * Local, stateful browser fixture for the runtime cards: plan cards v3 (held steps, attempts, checks,
  * the requirements ledger, a work card, a contract 1 card), the session card (settings, queue edits,
- * Steer, Stop), evidence and its lightbox, a node's media, helper threads and the stop path. Never
- * points at a hosted account or calls a model. Usage is in docs/05 (Browser regression).
+ * Steer, Stop, what the agent was told), a run asked for its result, evidence and its lightbox, a
+ * node's media, a routine's run in the "Working on" strip, helper threads (what a helper may do, keeping
+ * it as a node) and the stop path. Never points at a hosted account or calls a model. Usage is in
+ * docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -15,6 +17,7 @@ if (shots) mkdirSync(shots, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true, args: ["--no-sandbox"] });
 const stamp = (minute) => new Date(Date.UTC(2026, 9, 29, 10, minute)).toISOString();
 const TASK = "3f2a9c1e-7b44-4d2a-9a51-0c8f5e6d7b10";
+const PACKET = "## Goal\nFix the login redirect\n\n## Your part\nMake the redirect return to the page you came from, query string and all.\n\n## Constraints\nWork in the ensemble folder on testing.\n\n## Report\nCall report_result once.";
 const BRIEF = `Work in the ensemble folder on testing. Then implement ONLY Expire Needs Me requests when their task ends (ensemble://task/${TASK}), read its page. Ensure terminal tasks cannot leave actionable stale requests; push to testing when done.`;
 
 /** A small PNG of one colour, so thumbnails are real pictures. */
@@ -54,11 +57,11 @@ function fixture() {
     { ...base, id: "builder", slug: "builder", name: "Builder", role: "engineer", avatar: avatar("#7FB3D5") },
     { ...base, id: "tester", slug: "tester", name: "Tester", role: "tester", avatar: avatar("#A9DFBF") },
   ];
-  const scout = { ...base, id: "lead-scout", slug: "lead-scout", name: "Scout", role: "auditor", avatar: avatar("#9AA5B1"), parentNodeId: "lead" };
+  const scout = { ...base, id: "lead-scout", slug: "lead-scout", name: "Scout", role: "auditor", avatar: avatar("#9AA5B1"), parentNodeId: "lead", autonomy: { sharedRooms: "ask", grant: "sessions" } };
   const me = { id: "p-me", kind: "person", handle: "mira", accountId: "me", role: "owner", name: "Mira", responsibility: null, me: true };
   const member = (node) => ({ id: `m-${node.id}`, kind: "node", handle: node.slug, accountId: "me", lead: node.id === "lead", representative: true, node });
   const room = (id, title, kind, members, extra = {}) => ({ id, title, kind, members: [me, ...members.map(member)], createdBy: "me", lastSeq: 0, lastMessageAt: stamp(1), pinned: [], invites: [], leadNodeIds: ["lead"], readSeq: 0, unread: 0, ...extra });
-  const rooms = [room("crew", "Release crew", "crew", nodes), room("dm", "Lead", "dm", [nodes[0]]), room("task", "Lead · Scout", "task", [nodes[0], scout], { lastMessageAt: stamp(20) })];
+  const rooms = [room("crew", "Release crew", "crew", nodes), room("dm", "Lead", "dm", [nodes[0]]), room("task", "Lead · Scout", "task", [nodes[0], scout], { lastMessageAt: stamp(20), helper: { parentNodeId: "lead", helperNodeId: "lead-scout", originRoomId: "dm", originPrivate: false } })];
   let seq = 0;
   const message = (roomId, kind, body, extra = {}) => ({ id: `${roomId}-${++seq}`, roomId, seq, kind, body, authorKind: "node", authorAccountId: "me", authorNodeId: "lead", data: {}, private: false, mentions: [], rootMessageId: null, clientId: null, planId: null, createdAt: stamp(seq), ...extra });
   const asked = message("crew", "text", "Ship the table fix and the Needs me expiry.", { authorKind: "human", authorNodeId: null });
@@ -109,19 +112,21 @@ function fixture() {
     { jobId: "j-q3", title: "Update the changelog", prompt: "Update the changelog", position: 3 },
   ];
   const session = { id: "sess1", status: "running", agent: "claude-code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", queue };
-  const live = message("crew", "run", "Fix the login redirect", { id: "run-live", authorNodeId: "builder", data: { jobId: "j-live", status: "running", delivery: "new", agent: "claude-code", session, settings: {
+  const live = message("crew", "run", "Fix the login redirect", { id: "run-live", authorNodeId: "builder", data: { jobId: "j-live", status: "running", delivery: "new", agent: "claude-code", session, told: PACKET, settings: {
     requested: { agent: "claude-code", model: "opus", effort: "high", context: "long_context" },
     resolved: { agent: "claude-code", model: "claude-opus-4-6", effort: "high", context: "default" },
     observed: { agent: "claude-code", model: "not_reported", effort: "not_reported", context: "not_reported" },
   } } });
   const queued = message("crew", "run", "Add tests for expiry", { id: "run-q1", authorNodeId: "builder", data: { jobId: "j-q1", status: "queued", delivery: "queue", session } });
   const failed = message("crew", "run", "Check the sign-up page", { id: "run-fail", authorNodeId: "tester", data: { jobId: "j-fail", status: "succeeded", report: { outcome: "fail", summary: "The sign-up page breaks on phones.", checks: [{ name: "Desktop layout", verdict: "pass" }, { name: "Phone layout", verdict: "fail", detail: "The button is off screen at 390 px." }, { name: "Signed-in flow", verdict: "blocked", detail: "Needs a sign-in." }], subject: { commit: "0badc0de1234", branch: "testing" } }, evidence: [{ id: "e-phone", kind: "screenshot", name: "signup-phone.png", mime: "image/png", size: 21004, caption: "Button off screen", createdAt: stamp(9) }] } });
+  const askedRun = message("crew", "run", "Report the result", { id: "run-asked", authorNodeId: "tester", data: { jobId: "j-asked", status: "succeeded", reportAsked: true, told: "You finished without reporting your result. Call the Ensemble tool report_result now. Do not redo the work." } });
+  const routineRun = message("crew", "plan", "Work", { id: "routine-run", planId: "r-morning", data: { type: "plan", contract: 3, kind: "self", leadNodeId: "lead", leadHandle: "lead", status: "running", goal: "Morning summary", routine: { id: "r-morning", runId: "rr-1", title: "Morning summary", notify: "always", trigger: "Weekdays at 09:00 (Asia/Kolkata)" }, requirements: [], deferred: [], steps: [step("m1", "lead", { kind: "research", executor: "self", brief: "Summarise the board.", status: "working", progress: "Reading the board" })] } });
   const media = message("crew", "text", "Here is the table now, at both sizes.", { id: "media1", data: { media: [{ evidenceId: "e-home", kind: "screenshot", name: "table-desktop.png", mime: "image/png", caption: "Desktop" }, { evidenceId: "e-video", kind: "video", name: "walkthrough.mp4", mime: "video/mp4", caption: "Walkthrough" }] } });
   const ask = message("dm", "text", "Get an independent audit of the README.", { authorKind: "human", authorNodeId: null });
   const helped = message("dm", "text", "I asked a helper for an independent audit; I will tell you what it finds.", { id: "helped", data: { tools: [{ id: "c1", name: "node_helper", state: "done", summary: "@lead-scout is on it in “Lead · Scout”; it reports back to you there.", href: null }] } });
   const brief = message("task", "text", "@lead-scout Audit the README for stale commands.", { id: "brief" });
   const found = message("task", "text", "@lead Found 3 stale commands: `ensemble login --old`, …", { id: "found", authorNodeId: "lead-scout" });
-  const messages = { crew: [asked, plan, stepRun, legacy, work, live, queued, failed, media], dm: [ask, helped], task: [brief, found] };
+  const messages = { crew: [asked, plan, stepRun, legacy, work, live, queued, failed, askedRun, routineRun, media], dm: [ask, helped], task: [brief, found] };
   for (const row of rooms) {
     row.lastSeq = messages[row.id].length;
     row.readSeq = row.lastSeq;
@@ -129,7 +134,7 @@ function fixture() {
   }
   const boot = { me: { id: "me", name: "Mira Chen", email: "mira@fieldnote.example", verified: true }, nodes, rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍", "❤️", "😂", "🎉", "👀", "✅", "🙏", "🔥"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
   const job = (id, title, status, extra = {}) => ({ id, taskId: "task", title, kind: "code", status, provider: "claude-code", model: "claude-opus-4-6", modelUsed: null, reasoningEffort: "high", contextTier: null, progress: status === "running" ? "Editing src/auth/redirect.ts" : null, summary: null, error: null, turns: 1, toolCalls: 4, runId: null, deviceName: "Development laptop", yours: true, folder: "ensemble", branch: "testing", files: [], createdAt: stamp(1), startedAt: stamp(1), finishedAt: status === "running" || status === "queued" ? null : stamp(2), ...extra });
-  const jobs = { "j-step": job("j-step", "Fix table parsing", "succeeded"), "j-live": job("j-live", "Fix the login redirect", "running"), "j-q1": job("j-q1", "Add tests for expiry", "queued", { startedAt: null }), "j-fail": job("j-fail", "Check the sign-up page", "succeeded") };
+  const jobs = { "j-step": job("j-step", "Fix table parsing", "succeeded"), "j-live": job("j-live", "Fix the login redirect", "running"), "j-q1": job("j-q1", "Add tests for expiry", "queued", { startedAt: null }), "j-fail": job("j-fail", "Check the sign-up page", "succeeded"), "j-asked": job("j-asked", "Report the result", "succeeded") };
   return { boot, messages, jobs, session: { id: "sess1", nodeId: "builder", status: "running", agent: "claude-code", agentName: "Claude Code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", running: { jobId: "j-live", title: "Fix the login redirect", prompt: "Fix the login redirect so it returns to the page you came from." }, queue: queue.map((row) => ({ ...row })), runs: [] }, calls: [], refuseNextReorder: false };
 }
 
@@ -191,6 +196,18 @@ try {
         state.calls.push({ cancel: cancel[1] });
         state.session.queue = state.session.queue.filter((row) => row.jobId !== cancel[1]).map((row, at) => ({ ...row, position: at + 1 }));
         return route.fulfill({ status: 204, headers: cors });
+      }
+      const promote = /^\/api\/node\/nodes\/([^/]+)\/promote$/.exec(path);
+      if (promote && request.method() === "POST") {
+        state.calls.push({ promote: promote[1] });
+        const task = state.boot.rooms.find((row) => row.id === "task");
+        const helper = task.members.find((row) => row.kind === "node" && row.node.id === promote[1]).node;
+        helper.parentNodeId = null;
+        state.boot.nodes.push(helper);
+        const chat = state.boot.rooms.find((row) => row.id === "dm");
+        state.boot.rooms.push({ ...chat, id: "dm-scout", title: helper.name, members: [chat.members[0], { id: "m-scout-dm", kind: "node", handle: helper.slug, accountId: "me", lead: false, representative: true, node: helper }], lastSeq: 0, readSeq: 0, last: null });
+        state.messages["dm-scout"] = [];
+        return json({ node: helper, room: { id: "dm-scout", title: helper.name } }, 201);
       }
       const stop = /^\/api\/node\/(rooms|plans)\/([^/]+)\/stop$/.exec(path);
       if (stop) {
@@ -306,7 +323,11 @@ try {
     const sessionPanel = card.getByRole("region", { name: "Agent session" });
     await sessionPanel.getByText("3 queued").waitFor();
     await sessionPanel.getByRole("button", { name: "What it was told" }).click();
-    assert.ok(await sessionPanel.getByText("Fix the login redirect so it returns to the page you came from.").isVisible());
+    const told = sessionPanel.getByRole("region", { name: "What the agent was told" });
+    await told.getByText("Make the redirect return to the page you came from, query string and all.").waitFor();
+    assert.equal(await told.getByText("Your part", { exact: true }).evaluate((el) => getComputedStyle(el).textTransform), "uppercase", "its parts read as small labels");
+    assert.equal(await sessionPanel.getByText("Fix the login redirect so it returns to the page you came from.").count(), 0, "the packet on the card comes before the session's own prompt");
+    assert.equal(await card.getByRole("button", { name: "What the agent was told" }).count(), 0, "said once on a session card");
     const queueList = sessionPanel.getByRole("list", { name: "Queued messages" });
     const order = async () => queueList.locator("li").evaluateAll((items) => items.map((item) => item.querySelector("span.truncate")?.textContent));
     await sessionPanel.getByRole("button", { name: "Move “Fix the lint” earlier" }).click();
@@ -344,8 +365,22 @@ try {
     await media.getByRole("button", { name: /This video does not play here/ }).waitFor();
     assert.equal(await media.locator("video").count(), 0, "a video that cannot be read becomes a download");
 
+    // A run Ensemble asked once for its result says so, and what it was asked.
+    const askedCard = timeline.locator("#m-run-asked");
+    assert.ok(await askedCard.getByText("Asked for its result").isVisible());
+    await askedCard.getByRole("button", { name: "What the agent was told" }).click();
+    await askedCard.getByRole("region", { name: "What the agent was told" }).getByText(/You finished without reporting your result/).waitFor();
+
     // The work strip and the room's Stop.
     const strip = page.getByRole("region", { name: "Working on" });
+    // A routine's run is not in the timeline: its chip opens its card.
+    assert.equal(await timeline.locator("#m-routine-run").count(), 0, "a routine's run is not in the timeline");
+    await strip.getByRole("button", { name: /Routine: Morning summary/ }).click();
+    const routineDrawer = page.getByRole("dialog", { name: "Routine run" });
+    await routineDrawer.getByText("Reading the board").waitFor();
+    assert.equal(await routineDrawer.getByRole("link", { name: "Routine · Morning summary" }).getAttribute("href"), "/routines#routine-r-morning");
+    await page.keyboard.press("Escape");
+    await routineDrawer.waitFor({ state: "detached" });
     assert.ok(await strip.getByText("Ship the table fix and Needs me expiry, each verified").isVisible());
     assert.ok(await strip.getByText("Fix the login redirect").isVisible());
     await page.getByRole("button", { name: "Stop this conversation's work" }).click();
@@ -375,8 +410,37 @@ try {
     await chip.click();
     await page.getByText("Found 3 stale commands").waitFor();
     assert.equal(await page.getByRole("link", { name: "Open the helper's room" }).getAttribute("href"), "/r/task");
+    assert.ok(await page.getByText("Can run sessions · reports to @lead").isVisible(), "what the helper may do");
     if (shots) await page.screenshot({ path: `${shots}/helper-${width}.png` });
     await fits();
+    // The helper's own room says whose helper it is; its settings say what it may do.
+    await page.goto(`${WEB}/r/task`);
+    await page.getByText("@lead brought in @lead-scout for one task").waitFor();
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menuitem", { name: "About this helper" }).click();
+    const about = page.getByRole("dialog", { name: "About this helper" });
+    await about.getByText("helper · can run sessions").waitFor();
+    assert.ok(await about.getByText(/may run its own coding-agent session on your computer/).isVisible());
+    assert.ok(await about.getByRole("button", { name: "Keep as a node" }).isVisible());
+    await page.keyboard.press("Escape");
+    await page.goto(`${WEB}/r/dm`);
+    await chip.click();
+    await page.getByRole("button", { name: "Keep as a node" }).click();
+    await page.getByText("Kept as a node").waitFor();
+    assert.equal(dialogs.at(-1), "Keep @lead-scout as a lasting node? It gets its own chat.");
+    assert.deepEqual(state.calls.at(-1), { promote: "lead-scout" });
+    assert.equal(await page.getByRole("link", { name: "Open its chat" }).getAttribute("href"), "/r/dm-scout");
+    if (width >= 768) await page.getByRole("complementary", { name: "Chat sidebar" }).locator('[data-conversation="dm-scout"]').waitFor();
+    // Its room is history now: it says so, and deleting it leaves the node.
+    await page.goto(`${WEB}/r/task`);
+    await page.getByText("You kept @lead-scout as a node; this room is its history.").waitFor();
+    assert.equal(await page.getByRole("link", { name: "Talk to Scout" }).getAttribute("href"), "/r/dm-scout");
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menuitem", { name: "About this helper" }).click();
+    const history = page.getByRole("dialog", { name: "About this helper" });
+    await history.getByRole("button", { name: "Delete this room" }).waitFor();
+    assert.equal(await history.getByRole("button", { name: "Keep as a node" }).count(), 0);
+    await page.keyboard.press("Escape");
 
     assert.deepEqual(errors, [], "no page errors");
     assert.deepEqual([...new Set(unexpected)].filter((path) => !path.startsWith("/api/runs/")), [], "no unmocked API calls");

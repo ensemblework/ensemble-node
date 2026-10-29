@@ -160,6 +160,8 @@ export const sessions = {
   /** The queued messages' job ids in their new order. */
   reorder: (id: string, order: string[]) => api<{ ok: true }>(`${sessionPath(id)}/queue`, { body: { order } }),
   cancel: (id: string, jobId: string) => api<void>(`${sessionPath(id)}/queue/${encodeURIComponent(jobId)}`, { method: "DELETE" }),
+  /** Hands the session to another of my lasting nodes (or gives one no node manages to it). */
+  handOver: (id: string, nodeId: string) => api<{ ok: true; nodeId: string }>(`${sessionPath(id)}/hand-over`, { body: { nodeId } }),
 };
 
 const routinePath = (id: string) => `/api/node/routines/${encodeURIComponent(id)}`;

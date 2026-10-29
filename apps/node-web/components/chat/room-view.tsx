@@ -11,6 +11,7 @@ import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, u
 import { clearJump, useJump } from "@/lib/jump";
 import { useLiveRoom } from "@/lib/live";
 import { isPeopleRoom, liveTab, mergeSeen, readMarker, sharedCopy, tabOf, tabUnread, unreadAfter, type RoomTab, type TabSeen } from "@/lib/rooms";
+import { newestSessionCards } from "@/lib/session";
 import { TOOL_LABEL } from "@/lib/text";
 import { helperThread, helperThreads, looseThreads, placeThreads, threadLabel, type HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
@@ -191,6 +192,8 @@ export function RoomView({ roomId }: { roomId: string }) {
   const nodes = useMemo(() => nodesById(boot.data, room), [boot.data, room]);
   const whole = everything.data ?? all;
   const timeline = useMemo(() => whole.filter((row) => !row.planId), [whole]);
+  // Each session's newest card here (step runs inside plan cards too): it keeps the session's line once its run ended.
+  const sessionCards = useMemo(() => newestSessionCards(whole), [whole]);
   // Each tab's unread, and the newest message the shown tab has.
   const tabCounts = useMemo(() => (isPeople ? tabUnread(timeline, tabsSeen, meId) : { room: 0, crew: 0 }), [isPeople, timeline, tabsSeen, meId]);
   const tabNewest = useMemo(() => timeline.reduce((max, row) => (row.sending || row.id.startsWith("local-") || (isPeople && tabOf(row) !== tab) ? max : Math.max(max, row.seq)), 0), [timeline, isPeople, tab]);
@@ -439,6 +442,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       threadsOf: (message: Message) => attached.get(message.id) ?? [],
       helperOf: (nodeId: string) => threads.find((thread) => thread.helper?.id === nodeId),
       onHelper: (thread: HelperThread) => setHelper(thread),
+      sessionCardOf: (sessionId: string) => sessionCards.get(sessionId),
       ...(isPeopleRoom(room)
         ? {
             tab,
@@ -456,7 +460,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           }
         : {}),
     };
-  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan, nodes, attached, threads, tab, requests.data, shareMessage, whole]);
+  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan, nodes, attached, threads, tab, requests.data, shareMessage, whole, sessionCards]);
 
   if (!boot.data || !ctx || !room) {
     return (

@@ -58,6 +58,8 @@ export type MessageContext = {
   myLead?: NodePublic | null;
   /** The Room's copy of a message of mine shared from My crew. */
   sharedCopyOf?: (messageId: string) => Message | undefined;
+  /** A session's newest card in this conversation: it keeps the session's line (who manages it, Hand to…) once its run ended. */
+  sessionCardOf?: (sessionId: string) => string | undefined;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -153,7 +155,10 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(calls.map((call) => call.callId)));
   const [body, setBody] = useState(message.body);
   const pending = data.status === "pending";
-  const pill = STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const };
+  // Handing a session to another node: the card has no prompt or title, only who it goes to and a note.
+  const handOver = data.type === "session" && data.action === "hand_over";
+  const handedTo = handOver && typeof data.input?.to === "string" ? `@${data.input.to.replace(/^@/, "")}` : "The node";
+  const pill = handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
   const error = settle.error?.message ?? (typeof data.error === "string" ? data.error : null);
   return (
     <div className="mt-1 rounded-2xl border border-warn/40 bg-warn/5 p-3">
@@ -211,7 +216,7 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
           ))}
         </ul>
       )}
-      {data.result?.summary ? <p className="mt-2 text-sm text-ok">{formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
+      {data.result?.summary ? <p className="mt-2 text-sm text-ok">{handOver ? `${handedTo} manages this session now.` : formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
       {data.result?.failed?.length ? <p className="mt-1 text-sm text-danger">{data.result.failed.map((row: { name: string; error: string }) => `${TOOL_LABEL(row.name)}: ${row.error}`).join(" · ")}</p> : null}
       {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
       {pending && data.type !== "secret" ? (

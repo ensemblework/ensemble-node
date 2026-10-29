@@ -73,6 +73,24 @@ export type StepReport = {
 export type RequirementStatus = "open" | "in_progress" | "accepted" | "failed" | "deferred" | "cancelled";
 export type Requirement = { id: string; text: string; status: RequirementStatus; acceptance: Array<{ id: string; text: string; mandatory: boolean }> };
 
+/** How a plan's builds share its folder (Ensemble docs/35 §8.15), and how an integration step combines them. */
+export type ParallelMode = "serial" | "worktrees" | "snapshots";
+export type IntegrateHow = "merge" | "rebase" | "patch";
+/** A plan's constraints, written once for every step (contract 3): the fields the card shows. */
+export type PlanConstraints = {
+  computer?: string;
+  folder?: string;
+  repos?: string[];
+  branch?: string;
+  publish?: "none" | "commit" | "push" | "pr";
+  order?: "serial" | "parallel_ok";
+  parallel?: ParallelMode;
+  integrate?: IntegrateHow;
+  notes?: string[];
+};
+/** A check's pass that a later change in the same place no longer covers: the step that changed it, and to what. */
+export type StaleAfter = { step: string; handle: string; candidate: string; at: string };
+
 /** How a step's agent runs go, as the owner asked. */
 export type StepRun = { agent?: string; model?: string; effort?: string; context?: "default" | "long_context" };
 
@@ -101,6 +119,10 @@ export type PlanStep = {
   attempt?: number;
   attempts?: Attempt[];
   sessionId?: string | null;
+  /** An integration step: the builds it brings in (step ids). */
+  integrates?: string[];
+  /** A check that passed, after which another step changed what it tested. */
+  staleAfter?: StaleAfter | null;
 };
 
 /** The routine whose run started a mission (`data.routine` on its card): `trigger` is the routine's "when" in words. */
@@ -123,6 +145,7 @@ export type PlanData = {
   originPrivate?: boolean;
   status: MissionStatus;
   goal?: string | null;
+  constraints?: PlanConstraints | null;
   requirements?: Requirement[];
   deferred?: Array<{ requirementId: string; reason: string }>;
   steps: PlanStep[];
@@ -141,11 +164,13 @@ export type QueuedRun = { jobId: string; title: string; prompt: string; position
  * name shown ("Claude Code") and `agentId` the agent's id ("claude-code"); cards from before
  * `agentId` carry the id in `agent`.
  */
-export type RunSession = { id: string; status: string; agent?: string | null; agentId?: string | null; model?: string | null; computer?: string | null; folder?: string | null; queue: QueuedRun[] };
+/** A run card's `data.session`: `nodeId` is the node that manages the session (it can be handed over). */
+export type RunSession = { id: string; nodeId?: string | null; status: string; agent?: string | null; agentId?: string | null; model?: string | null; computer?: string | null; folder?: string | null; queue: QueuedRun[] };
 /** `GET /api/node/sessions/:id`. Here `agent` is the agent's id and `agentName` the name shown: the other way round from a card's `data.session`. */
 export type SessionDetail = {
   id: string;
-  nodeId: string;
+  /** The node that manages the session now; null when none does (started in the Hub or the CLI). */
+  nodeId: string | null;
   status: string;
   agent: string | null;
   agentName?: string | null;

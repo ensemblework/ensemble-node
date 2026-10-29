@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentName, moveQueued, observedMissing, queuedLine, queueOrder, sessionActions, sessionAgent, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
+import { agentName, handOverChoices, moveQueued, newestSessionCards, observedMissing, queuedLine, queueOrder, sessionActions, sessionAgent, sessionManager, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
 import type { QueuedRun } from "./types";
 
 test("settings asked for, sent and reported read side by side; not reported is said, and changes are marked", () => {
@@ -63,4 +63,35 @@ test("queued messages move up and down, and go, keeping a numbered order", () =>
   assert.deepEqual(withoutQueued(queue, "a").map((row) => [row.jobId, row.position]), [["b", 1], ["c", 2]]);
   assert.equal(queuedLine(queue[0]!), "Then the docs");
   assert.equal(queuedLine(queue[1]!), "Add tests");
+});
+
+test("a session's state as Ensemble says it: working and waiting take the same controls as a run going on", () => {
+  assert.deepEqual(sessionStatus("working"), { label: "Working", tone: "accent" });
+  assert.deepEqual(sessionStatus("waiting"), { label: "Needs you", tone: "warn" });
+  assert.deepEqual(sessionActions("working"), ["steer", "queue", "replace", "stop"]);
+  assert.deepEqual(sessionActions("waiting"), ["steer", "queue", "replace", "stop"]);
+  assert.deepEqual(sessionActions("queued"), ["queue"]);
+});
+
+test("who manages a session, and who it can be handed to", () => {
+  assert.equal(sessionManager({ nodeId: "lead" }, null), "lead");
+  assert.equal(sessionManager({ nodeId: "lead" }, { nodeId: "designer" }), "designer", "the session read wins");
+  assert.equal(sessionManager({ nodeId: "lead" }, { nodeId: null }), null, "no node manages it now");
+  assert.equal(sessionManager({}, undefined), null);
+  const nodes = [
+    { id: "lead", name: "Lead", parentNodeId: null },
+    { id: "scout", name: "Scout", parentNodeId: "lead" },
+    { id: "designer", name: "Designer", parentNodeId: null },
+    { id: "builder", name: "Builder" },
+  ];
+  assert.deepEqual(handOverChoices(nodes, "lead").map((row) => row.id), ["builder", "designer"], "never a helper or the node that has it");
+  assert.deepEqual(handOverChoices(nodes, null).map((row) => row.id), ["builder", "designer", "lead"]);
+});
+
+test("each session's newest card in a conversation", () => {
+  const card = (id: string, seq: number, session: string | null, kind = "run") => ({ id, seq, kind, createdAt: `2026-10-29T10:0${seq}:00Z`, data: session ? { session: { id: session } } : {} });
+  const newest = newestSessionCards([card("a", 1, "s1"), card("b", 2, "s2"), card("c", 3, "s1"), card("d", 4, null), card("e", 5, "s1", "text")]);
+  assert.equal(newest.get("s1"), "c");
+  assert.equal(newest.get("s2"), "b");
+  assert.equal(newest.size, 2);
 });

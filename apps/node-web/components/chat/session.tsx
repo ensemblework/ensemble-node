@@ -11,11 +11,12 @@
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowRightLeft, ChevronDown, ScrollText, SlidersHorizontal, X } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useBootstrap, useHandOver, useSession, useSessionControl, useSessionQueue } from "@/lib/hooks";
-import { handOverChoices, observedMissing, queuedLine, queueOrder, sessionActions, sessionManager, sessionStatus, settingsRows } from "@/lib/session";
+import { handOverChoices, observedMissing, queuedLine, queueOrder, sessionActions, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows } from "@/lib/session";
+import { ago, RUN_LABEL } from "@/lib/text";
 import { toast } from "@/lib/toast";
-import type { NodePublic, RunSession, RunSettings, SessionAction } from "@/lib/types";
+import type { NodePublic, RunSession, RunSettings, SessionAction, SessionRunRow, SessionSummary } from "@/lib/types";
 import { NodeAvatar } from "../node-avatar";
-import { Button, Input, Pill, Textarea } from "../ui";
+import { Button, Input, Pill, Spinner, Textarea } from "../ui";
 import { RichText } from "./rich-text";
 
 /** What the agent was told: the packet Ensemble compiled for it (`data.told`, Markdown with its parts as small labels), scrolling inside the card. */
@@ -234,7 +235,7 @@ function QueueButton({ label, onClick, inert, children }: { label: string; onCli
  * node manages it). The node it goes to sees what the session did, sends it messages and answers for
  * it; runs already started still report to the node that started them.
  */
-export function SessionManager({ sessionId, managerId, cardId, owner, nodes }: { sessionId: string; managerId: string | null; cardId: string; owner: boolean; nodes: ReadonlyMap<string, NodePublic> }) {
+export function SessionManager({ sessionId, managerId, cardId, owner, nodes }: { sessionId: string; managerId: string | null; cardId?: string | null; owner: boolean; nodes: ReadonlyMap<string, NodePublic> }) {
   const boot = useBootstrap();
   const handOver = useHandOver(sessionId, cardId);
   const [picking, setPicking] = useState(false);
@@ -353,73 +354,50 @@ const DONE: Record<string, (queued: SessionAction["queued"]) => string> = {
  * what it is doing (and what it was told: the card's packet, `told`, before the session's own prompt),
  * its queue and the controls; on a queued run, its place in line and Cancel.
  */
-export function SessionPanel({
-  session,
-  jobId,
-  cardId,
-  runStatus,
-  runTitle,
-  onScreen,
-  owner,
+type SessionQueueState = ReturnType<typeof useSessionQueue>;
+type SessionControlState = ReturnType<typeof useSessionControl>;
+
+/**
+ * A session's state and its owner's controls, shared by a run card's session panel and the Sessions
+ * page: status, where it runs, who manages it (Hand to…), what it is doing now and what it was told,
+ * its queue (move up, move down, cancel) and Steer…, Queue…, Stop and send…, Stop. Without a node
+ * managing it, the session is read but not told anything (Ensemble refuses): it can be given to one.
+ */
+function SessionCore({
+  sessionId,
+  status,
+  where,
+  now,
   told,
+  prompt,
+  queue,
+  control,
+  owner,
+  managerId,
+  cardId,
   handles,
   nodes,
 }: {
-  session: RunSession;
-  jobId: string;
-  cardId: string;
-  runStatus: string;
-  runTitle: string;
-  onScreen: boolean;
-  owner: boolean;
+  sessionId: string;
+  status: string;
+  where: string;
+  now: string | null;
   told?: string | null;
+  prompt?: string | null;
+  queue: SessionQueueState;
+  control: SessionControlState;
+  owner: boolean;
+  managerId: string | null;
+  cardId?: string | null;
   handles: ReadonlySet<string>;
   nodes: ReadonlyMap<string, NodePublic>;
 }) {
-  const live = sessionPanelShows(runStatus);
-  const query = useSession(session.id, { enabled: owner && onScreen && live, poll: owner && onScreen && live });
-  const detail = query.data;
-  const queue = useSessionQueue(session.id, queueOrder(detail?.queue ?? session.queue));
-  const control = useSessionControl(session.id, jobId);
   const [mode, setMode] = useState<Mode | null>(null);
   const [showTold, setShowTold] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [moved, setMoved] = useState("");
-  const status = detail?.status ?? session.status;
-  // A session no node manages is read here but not told anything (Ensemble refuses): it can be given to a node.
-  const managerId = sessionManager(session, detail);
-  const running = detail?.running ?? null;
-  const current = running ? running.jobId === jobId : LIVE_RUN.has(runStatus);
-  if (!live) return null;
-
-  if (!current) {
-    // What it was told stays on the card when the session shows another run as the one going on.
-    const toldHere = told ? <ToldDisclosure told={told} handles={handles} /> : null;
-    if (runStatus !== "queued") return toldHere;
-    const place = queue.queue.findIndex((row) => row.jobId === jobId);
-    return (
-      <>
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
-          <span aria-live="polite">{place >= 0 ? `Number ${place + 1} of ${queue.queue.length} in the session's queue.` : "Taken out of the queue."}</span>
-          {owner && managerId && place >= 0 ? (
-            <button type="button" disabled={queue.busy} onClick={() => queue.cancel(jobId)} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs hover:bg-raised hover:text-danger disabled:opacity-50">
-              <X size={12} aria-hidden /> Cancel this message
-            </button>
-          ) : null}
-          {queue.error ? (
-            <span role="alert" className="w-full text-xs text-danger">
-              {queue.error}
-            </span>
-          ) : null}
-        </div>
-        {toldHere}
-      </>
-    );
-  }
-
   const badge = sessionStatus(status);
   const actions = owner && managerId ? sessionActions(status) : [];
-  const where = [detail?.folder ?? session.folder, detail?.computer ?? session.computer].filter(Boolean).join(" on ");
   const send = (body: SessionAction) => {
     setNote(null);
     control.mutate(body, {
@@ -431,7 +409,7 @@ export function SessionPanel({
   };
   const announce = (text: string) => setMoved(text);
   return (
-    <section className="mt-3 rounded-xl border border-line bg-bg/60 px-2.5 py-2" aria-label="Agent session">
+    <>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
         <span className="font-semibold uppercase tracking-wide text-muted">Session</span>
         <Pill tone={badge.tone}>{badge.label}</Pill>
@@ -442,23 +420,25 @@ export function SessionPanel({
           </span>
         ) : null}
       </div>
-      <SessionManager sessionId={session.id} managerId={managerId} cardId={cardId} owner={owner} nodes={nodes} />
-      <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-[13px]">
-        <span className="min-w-0 break-words">
-          <span className="text-muted">Now: </span>
-          {running?.title || runTitle}
-        </span>
-        {told || running?.prompt ? (
-          <button type="button" onClick={() => setShowTold(!showTold)} aria-expanded={showTold} className="text-xs text-accent hover:underline">
-            {showTold ? "Hide what it was told" : "What it was told"}
-          </button>
-        ) : null}
-      </div>
+      <SessionManager sessionId={sessionId} managerId={managerId} cardId={cardId} owner={owner} nodes={nodes} />
+      {now ? (
+        <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-[13px]">
+          <span className="min-w-0 break-words">
+            <span className="text-muted">Now: </span>
+            {now}
+          </span>
+          {told || prompt ? (
+            <button type="button" onClick={() => setShowTold(!showTold)} aria-expanded={showTold} className="text-xs text-accent hover:underline">
+              {showTold ? "Hide what it was told" : "What it was told"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {showTold && told ? (
         <ToldView told={told} handles={handles} />
-      ) : showTold && running?.prompt ? (
+      ) : showTold && prompt ? (
         <pre className="scroll-thin mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-bg p-2 font-sans text-xs" tabIndex={0} aria-label="What the agent was told">
-          {running.prompt}
+          {prompt}
         </pre>
       ) : null}
       {queue.queue.length ? (
@@ -561,6 +541,162 @@ export function SessionPanel({
       <p aria-live="polite" className="sr-only">
         {queue.error ? "" : moved}
       </p>
+    </>
+  );
+}
+
+export function SessionPanel({
+  session,
+  jobId,
+  cardId,
+  runStatus,
+  runTitle,
+  onScreen,
+  owner,
+  told,
+  handles,
+  nodes,
+}: {
+  session: RunSession;
+  jobId: string;
+  cardId: string;
+  runStatus: string;
+  runTitle: string;
+  onScreen: boolean;
+  owner: boolean;
+  told?: string | null;
+  handles: ReadonlySet<string>;
+  nodes: ReadonlyMap<string, NodePublic>;
+}) {
+  const live = sessionPanelShows(runStatus);
+  const query = useSession(session.id, { enabled: owner && onScreen && live, poll: owner && onScreen && live });
+  const detail = query.data;
+  const queue = useSessionQueue(session.id, queueOrder(detail?.queue ?? session.queue));
+  const control = useSessionControl(session.id, jobId);
+  const status = detail?.status ?? session.status;
+  // A session no node manages is read here but not told anything (Ensemble refuses): it can be given to a node.
+  const managerId = sessionManager(session, detail);
+  const running = detail?.running ?? null;
+  const current = running ? running.jobId === jobId : LIVE_RUN.has(runStatus);
+  if (!live) return null;
+
+  if (!current) {
+    // What it was told stays on the card when the session shows another run as the one going on.
+    const toldHere = told ? <ToldDisclosure told={told} handles={handles} /> : null;
+    if (runStatus !== "queued") return toldHere;
+    const place = queue.queue.findIndex((row) => row.jobId === jobId);
+    return (
+      <>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
+          <span aria-live="polite">{place >= 0 ? `Number ${place + 1} of ${queue.queue.length} in the session's queue.` : "Taken out of the queue."}</span>
+          {owner && managerId && place >= 0 ? (
+            <button type="button" disabled={queue.busy} onClick={() => queue.cancel(jobId)} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs hover:bg-raised hover:text-danger disabled:opacity-50">
+              <X size={12} aria-hidden /> Cancel this message
+            </button>
+          ) : null}
+          {queue.error ? (
+            <span role="alert" className="w-full text-xs text-danger">
+              {queue.error}
+            </span>
+          ) : null}
+        </div>
+        {toldHere}
+      </>
+    );
+  }
+
+  return (
+    <section className="mt-3 rounded-xl border border-line bg-bg/60 px-2.5 py-2" aria-label="Agent session">
+      <SessionCore
+        sessionId={session.id}
+        status={status}
+        where={sessionPlace({ folder: detail?.folder ?? session.folder, computer: detail?.computer ?? session.computer })}
+        now={running?.title || runTitle}
+        told={told}
+        prompt={running?.prompt}
+        queue={queue}
+        control={control}
+        owner={owner}
+        managerId={managerId}
+        cardId={cardId}
+        handles={handles}
+        nodes={nodes}
+      />
     </section>
+  );
+}
+
+const NO_HANDLES: ReadonlySet<string> = new Set();
+
+/** A session's recent runs, newest first: what each was, how it went, and what it did. */
+function RecentRuns({ runs }: { runs: readonly SessionRunRow[] }) {
+  if (!runs.length) return null;
+  return (
+    <section className="space-y-1.5" aria-label="Recent runs">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Recent runs</h3>
+      <ol className="space-y-1.5">
+        {runs.map((row) => {
+          const label = RUN_LABEL[row.status] ?? row.status.replace(/_/g, " ");
+          const settings = settingsLine(row.settings?.resolved ?? row.settings?.requested);
+          const said = (row.summary ?? row.error ?? "").trim();
+          return (
+            <li key={row.jobId} className="rounded-lg border border-line/70 bg-bg/50 px-2.5 py-1.5 text-[13px]">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <span className="min-w-0 flex-1 break-words font-medium">{row.title || queuedLine({ title: "", prompt: row.prompt ?? "" })}</span>
+                <span className={`shrink-0 text-xs ${row.status === "failed" ? "text-danger" : "text-muted"}`}>
+                  {label} · {ago(row.finishedAt ?? row.createdAt)}
+                </span>
+              </div>
+              {settings ? <p className="text-[11px] text-muted">{settings}</p> : null}
+              {said ? <p className={`mt-0.5 line-clamp-3 break-words text-xs ${row.error && !row.summary ? "text-danger" : "text-muted"}`}>{said}</p> : null}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+/**
+ * One session on its own (the Sessions page): its state, who manages it (Hand to…), what it is doing,
+ * its queue and controls when a node manages it, and its recent runs. Read often while something goes
+ * on; an idle session is read again when one of its cards changes.
+ */
+export function SessionDetailView({ sessionId, fallback, nodes }: { sessionId: string; fallback?: Pick<SessionSummary, "status" | "folder" | "computer" | "nodeId"> | null; nodes: ReadonlyMap<string, NodePublic> }) {
+  const status0 = fallback?.status ?? "";
+  const [live, setLive] = useState(sessionLive(status0));
+  const query = useSession(sessionId, { enabled: true, poll: live });
+  const detail = query.data;
+  const status = detail?.status ?? status0;
+  if (sessionLive(status) !== live) setLive(sessionLive(status));
+  const queue = useSessionQueue(sessionId, queueOrder(detail?.queue ?? []));
+  const control = useSessionControl(sessionId, detail?.running?.jobId ?? "");
+  if (query.isLoading && !detail) {
+    return (
+      <div className="flex justify-center py-8 text-muted">
+        <Spinner />
+      </div>
+    );
+  }
+  if (!detail) return <p className="text-sm text-danger">{query.error?.message ?? "That session is not available."}</p>;
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-line bg-bg/60 px-2.5 py-2" aria-label="Agent session">
+        <SessionCore
+          sessionId={sessionId}
+          status={status}
+          where={sessionPlace(detail)}
+          now={detail.running?.title ?? null}
+          prompt={detail.running?.prompt}
+          queue={queue}
+          control={control}
+          owner
+          managerId={sessionManager(null, detail)}
+          handles={NO_HANDLES}
+          nodes={nodes}
+        />
+      </section>
+      <RecentRuns runs={detail.runs ?? []} />
+    </div>
   );
 }

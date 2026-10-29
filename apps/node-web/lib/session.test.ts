@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentName, handOverChoices, moveQueued, newestSessionCards, observedMissing, queuedLine, queueOrder, sessionActions, sessionAgent, sessionManager, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
+import { agentName, handOverChoices, moveQueued, newestSessionCards, observedMissing, queuedLine, queueOrder, runsCount, sessionActions, sessionAgent, sessionLatest, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
 import type { QueuedRun } from "./types";
 
 test("settings asked for, sent and reported read side by side; not reported is said, and changes are marked", () => {
@@ -94,4 +94,17 @@ test("each session's newest card in a conversation", () => {
   assert.equal(newest.get("s1"), "c");
   assert.equal(newest.get("s2"), "b");
   assert.equal(newest.size, 2);
+});
+
+test("a session in the list: where it runs, its newest task, its runs, and whether it is going on", () => {
+  assert.equal(sessionPlace({ folder: "ensemble", computer: "Laptop" }), "ensemble on Laptop");
+  assert.equal(sessionPlace({ folder: "its own checkout", computer: null }), "its own checkout");
+  assert.equal(sessionLatest({ title: "Fix the login redirect", latestTask: "Add tests for it" }), "Add tests for it");
+  assert.equal(sessionLatest({ title: "Fix the login redirect", latestTask: "Fix the login redirect" }), null, "said once");
+  assert.equal(runsCount(1), "1 run");
+  assert.equal(runsCount(4), "4 runs");
+  assert.equal(sessionLive("working"), true);
+  assert.equal(sessionLive("queued"), true);
+  assert.equal(sessionLive("idle"), false);
+  assert.equal(sessionLive(undefined), false);
 });

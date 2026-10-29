@@ -89,7 +89,8 @@ function testedFor(step: Pick<PlanStep, "attempts" | "verifies">, steps: readonl
 export function staleNote(step: Pick<PlanStep, "staleAfter" | "attempts" | "verifies">, steps: readonly Pick<PlanStep, "id" | "attempts">[]): string | null {
   const after = step.staleAfter;
   if (!after?.candidate) return null;
-  const tested = testedFor(step, steps);
+  // Ensemble names what the pass tested; cards from before it are worked out from the attempts.
+  const tested = after.tested?.trim() || testedFor(step, steps);
   const changed = `@${after.handle}'s step then changed it (${short(after.candidate)})`;
   return tested ? `Passed for ${short(tested)}, but ${changed}: this pass doesn't cover that change.` : `It passed, but ${changed}: this pass doesn't cover that change.`;
 }

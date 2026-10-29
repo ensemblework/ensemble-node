@@ -17,6 +17,7 @@ ensemble-node/
 │   │       ├── search/          search every conversation
 │   │       ├── computers/       Computers & Needs me: paired computers, shared folders, Ensemble's Needs me
 │   │       ├── routines/        routines by node: pause, run now, edit, delete, runs and a run's card
+│   │       ├── sessions/        my agent sessions: who manages each, Hand to… / Give to…, a session's panel
 │   │       ├── connections/     connected apps, the same list as in Ensemble
 │   │       ├── activity/        approvals, runs, turns, computers, credits (mobile)
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, sign out
@@ -35,6 +36,7 @@ ensemble-node/
 │   │   ├── shell.tsx            collapsible recent-chat sidebar, phone sheet, layout, auth guard, ⌘K search
 │   │   ├── routines.tsx         routines: the list, the form (schedules in a time zone, events, webhooks),
 │   │   │                        a webhook's token shown once, runs and a run's card; a node's routines
+│   │   ├── sessions.tsx         sessions: search, each with who manages it and Hand to…, one opened
 │   │   ├── model-picker.tsx     every model a node can use, grouped (included, own keys, AI plans)
 │   │   ├── node-picker.tsx      my nodes as checkboxes with a Lead radio
 │   │   ├── email-chips.tsx      emails as chips
@@ -85,7 +87,7 @@ ensemble-node/
                                  actions/vercel-deploy (publish main on Vercel)
 ```
 
-`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work; `e2e/routines.mjs` for Routines; `e2e/rooms-v2.mjs` for rooms with other people. Usage is in [05](05_UI_AND_UX.md#browser-regression).
+`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work; `e2e/routines.mjs` for Routines; `e2e/rooms-v2.mjs` for rooms with other people; `e2e/needs-me.mjs` for Needs me; `e2e/sessions.mjs` for Sessions. Usage is in [05](05_UI_AND_UX.md#browser-regression).
 
 ## Where a change belongs
 

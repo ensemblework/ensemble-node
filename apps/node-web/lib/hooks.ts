@@ -69,6 +69,8 @@ export const keys = {
   runSteps: (jobId: string) => ["run-steps", jobId] as const,
   /** An agent session: what runs now and its queue. */
   session: (sessionId: string) => ["session", sessionId] as const,
+  /** My sessions (`GET /api/node/sessions`), by what was searched. */
+  sessions: (q: string) => ["sessions", q] as const,
   /** The owner's routines, and one routine's runs. */
   routines: ["routines"] as const,
   routineRuns: (routineId: string) => ["routine-runs", routineId] as const,
@@ -379,6 +381,11 @@ export function useSession(sessionId: string | null | undefined, options: { enab
   });
 }
 
+/** My sessions, most recently active first: read again on a session card's change and, gently, every 20 seconds while shown. */
+export function useSessionList(q: string) {
+  return useQuery({ queryKey: keys.sessions(q), queryFn: () => sessions.list(q), refetchInterval: 20_000, placeholderData: keepPreviousData });
+}
+
 /** Tells an agent session to queue, steer, replace or stop; the session and the run are read again after. */
 export function useSessionControl(sessionId: string, jobId: string) {
   const client = useQueryClient();
@@ -386,6 +393,7 @@ export function useSessionControl(sessionId: string, jobId: string) {
     mutationFn: (body: SessionAction) => sessions.control(sessionId, body),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: keys.session(sessionId) });
+      void client.invalidateQueries({ queryKey: ["sessions"] });
       if (jobId) void client.invalidateQueries({ queryKey: keys.job(jobId) });
     },
   });
@@ -398,6 +406,7 @@ export function useHandOver(sessionId: string, cardId?: string | null) {
     mutationFn: (nodeId: string) => sessions.handOver(sessionId, nodeId),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: keys.session(sessionId) });
+      void client.invalidateQueries({ queryKey: ["sessions"] });
       rereadCards(client, [cardId]);
     },
   });
@@ -721,6 +730,15 @@ export function useNodeEvents(enabled: boolean) {
         changedRoutines.clear();
       }, 800);
     };
+    // A session's card changed: the session list is read again (once per burst; only while it is shown).
+    let sessionsTimer: ReturnType<typeof setTimeout> | null = null;
+    const laterSessions = () => {
+      if (sessionsTimer) return;
+      sessionsTimer = setTimeout(() => {
+        sessionsTimer = null;
+        void client.invalidateQueries({ queryKey: ["sessions"] });
+      }, 800);
+    };
     const source = new EventSource(eventsUrl(), { withCredentials: true });
     const onMessage = (event: MessageEvent<string>) => {
       const message = JSON.parse(event.data) as Message;
@@ -736,7 +754,10 @@ export function useNodeEvents(enabled: boolean) {
         void client.invalidateQueries({ queryKey: keys.job(message.data.jobId) });
         void client.invalidateQueries({ queryKey: keys.runSteps(message.data.jobId) });
       }
-      if (message.kind === "run" && typeof message.data?.session?.id === "string") void client.invalidateQueries({ queryKey: keys.session(message.data.session.id) });
+      if (message.kind === "run" && typeof message.data?.session?.id === "string") {
+        void client.invalidateQueries({ queryKey: keys.session(message.data.session.id) });
+        laterSessions();
+      }
       later();
     };
     source.addEventListener("node.message", onMessage as EventListener);
@@ -784,6 +805,7 @@ export function useNodeEvents(enabled: boolean) {
         void client.invalidateQueries({ queryKey: ["messages"] });
         void client.invalidateQueries({ queryKey: ["plan"] });
         void client.invalidateQueries({ queryKey: ["requests"] });
+        void client.invalidateQueries({ queryKey: ["sessions"] });
         void client.invalidateQueries({ queryKey: keys.routines });
         void client.invalidateQueries({ queryKey: keys.invites });
         void client.invalidateQueries({ queryKey: keys.approvals });
@@ -796,6 +818,7 @@ export function useNodeEvents(enabled: boolean) {
       source.close();
       if (refresh.current) clearTimeout(refresh.current);
       if (routineTimer) clearTimeout(routineTimer);
+      if (sessionsTimer) clearTimeout(sessionsTimer);
     };
   }, [client, enabled]);
 }

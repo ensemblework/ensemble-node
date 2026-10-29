@@ -1,7 +1,7 @@
 "use client";
 
 import { Folder, Laptop, Monitor } from "lucide-react";
-import { ENSEMBLE_LINKS } from "@/lib/config";
+import { CLI_COMMAND, ENSEMBLE_LINKS } from "@/lib/config";
 import { ago } from "@/lib/text";
 import type { Computer, Device } from "@/lib/types";
 import { External, Pill } from "./ui";
@@ -37,6 +37,17 @@ export function DeviceList({ devices }: { devices: Device[] }) {
           </div>
           <p className="mt-0.5 text-xs text-muted">
             {[device.platform, device.appVersion ? `Ensemble ${device.appVersion}` : null, device.online ? null : device.lastSeenAt ? `last seen ${ago(device.lastSeenAt)} ago` : "not seen yet"].filter(Boolean).join(" · ")}
+          </p>
+          <p className="mt-1 text-xs text-muted" data-seal-key={device.sealKeyMismatch ? "mismatch" : device.sealKey?.kid ?? "none"}>
+            {device.sealKeyMismatch ? (
+              <span className="text-danger">Its secret key changed since it was paired: secrets are not sent to it until you pair it again ({CLI_COMMAND} login).</span>
+            ) : device.sealKey ? (
+              <>
+                Secret key <span className="font-mono">{device.sealKey.fingerprint}</span>: secrets you type here are encrypted for it. It should match <code className="rounded bg-raised px-1">{CLI_COMMAND} secrets fingerprint</code> there.
+              </>
+            ) : (
+              "Secrets go over HTTPS through Ensemble's server: update Ensemble there for end-to-end encryption."
+            )}
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {device.folders.length ? (

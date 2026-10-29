@@ -442,6 +442,10 @@ export type Device = {
   online: boolean;
   lastSeenAt: string | null;
   revokedAt: string | null;
+  /** The key Ensemble encrypts secrets for, pinned when the computer was paired (docs/35 §8.7). Absent: too old for end-to-end encryption. */
+  sealKey?: { kid: string; fingerprint: string } | null;
+  /** The computer now reports a different key: nothing is sent to it until it is paired again. */
+  sealKeyMismatch?: boolean;
 };
 
 /** Ensemble's Needs me: a run's approval (`GET /api/approvals`). */

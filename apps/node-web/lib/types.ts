@@ -191,7 +191,9 @@ export type SessionRunRow = {
   summary: string | null;
   error?: string | null;
   settings?: RunSettings | null;
+  /** Its run card, when it has one in Node: the message and the conversation it is in. */
   messageId: string | null;
+  roomId?: string | null;
   createdAt: string;
   finishedAt: string | null;
 };
@@ -203,6 +205,8 @@ export type SessionRunRow = {
 export type SessionSummary = {
   id: string;
   nodeId: string | null;
+  /** Its newest run card in Node; null for a session from the Hub or the CLI that has none. */
+  card?: { messageId: string | null; roomId: string | null } | null;
   status: string;
   agent: string;
   agentName: string;

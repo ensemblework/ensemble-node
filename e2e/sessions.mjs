@@ -2,7 +2,8 @@
  * Local, stateful browser fixture for the Sessions page (Ensemble docs/35 §8.9): every agent session of
  * mine, most recently active first, with where it runs, what it did and who manages it; search; a
  * session no node manages given to a node; a managed session opened with its queue, controls and
- * recent runs (Steer); and the list read again when a session's card changes on the event stream.
+ * recent runs (Steer); the list read again when a session's card changes on the event stream; and a
+ * session's newest card, and each run's, opened in their conversation at that message.
  * Never points at a hosted account or calls a model. Usage is in docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
@@ -32,18 +33,20 @@ function fixture() {
     { id: "crew", title: "Release crew", kind: "crew", members: [me, ...nodes.map(member)], createdBy: "me", lastSeq: 1, readSeq: 1, unread: 0, lastMessageAt: at(-60), pinned: [], invites: [], leadNodeIds: ["lead"], last: null },
   ];
   const sessions = [
-    { id: IDS.live, nodeId: "builder", status: "working", agent: "claude-code", agentName: "Claude Code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", title: "Fix the login redirect", latestTask: "Fix the login redirect", summary: "Editing src/auth/redirect.ts", runs: 2, lastActiveAt: at(-1) },
-    { id: IDS.hub, nodeId: null, status: "idle", agent: "codex", agentName: "Codex", model: null, computer: "Laptop", folder: "website", title: "Update the pricing table", latestTask: "Make the table scroll on phones", summary: "Made the pricing table scroll sideways on phones; the totals stay in view.", runs: 3, lastActiveAt: at(-30) },
-    { id: IDS.cli, nodeId: "lead", status: "idle", agent: "copilot-cli", agentName: "GitHub Copilot", model: null, computer: null, folder: "docs", title: "Rewrite the README", latestTask: "Add the install steps", summary: "Added install steps for macOS, Linux and Windows.", runs: 5, lastActiveAt: at(-600) },
+    { id: IDS.live, nodeId: "builder", card: { messageId: "card-live", roomId: "crew" }, status: "working", agent: "claude-code", agentName: "Claude Code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", title: "Fix the login redirect", latestTask: "Fix the login redirect", summary: "Editing src/auth/redirect.ts", runs: 2, lastActiveAt: at(-1) },
+    { id: IDS.hub, nodeId: null, card: null, status: "idle", agent: "codex", agentName: "Codex", model: null, computer: "Laptop", folder: "website", title: "Update the pricing table", latestTask: "Make the table scroll on phones", summary: "Made the pricing table scroll sideways on phones; the totals stay in view.", runs: 3, lastActiveAt: at(-30) },
+    { id: IDS.cli, nodeId: "lead", card: { messageId: "card-docs", roomId: "dm-lead" }, status: "idle", agent: "copilot-cli", agentName: "GitHub Copilot", model: null, computer: null, folder: "docs", title: "Rewrite the README", latestTask: "Add the install steps", summary: "Added install steps for macOS, Linux and Windows.", runs: 5, lastActiveAt: at(-600) },
   ];
-  const run = (jobId, title, status, extra = {}) => ({ jobId, title, prompt: `${title}.`, status, position: null, summary: null, error: null, settings: null, messageId: null, createdAt: at(-20), finishedAt: status === "running" ? null : at(-10), ...extra });
+  const run = (jobId, title, status, extra = {}) => ({ jobId, title, prompt: `${title}.`, status, position: null, summary: null, error: null, settings: null, messageId: null, roomId: null, createdAt: at(-20), finishedAt: status === "running" ? null : at(-10), ...extra });
   const details = {
-    [IDS.live]: { id: IDS.live, nodeId: "builder", status: "working", agent: "claude-code", agentName: "Claude Code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", running: { jobId: "j-live", title: "Fix the login redirect", prompt: "Fix the login redirect so it returns to the page you came from.", status: "running" }, queue: [{ jobId: "j-q1", title: "Add tests for the redirect", prompt: "Add tests for the redirect", position: 1 }], runs: [run("j-live", "Fix the login redirect", "running", { position: 1, settings: { resolved: { agent: "claude-code", model: "claude-opus-4-6", effort: "high" } } }), run("j-read", "Read the auth code", "succeeded", { summary: "Read the auth code: the redirect drops the query string." })] },
+    [IDS.live]: { id: IDS.live, nodeId: "builder", status: "working", agent: "claude-code", agentName: "Claude Code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", running: { jobId: "j-live", title: "Fix the login redirect", prompt: "Fix the login redirect so it returns to the page you came from.", status: "running" }, queue: [{ jobId: "j-q1", title: "Add tests for the redirect", prompt: "Add tests for the redirect", position: 1 }], runs: [run("j-live", "Fix the login redirect", "running", { position: 1, messageId: "card-live", roomId: "crew", settings: { resolved: { agent: "claude-code", model: "claude-opus-4-6", effort: "high" } } }), run("j-read", "Read the auth code", "succeeded", { summary: "Read the auth code: the redirect drops the query string." })] },
     [IDS.hub]: { id: IDS.hub, nodeId: null, status: "idle", agent: "codex", agentName: "Codex", model: null, computer: "Laptop", folder: "website", running: null, queue: [], runs: [run("j-h3", "Make the table scroll on phones", "succeeded", { summary: "Made the pricing table scroll sideways on phones." }), run("j-h2", "Fix the totals row", "failed", { error: "The build failed: a missing import." })] },
     [IDS.cli]: { id: IDS.cli, nodeId: "lead", status: "idle", agent: "copilot-cli", agentName: "GitHub Copilot", model: null, computer: null, folder: "docs", running: null, queue: [], runs: [] },
   };
+  // The live session's newest card, in the crew.
+  const liveCard = { id: "card-live", roomId: "crew", seq: 1, kind: "run", body: "Fix the login redirect", authorKind: "node", authorAccountId: "me", authorNodeId: "builder", data: { jobId: "j-live", status: "running", session: { id: IDS.live, nodeId: "builder", status: "working", agent: "Claude Code", agentId: "claude-code", computer: "Development laptop", folder: "ensemble", queue: [] } }, private: false, mentions: [], rootMessageId: null, clientId: null, planId: null, createdAt: at(-20) };
   const boot = { me: { id: "me", name: "Mira", email: "mira@fieldnote.example", verified: true }, nodes, rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
-  return { boot, sessions, details, calls: [], reads: [] };
+  return { boot, sessions, details, messages: { crew: [liveCard], "dm-lead": [] }, calls: [], reads: [] };
 }
 
 try {
@@ -78,6 +81,14 @@ try {
       if (path === "/api/devices") return json({ devices: [] });
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
       if (/^\/api\/agent\/jobs\/[^/]+$/.test(path)) return json({ error: "Not here" }, 404);
+      if (/^\/api\/node\/rooms\/[^/]+\/read$/.test(path)) return json({});
+      const roomMessages = /^\/api\/node\/rooms\/([^/]+)\/messages$/.exec(path);
+      if (roomMessages && method === "GET") return json({ messages: state.messages[roomMessages[1]] ?? [] });
+      const oneMessage = /^\/api\/node\/messages\/([^/]+)$/.exec(path);
+      if (oneMessage && method === "GET") {
+        const found = Object.values(state.messages).flat().find((row) => row.id === oneMessage[1]);
+        return found ? json({ message: found }) : json({ error: "That message is not available." }, 404);
+      }
       if (path === "/api/node/sessions" && method === "GET") {
         const q = (url.searchParams.get("q") ?? "").toLowerCase();
         state.reads.push({ q, limit: url.searchParams.get("limit") });
@@ -188,6 +199,23 @@ try {
     assert.ok(await cli.getByText("Working", { exact: true }).isVisible());
     assert.ok(state.reads.length > reads, "read again after the event");
     await fits();
+
+    // A session's newest card, and each run's, open in their conversation at that message.
+    const liveLink = live.getByRole("link", { name: "Open in conversation" });
+    assert.equal(await liveLink.getAttribute("href"), "/r/crew#m-card-live");
+    assert.equal(await cli.getByRole("link", { name: "Open in conversation" }).getAttribute("href"), "/r/dm-lead#m-card-docs");
+    assert.equal(await hub.getByRole("link", { name: "Open in conversation" }).count(), 0, "a Hub session has no card in Node");
+    await live.getByRole("button", { name: "Open “Fix the login redirect”" }).click();
+    const recent = page.getByRole("dialog", { name: "Claude Code in ensemble" }).getByRole("region", { name: "Recent runs" });
+    await recent.getByRole("listitem").first().waitFor();
+    assert.equal(await recent.getByRole("link", { name: "Fix the login redirect" }).getAttribute("href"), "/r/crew#m-card-live");
+    assert.equal(await recent.getByRole("link").count(), 1, "a run without a card stays plain");
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    await liveLink.click();
+    await page.waitForURL(/\/r\/crew/);
+    await page.locator("#m-card-live").waitFor();
+    if (shots) await page.screenshot({ path: `${shots}/session-card-${width}.png` });
 
     assert.deepEqual(errors, [], "no page errors");
     assert.deepEqual([...new Set(unexpected)], [], "no unmocked API calls");

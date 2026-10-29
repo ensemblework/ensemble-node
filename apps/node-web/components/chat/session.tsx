@@ -9,9 +9,11 @@
  * knows. Changes show at once; refusals show here.
  */
 import { AlertTriangle, ArrowDown, ArrowUp, ArrowRightLeft, ChevronDown, ScrollText, SlidersHorizontal, X } from "lucide-react";
+import Link from "next/link";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useBootstrap, useHandOver, useSession, useSessionControl, useSessionQueue } from "@/lib/hooks";
-import { handOverChoices, observedMissing, queuedLine, queueOrder, sessionActions, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows } from "@/lib/session";
+import { requestJump } from "@/lib/jump";
+import { cardLink, handOverChoices, observedMissing, queuedLine, queueOrder, sessionActions, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows } from "@/lib/session";
 import { ago, RUN_LABEL } from "@/lib/text";
 import { toast } from "@/lib/toast";
 import type { NodePublic, RunSession, RunSettings, SessionAction, SessionRunRow, SessionSummary } from "@/lib/types";
@@ -628,7 +630,7 @@ export function SessionPanel({
 
 const NO_HANDLES: ReadonlySet<string> = new Set();
 
-/** A session's recent runs, newest first: what each was, how it went, and what it did. */
+/** A session's recent runs, newest first: what each was, how it went, and what it did; each opens its card when it has one. */
 function RecentRuns({ runs }: { runs: readonly SessionRunRow[] }) {
   if (!runs.length) return null;
   return (
@@ -639,10 +641,18 @@ function RecentRuns({ runs }: { runs: readonly SessionRunRow[] }) {
           const label = RUN_LABEL[row.status] ?? row.status.replace(/_/g, " ");
           const settings = settingsLine(row.settings?.resolved ?? row.settings?.requested);
           const said = (row.summary ?? row.error ?? "").trim();
+          const title = row.title || queuedLine({ title: "", prompt: row.prompt ?? "" });
+          const card = cardLink(row);
           return (
             <li key={row.jobId} className="rounded-lg border border-line/70 bg-bg/50 px-2.5 py-1.5 text-[13px]">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                <span className="min-w-0 flex-1 break-words font-medium">{row.title || queuedLine({ title: "", prompt: row.prompt ?? "" })}</span>
+                {card ? (
+                  <Link href={card.href} onClick={() => requestJump(card.roomId, card.messageId)} title="Open its card in the conversation" className="min-w-0 flex-1 break-words font-medium text-accent hover:underline">
+                    {title}
+                  </Link>
+                ) : (
+                  <span className="min-w-0 flex-1 break-words font-medium">{title}</span>
+                )}
                 <span className={`shrink-0 text-xs ${row.status === "failed" ? "text-danger" : "text-muted"}`}>
                   {label} · {ago(row.finishedAt ?? row.createdAt)}
                 </span>

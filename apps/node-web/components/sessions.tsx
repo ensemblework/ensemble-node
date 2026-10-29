@@ -4,13 +4,16 @@
  * Sessions (Ensemble docs/35 §8.9): every coding-agent session of mine, on any computer, most recently
  * active first, whether a node manages it or it was started in the Hub or the CLI. Each says what it
  * works on, where it runs, what it did last and who manages it, with Hand to… (or Give to…) another of
- * my nodes; opening one shows its queue, its controls when a node manages it, and its recent runs.
+ * my nodes; opening one shows its queue, its controls when a node manages it, and its recent runs, and
+ * "Open in conversation" goes to its newest run card.
  * Read again when a session's card changes on the event stream, and gently while the page is open.
  */
-import { Search, SquareTerminal } from "lucide-react";
+import Link from "next/link";
+import { MessageSquare, Search, SquareTerminal } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { nodesById, useBootstrap, useSessionList } from "@/lib/hooks";
-import { runsCount, sessionLatest, sessionPlace, sessionStatus } from "@/lib/session";
+import { requestJump } from "@/lib/jump";
+import { cardLink, runsCount, sessionLatest, sessionPlace, sessionStatus } from "@/lib/session";
 import { ago } from "@/lib/text";
 import type { NodePublic, SessionSummary } from "@/lib/types";
 import { SessionDetailView, SessionManager } from "./chat/session";
@@ -22,6 +25,7 @@ function SessionRow({ row, nodes, onOpen }: { row: SessionSummary; nodes: Readon
   const badge = sessionStatus(row.status);
   const latest = sessionLatest(row);
   const where = sessionPlace(row);
+  const card = cardLink(row.card);
   return (
     <li>
       <article aria-labelledby={titleId} className="rounded-2xl border border-line bg-panel p-3.5">
@@ -48,10 +52,15 @@ function SessionRow({ row, nodes, onOpen }: { row: SessionSummary; nodes: Readon
             ) : null}
             {row.summary ? <p className="mt-1 line-clamp-2 break-words text-[13px] text-muted">{row.summary}</p> : null}
             <SessionManager sessionId={row.id} managerId={row.nodeId} owner nodes={nodes} />
-            <div className="mt-2">
+            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <Button size="sm" tone="ghost" onClick={onOpen} aria-label={`Open “${row.title}”`}>
                 Open
               </Button>
+              {card ? (
+                <Link href={card.href} onClick={() => requestJump(card.roomId, card.messageId)} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
+                  <MessageSquare size={12} aria-hidden /> Open in conversation
+                </Link>
+              ) : null}
             </div>
           </div>
         </div>

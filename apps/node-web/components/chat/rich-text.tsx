@@ -1,3 +1,5 @@
+/** @jsxRuntime automatic */
+
 import { Fragment } from "react";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { formatEntityText, type EntityRef } from "@/lib/entity-text";
@@ -66,11 +68,39 @@ export function RichText({
   // Only a node's own words are formatted; what people write shows as they wrote it.
   const shown = refs || kindLinks ? formatEntityText(text, refs ?? [], { showIds, streaming, app: ENSEMBLE_APP, kindLinks }) : text;
   return (
-    <div className={`space-y-2 break-words leading-relaxed ${small ? "text-sm" : "text-[15px]"}`}>
+    <div className={`min-w-0 max-w-full space-y-2 break-words leading-relaxed ${small ? "text-sm" : "text-[15px]"}`}>
       {blocks(shown).map((block, index) => {
         if (block.kind === "heading") return <p key={index} className="font-semibold">{<Inline text={block.text} handles={handles} />}</p>;
         if (block.kind === "code") return <CodeBlock key={index} code={block.text} lang={block.lang} />;
         if (block.kind === "quote") return <blockquote key={index} className="border-l-2 border-line pl-3 text-muted"><Inline text={block.text} handles={handles} /></blockquote>;
+        if (block.kind === "table") {
+          return (
+            <div key={index} className="scroll-thin max-w-full overflow-x-auto rounded-lg border border-line focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent" role="region" aria-label="Table" tabIndex={0}>
+              <table className="w-full min-w-max border-collapse text-left text-sm">
+                <thead>
+                  <tr>
+                    {block.header.map((cell, column) => (
+                      <th key={column} scope="col" className="bg-raised px-3 py-2 font-semibold" style={{ textAlign: block.align[column] ?? undefined }}>
+                        <Inline text={cell} handles={handles} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {block.rows.map((row, at) => (
+                    <tr key={at} className="border-t border-line">
+                      {row.map((cell, column) => (
+                        <td key={column} className="px-3 py-2 align-top" style={{ textAlign: block.align[column] ?? undefined }}>
+                          <Inline text={cell} handles={handles} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          );
+        }
         if (block.kind === "list") {
           const List = block.ordered ? "ol" : "ul";
           return (

@@ -12,7 +12,7 @@ import { CalendarClock, Check, ChevronRight, Copy, History, KeyRound, Pencil, Pl
 import { useEffect, useId, useMemo, useState, type KeyboardEvent } from "react";
 import { routines as routinesApi } from "@/lib/api";
 import { ENSEMBLE_API } from "@/lib/config";
-import { limitsOf, nodesById, useBootstrap, useMessageById, useMessages, useRoutineActions, useRoutineRuns, useRoutines } from "@/lib/hooks";
+import { limitsOf, nodesById, useBootstrap, usePlan, useRoutineActions, useRoutineRuns, useRoutines } from "@/lib/hooks";
 import {
   browserTimeZone,
   createBody,
@@ -36,6 +36,7 @@ import {
   scheduleText,
   timeZones,
   untilText,
+  watchedSpace,
   webhookUrl,
   WEEKDAYS,
   zoneOffset,
@@ -211,6 +212,7 @@ export function RoutineRow({ routine, boot, compact = false, highlight = false, 
   const historyId = useId();
   const Icon = TRIGGER_ICON[routine.trigger] ?? Repeat;
   const where = reportsIn(boot, routine);
+  const watched = watchedSpace(routine, boot.me.id);
   const last = routine.runs[0];
   const lastBadge = last ? runBadge(last) : null;
   const act = async (name: NonNullable<typeof busy>, work: () => Promise<void>) => {
@@ -253,7 +255,8 @@ export function RoutineRow({ routine, boot, compact = false, highlight = false, 
             <RoutineSwitch routine={routine} busy={busy === "status"} onToggle={() => void toggle()} />
           </div>
           <p className="mt-0.5 text-xs text-muted">
-            {routine.when} · {notifyShort(routine.notify)}
+            {routine.when}
+            {watched ? ` in ${watched}` : ""} · {notifyShort(routine.notify)}
             {where ? ` · reports in ${where}` : ""}
           </p>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
@@ -321,17 +324,15 @@ export function RoutineRow({ routine, boot, compact = false, highlight = false, 
   );
 }
 
-/** A run's card, read by its id (it is not in the chat), with its step runs from the conversation it reports in. */
+/** A run's card, read by its id with its step runs (`GET /api/node/plans/:id`): it is not in the chat. */
 function RunCardView({ boot, routine, run }: { boot: Bootstrap; routine: Routine; run: RoutineRun }) {
-  const card = useMessageById(run.missionId);
-  const roomId = card.data?.roomId ?? "";
-  const loaded = useMessages(roomId, "all", Boolean(roomId));
-  const room = boot.rooms.find((row) => row.id === roomId);
-  const message = card.data;
+  const card = usePlan(run.missionId);
+  const message = card.data?.message;
+  const steps = card.data?.runs;
+  const room = boot.rooms.find((row) => row.id === message?.roomId);
   const ctx = useMemo<MessageContext | null>(() => {
     if (!message) return null;
     const people = new Map((room?.members ?? []).flatMap((row): Array<[string, Extract<Member, { kind: "person" }>]> => (row.kind === "person" ? [[row.accountId, row]] : [])));
-    const steps = (loaded.data ?? []).filter((row) => row.planId === message.id);
     return {
       meId: boot.me.id,
       roomId: message.roomId,
@@ -346,9 +347,9 @@ function RunCardView({ boot, routine, run }: { boot: Bootstrap; routine: Routine
       onJump: () => undefined,
       onRetry: () => undefined,
       onEdit: () => undefined,
-      inPlan: new Map<string, Message[]>([[message.id, steps]]),
+      inPlan: new Map<string, Message[]>([[message.id, steps ?? []]]),
     };
-  }, [boot, message, room, loaded.data]);
+  }, [boot, message, room, steps]);
   const badge = runBadge(run);
   const where = reportsIn(boot, routine);
   return (
@@ -368,7 +369,7 @@ function RunCardView({ boot, routine, run }: { boot: Bootstrap; routine: Routine
       ) : card.error ? (
         <Notice tone="error">{card.error.message}</Notice>
       ) : message && ctx ? (
-        <PlanCard message={message} ctx={ctx} />
+        <PlanCard message={message} ctx={ctx} detached />
       ) : null}
       {room ? (
         <Link href={`/r/${room.id}`} className="inline-block text-sm text-accent hover:underline">

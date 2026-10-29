@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { grantLabel, helperThread, helperThreads, isHelperRoom, looseThreads, threadLabel, threadsOfMessage } from "./threads";
+import { grantLabel, helperThread, helperThreads, isHelperRoom, looseThreads, placeThreads, threadLabel, threadsOfMessage } from "./threads";
 import type { Member, NodePublic, Room } from "./types";
 
 const avatar = { shape: "orb" as const, color: "#fff", eyes: "dot" as const };
@@ -18,7 +18,7 @@ const crew = room("crew", "crew", [member(lead), member(node("builder"))]);
 test("a helper's task room is a thread: its helper, its parent, and Ensemble's marks when they come", () => {
   assert.equal(isHelperRoom(task), true);
   assert.equal(isHelperRoom(dm), false);
-  assert.deepEqual(helperThread(task), { roomId: "task", title: "Lead · Scout", helper: scout, parent: lead, originRoomId: null, originMessageId: null, originPrivate: false, grant: "read", kept: false, count: 4, lastMessageAt: "2026-10-29T10:00:00Z" });
+  assert.deepEqual(helperThread(task), { roomId: "task", title: "Lead · Scout", helper: scout, parent: lead, originRoomId: null, originMessageId: null, planId: null, originPrivate: false, grant: "read", kept: false, count: 4, lastMessageAt: "2026-10-29T10:00:00Z" });
   const marked = helperThread({ ...task, settings: { originRoomId: "crew", helperNodeId: "lead-scout", parentNodeId: "lead" }, originMessageId: "m9" });
   assert.equal(marked?.originRoomId, "crew");
   assert.equal(marked?.originMessageId, "m9");
@@ -72,4 +72,23 @@ test("Ensemble's helper view places the thread: its origin room, its parent, its
   assert.deepEqual(threadsOfMessage(reply, helperThreads([viewed({})])).map((row) => row.roomId), ["task"]);
   assert.deepEqual(threadsOfMessage({ ...reply, roomId: "dm" }, helperThreads([viewed({})])), [], "only in the room it was asked in");
   assert.deepEqual(looseThreads(privately, new Set(), room("launch", "room", [member(lead)])).map((row) => row.roomId), ["task"]);
+});
+
+test("a helper's thread goes under the message that asked, else under its plan card, else where its parent named it", () => {
+  const marks = (extra: Record<string, unknown>) => ({ parentNodeId: "lead", helperNodeId: "lead-scout", originRoomId: "launch", originPrivate: false, ...extra });
+  const marked = helperThreads([room("task", "task", [member(lead), member(scout)], { title: "Lead · Scout", helper: marks({ originMessageId: "ask", planId: "plan" }) })]);
+  assert.equal(marked[0]!.planId, "plan");
+  const asked = { id: "ask", roomId: "launch", kind: "text" as const, authorNodeId: null, planId: null, data: {}, private: false };
+  const plan = { id: "plan", roomId: "launch", kind: "plan" as const, authorNodeId: "lead", planId: null, data: {}, private: false };
+  const ids = (placed: Map<string, unknown[]>) => Object.fromEntries([...placed].map(([id, rows]) => [id, rows.length]));
+  assert.deepEqual(ids(placeThreads([asked, plan], marked)), { ask: 1 }, "under the person's message that asked, not the plan card too");
+  assert.deepEqual(threadsOfMessage(asked, marked).length, 1, "a person's message takes a marked thread");
+  assert.deepEqual(ids(placeThreads([plan], marked)), { plan: 1 }, "the asking message is not loaded: under the plan card");
+  assert.deepEqual(ids(placeThreads([], marked)), {}, "neither is loaded: the strip shows it");
+  const privately = helperThreads([room("task", "task", [member(lead), member(scout)], { title: "Lead · Scout", helper: marks({ originMessageId: "ask", planId: "plan", originPrivate: true }) })]);
+  assert.deepEqual(ids(placeThreads([asked, plan], privately)), {}, "asked for privately: never under a shared message or card");
+  assert.deepEqual(ids(placeThreads([{ ...asked, private: true }, plan], privately)), { ask: 1 });
+  const reply = { id: "m1", roomId: "dm", kind: "text" as const, authorNodeId: "lead", planId: null, private: false, data: { tools: [{ id: "c1", name: "node_helper", summary: "@lead-scout is on it.", href: null }] } };
+  assert.deepEqual(ids(placeThreads([reply], helperThreads([task]))), { m1: 1 }, "a room from before the marks: by its parent's call");
+  assert.deepEqual(ids(placeThreads([reply], marked)), {}, "a marked thread never goes by a guess");
 });

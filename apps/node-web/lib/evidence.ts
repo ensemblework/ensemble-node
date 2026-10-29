@@ -36,8 +36,8 @@ const KIND_LABEL: Record<string, string> = { screenshot: "Screenshot", image: "I
 /** "Screenshot", "Video", "Report"…: the kind the run gave it. */
 export const evidenceKind = (kind: string | null | undefined): string => KIND_LABEL[kind ?? ""] ?? "File";
 
-/** Where Ensemble serves a piece of evidence, for its owner (`GET /api/node/evidence/:id`). */
-export const evidencePath = (id: string): string => `/api/node/evidence/${encodeURIComponent(id)}`;
+/** Where Ensemble serves a piece of evidence: for its owner, or through the message that shows it (`?message=`). */
+export const evidencePath = (id: string, messageId?: string | null): string => `/api/node/evidence/${encodeURIComponent(id)}${messageId ? `?message=${encodeURIComponent(messageId)}` : ""}`;
 
 const text = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : null);
 
@@ -67,7 +67,7 @@ export function mediaItems(value: unknown): EvidenceItem[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((row: Partial<MediaItem> | null): EvidenceItem[] => {
     const id = text(row?.evidenceId);
-    return id ? [{ id, kind: text(row!.kind) ?? "file", name: text(row!.name) ?? "Media", mime: text(row!.mime) ?? "", caption: text(row!.caption) }] : [];
+    return id ? [{ id, kind: text(row!.kind) ?? "file", name: text(row!.name) ?? "Media", mime: text(row!.mime) ?? "", caption: text(row!.caption), size: typeof row!.size === "number" ? row!.size : null }] : [];
   });
 }
 

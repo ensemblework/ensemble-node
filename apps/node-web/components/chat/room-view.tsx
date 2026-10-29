@@ -7,11 +7,11 @@ import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Download, Elli
 import { api, download } from "@/lib/api";
 import { messageFiles } from "@/lib/attachments";
 import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
-import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, updateMessages, useBootstrap, useMessages, useSend, type Author } from "@/lib/hooks";
+import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, updateMessages, useBootstrap, useMessages, usePlan, useSend, type Author } from "@/lib/hooks";
 import { clearJump, useJump } from "@/lib/jump";
 import { useLiveRoom } from "@/lib/live";
 import { TOOL_LABEL } from "@/lib/text";
-import { helperThread, helperThreads, looseThreads, threadLabel, threadsOfMessage, type HelperThread } from "@/lib/threads";
+import { helperThread, helperThreads, looseThreads, placeThreads, threadLabel, type HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
 import type { Bootstrap, Member, Message, NodeFull, Room } from "@/lib/types";
 import { workBoard } from "@/lib/work";
@@ -120,26 +120,14 @@ export function RoomView({ roomId }: { roomId: string }) {
   const list = filter === "mentions" ? loaded.filter((row) => mentionsMe(row, meId)) : loaded;
   const nodes = useMemo(() => nodesById(boot.data, room), [boot.data, room]);
   const whole = everything.data ?? all;
-  // Every plan's step cards from the whole conversation, for a card opened on its own.
-  const inPlanAll = useMemo(() => {
-    const byPlan = new Map<string, Message[]>();
-    for (const row of whole) if (row.planId) byPlan.set(row.planId, [...(byPlan.get(row.planId) ?? []), row]);
-    return byPlan;
-  }, [whole]);
+  const timeline = useMemo(() => whole.filter((row) => !row.planId), [whole]);
   // What runs here, from what is loaded: Stop asks first when it is more than a reply being written.
   const board = useMemo(() => workBoard(whole, meId, (id) => (id ? (nodes.get(id)?.ownerId ?? null) : null)), [whole, meId, nodes]);
   const working = board.length > 0;
   // Helpers' rooms show as threads under the message that brought them in, or in the strip.
   const rooms = boot.data?.rooms;
   const threads = useMemo(() => helperThreads(rooms ?? []), [rooms]);
-  const attached = useMemo(() => {
-    const byMessage = new Map<string, HelperThread[]>();
-    for (const row of whole) {
-      const found = row.authorKind === "node" && !row.planId ? threadsOfMessage(row, threads) : [];
-      if (found.length) byMessage.set(row.id, found);
-    }
-    return byMessage;
-  }, [whole, threads]);
+  const attached = useMemo(() => placeThreads(timeline, threads), [timeline, threads]);
   const helperRows = useMemo(() => {
     if (!room) return [];
     const under = new Map<string, string>();
@@ -345,8 +333,10 @@ export function RoomView({ roomId }: { roomId: string }) {
       },
       inPlan,
       threadsOf: (message: Message) => attached.get(message.id) ?? [],
+      helperOf: (nodeId: string) => threads.find((thread) => thread.helper?.id === nodeId),
+      onHelper: (thread: HelperThread) => setHelper(thread),
     };
-  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan, nodes, attached]);
+  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan, nodes, attached, threads]);
 
   if (!boot.data || !ctx || !room) {
     return (
@@ -714,16 +704,24 @@ export function RoomView({ roomId }: { roomId: string }) {
         {helper ? <HelperThreadView thread={helper} /> : null}
       </Drawer>
       <Drawer open={Boolean(cardId)} onClose={() => setCardId(null)} title="Routine run">
-        {cardId ? <DetachedCard message={whole.find((row) => row.id === cardId)} ctx={{ ...ctx, inPlan: inPlanAll }} /> : null}
+        {cardId ? <DetachedCard planId={cardId} ctx={ctx} /> : null}
       </Drawer>
     </div>
   );
 }
 
-/** A card that is not in the timeline (a routine run's), shown on its own. */
-function DetachedCard({ message, ctx }: { message: Message | undefined; ctx: MessageContext }) {
-  if (!message) return <p className="text-sm text-muted">This run&apos;s card is not loaded any more. Its routine lists it under Routines.</p>;
-  return <PlanCard message={message} ctx={ctx} />;
+/** A card that is not in the timeline (a routine run's), read with its step cards and shown on its own. */
+function DetachedCard({ planId, ctx }: { planId: string; ctx: MessageContext }) {
+  const plan = usePlan(planId);
+  if (plan.isLoading) {
+    return (
+      <div className="flex justify-center py-6 text-muted">
+        <Spinner />
+      </div>
+    );
+  }
+  if (!plan.data) return <p className="text-sm text-muted">{plan.error?.message ?? "This run's card is not available."} Its routine lists it under Routines.</p>;
+  return <PlanCard message={plan.data.message} ctx={{ ...ctx, inPlan: new Map([[planId, plan.data.runs]]) }} detached />;
 }
 
 /** A helper's room is read-only: the owner talks to the node that made the helper, in its chat (or to the helper's own chat once kept). */

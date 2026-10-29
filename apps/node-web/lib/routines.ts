@@ -283,7 +283,8 @@ export type RoutineDraft = {
   trigger: RoutineTrigger;
   schedule: Schedule;
   timezone: string;
-  event: { on: "task" | "page"; actions: string[]; space: string; windowSeconds: string };
+  /** `space` as typed (a name or an id); `watched`: the space it watched when the form opened, shown by its name. */
+  event: { on: "task" | "page"; actions: string[]; space: string; windowSeconds: string; watched?: { id: string; name: string } };
   notify: RoutineNotify;
 };
 
@@ -303,9 +304,18 @@ export function newDraft(nodeId: string, timezone: string, roomId = ""): Routine
   };
 }
 
-/** A routine as its form shows it. The space an event routine watches is left empty when it is the owner's own. */
+/** The space an event routine watches, by name, when it is not the owner's own ("Acme"); null otherwise. */
+export function watchedSpace(routine: Pick<Routine, "trigger" | "event">, meId: string): string | null {
+  const event = routine.trigger === "event" ? routine.event : null;
+  if (!event?.space || event.space === meId) return null;
+  return event.spaceName?.trim() || "another space";
+}
+
+/** A routine as its form shows it. The space an event routine watches shows by its name, and empty when it is the owner's own. */
 export function draftOf(routine: Routine, meId: string): RoutineDraft {
   const event = routine.event;
+  const other = event?.space && event.space !== meId ? event.space : null;
+  const name = other && event?.spaceName?.trim() ? event.spaceName.trim() : null;
   return {
     title: routine.title,
     nodeId: routine.nodeId,
@@ -319,8 +329,9 @@ export function draftOf(routine: Routine, meId: string): RoutineDraft {
     event: {
       on: event?.on === "page" ? "page" : "task",
       actions: [...(event?.actions ?? [])],
-      space: event?.space && event.space !== meId ? event.space : "",
+      space: name ?? other ?? "",
       windowSeconds: String(event?.windowSeconds ?? 60),
+      ...(other && name ? { watched: { id: other, name } } : {}),
     },
     notify: routine.notify,
   };
@@ -381,11 +392,14 @@ function triggerBody(draft: RoutineDraft): Record<string, unknown> {
   if (draft.trigger !== "event") return {};
   const known = new Set(EVENT_ACTIONS[draft.event.on].map((row) => row.id));
   const actions = draft.event.actions.filter((action) => known.has(action));
+  // A space left as it showed goes back by its id: two spaces may share a name.
+  const typed = draft.event.space.trim();
+  const space = typed && draft.event.watched && typed === draft.event.watched.name ? draft.event.watched.id : typed;
   return {
     event: {
       on: draft.event.on,
       ...(actions.length ? { actions } : {}),
-      ...(draft.event.space.trim() ? { space: draft.event.space.trim() } : {}),
+      ...(space ? { space } : {}),
       windowSeconds: Number(draft.event.windowSeconds),
     },
   };

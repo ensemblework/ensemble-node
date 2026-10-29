@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Check, CircleSlash, ShieldQuestion } from "lucide-react";
+import { cardWords } from "@/lib/cards";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { previewText, SOURCE_LABEL } from "@/lib/ensemble";
 import { nodesById, useActivity, useApprovals, useBootstrap, useDecisions, useSettle } from "@/lib/hooks";
@@ -62,12 +63,11 @@ function DecisionItem({ decision }: { decision: AgentDecision }) {
   );
 }
 
-const WANTS: Record<string, string> = { post: "wants to post for you", session: "wants to start work on your computer", tools: "wants to act for you", secret: "needs a secret" };
-
 /** One of my nodes' approval cards: answered right here, or opened in its conversation. */
 function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePublic; roomTitle: string }) {
   const settle = useSettle();
   const type = typeof card.data.type === "string" ? card.data.type : "tools";
+  const words = cardWords(card.data, node?.slug ?? "node", roomTitle);
   const error = settle.error?.message ?? (typeof card.data.error === "string" ? card.data.error : null);
   return (
     <Card>
@@ -76,7 +76,7 @@ function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePub
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="font-medium">
-              @{node?.slug ?? "node"} {WANTS[type] ?? WANTS.tools}
+              @{node?.slug ?? "node"} {words.wants}
             </span>
             <span className="text-xs text-muted">{ago(card.createdAt)}</span>
           </div>
@@ -90,12 +90,12 @@ function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePub
           <div className={`mt-3 flex flex-wrap items-center gap-2 ${type === "secret" ? "hidden" : ""}`}>
             {type === "post" ? null : (
               <Button size="sm" busy={settle.isPending && settle.variables?.decision === "approve"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "approve" })}>
-                <Check size={14} /> {type === "session" ? "Start it" : "Approve"}
+                <Check size={14} /> {words.approve}
               </Button>
             )}
             {type === "post" ? null : (
               <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "discard" })}>
-                <CircleSlash size={14} /> Discard
+                <CircleSlash size={14} /> {words.discard}
               </Button>
             )}
             <Link href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="text-xs text-accent hover:underline">

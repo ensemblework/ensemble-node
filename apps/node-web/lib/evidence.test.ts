@@ -25,8 +25,8 @@ test("evidence and media rows become one gallery's items", () => {
     { id: "e1", kind: "screenshot", name: "home.png", mime: "image/png", size: 120, caption: "Home page", requirementId: "r1", createdAt: "2026-10-29T10:00:00Z" },
   ]);
   assert.deepEqual(evidenceItems("nope"), []);
-  assert.deepEqual(mediaItems([{ evidenceId: "e2", kind: "video", name: "demo.mp4", mime: "video/mp4", caption: "It works" }, { name: "lost" }]), [
-    { id: "e2", kind: "video", name: "demo.mp4", mime: "video/mp4", caption: "It works" },
+  assert.deepEqual(mediaItems([{ evidenceId: "e2", kind: "video", name: "demo.mp4", mime: "video/mp4", caption: "It works", size: 2048 }, { name: "lost" }]), [
+    { id: "e2", kind: "video", name: "demo.mp4", mime: "video/mp4", caption: "It works", size: 2048 },
   ]);
   const cards = [
     { seq: 9, data: { evidence: [{ id: "b", kind: "video", name: "b.mp4", mime: "video/mp4" }, { id: "a", kind: "screenshot", name: "a.png", mime: "image/png" }] } },
@@ -38,4 +38,5 @@ test("evidence and media rows become one gallery's items", () => {
   assert.equal(evidenceKind("screenshot"), "Screenshot");
   assert.equal(evidenceKind("weird"), "File");
   assert.equal(evidencePath("a b"), "/api/node/evidence/a%20b");
+  assert.equal(evidencePath("e1", "m 2"), "/api/node/evidence/e1?message=m%202", "anyone but its owner opens it through the message that shows it");
 });

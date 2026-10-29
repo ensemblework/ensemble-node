@@ -5,7 +5,8 @@
  * message: thumbnails, a lightbox with keyboard and swipe navigation, a player for videos and a
  * download for everything else. Pictures are read with the session cookie and shown only when the
  * bytes that came back are a safe picture type (lib/evidence.ts); HTML, SVG, scripts and other active
- * formats are only ever downloaded, never shown in the page.
+ * formats are only ever downloaded, never shown in the page. Media in a message is read through that
+ * message (`via`), so people in a room who do not own the file can open it too.
  */
 import { ChevronLeft, ChevronRight, Download, FileText, ImageOff, Maximize2, X } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
@@ -26,10 +27,10 @@ const pictures = new Map<string, Promise<Picture>>();
 const KEEP = 120;
 
 /** A picture's bytes as an object URL, read once for the page and shared by its thumbnail and the lightbox. */
-function picture(id: string): Promise<Picture> {
+function picture(id: string, via: string | null): Promise<Picture> {
   const cached = pictures.get(id);
   if (cached) return cached;
-  const made = evidenceBlob(id).then(
+  const made = evidenceBlob(id, undefined, via).then(
     (blob): Picture => (isSafeImage(blob.type) ? { url: URL.createObjectURL(blob) } : { error: "This file cannot be shown here. Download it instead." }),
     (error: unknown): Picture => {
       pictures.delete(id);
@@ -68,25 +69,25 @@ function useNear(ref: RefObject<HTMLElement | null>): boolean {
   return near;
 }
 
-function usePicture(id: string, enabled: boolean): Picture | null {
+function usePicture(id: string, enabled: boolean, via: string | null): Picture | null {
   const [shown, setShown] = useState<Picture | null>(null);
   useEffect(() => {
     if (!enabled) return;
     let live = true;
     setShown(null);
-    void picture(id).then((row) => {
+    void picture(id, via).then((row) => {
       if (live) setShown(row);
     });
     return () => {
       live = false;
     };
-  }, [id, enabled]);
+  }, [id, enabled, via]);
   return shown;
 }
 
-async function save(item: EvidenceItem) {
+async function save(item: EvidenceItem, via: string | null) {
   try {
-    await download(evidencePath(item.id), item.name);
+    await download(evidencePath(item.id, via), item.name);
   } catch (error) {
     toastError(error);
   }
@@ -112,10 +113,12 @@ function Caption({ item, requirement }: { item: EvidenceItem; requirement: Requi
   );
 }
 
-function PictureTile({ item, onOpen, requirement }: { item: EvidenceItem; onOpen: () => void; requirement: RequirementLink | null }) {
+type Tile = { item: EvidenceItem; via: string | null; requirement: RequirementLink | null };
+
+function PictureTile({ item, via, onOpen, requirement }: Tile & { onOpen: () => void }) {
   const ref = useRef<HTMLButtonElement>(null);
   const near = useNear(ref);
-  const shown = usePicture(item.id, near);
+  const shown = usePicture(item.id, near, via);
   return (
     <figure className="min-w-0">
       <button
@@ -144,7 +147,7 @@ function PictureTile({ item, onOpen, requirement }: { item: EvidenceItem; onOpen
   );
 }
 
-function VideoTile({ item, onOpen, requirement }: { item: EvidenceItem; onOpen: () => void; requirement: RequirementLink | null }) {
+function VideoTile({ item, via, onOpen, requirement }: Tile & { onOpen: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const near = useNear(ref);
   const [failed, setFailed] = useState(false);
@@ -152,11 +155,12 @@ function VideoTile({ item, onOpen, requirement }: { item: EvidenceItem; onOpen: 
     <figure className="min-w-0">
       <div ref={ref} className="relative overflow-hidden rounded-lg border border-line bg-black">
         {failed ? (
-          <button type="button" onClick={() => void save(item)} className="flex aspect-video w-full flex-col items-center justify-center gap-1 text-xs text-white/80 hover:text-white">
+          <button type="button" onClick={() => void save(item, via)} className="flex aspect-video w-full flex-col items-center justify-center gap-1 text-xs text-white/80 hover:text-white">
             <Download size={18} aria-hidden /> This video does not play here. Download it.
           </button>
         ) : near ? (
-          <video src={evidenceUrl(item.id)} controls preload="metadata" playsInline onError={() => setFailed(true)} aria-label={describe(item)} className="aspect-video w-full bg-black" />
+          // `#t=0.1` shows a first frame as the poster where a browser would otherwise show black (iOS Safari).
+          <video src={`${evidenceUrl(item.id, via)}#t=0.1`} controls preload="metadata" playsInline onError={() => setFailed(true)} aria-label={describe(item)} className="aspect-video w-full bg-black" />
         ) : (
           <span className="block aspect-video w-full" />
         )}
@@ -171,7 +175,7 @@ function VideoTile({ item, onOpen, requirement }: { item: EvidenceItem; onOpen: 
   );
 }
 
-function FileRow({ item, requirement }: { item: EvidenceItem; requirement: RequirementLink | null }) {
+function FileRow({ item, via, requirement }: Tile) {
   const [busy, setBusy] = useState(false);
   const size = typeof item.size === "number" ? sizeLabel(item.size) : "";
   return (
@@ -181,7 +185,7 @@ function FileRow({ item, requirement }: { item: EvidenceItem; requirement: Requi
         disabled={busy}
         onClick={() => {
           setBusy(true);
-          void save(item).finally(() => setBusy(false));
+          void save(item, via).finally(() => setBusy(false));
         }}
         aria-label={`Download ${describe(item)}`}
         className="flex w-64 max-w-full items-center gap-2.5 rounded-xl border border-line bg-bg/70 p-1.5 pr-2.5 text-left transition hover:border-accent disabled:opacity-70"
@@ -199,15 +203,15 @@ function FileRow({ item, requirement }: { item: EvidenceItem; requirement: Requi
   );
 }
 
-function LargePicture({ item }: { item: EvidenceItem }) {
-  const shown = usePicture(item.id, true);
+function LargePicture({ item, via }: { item: EvidenceItem; via: string | null }) {
+  const shown = usePicture(item.id, true, via);
   if (!shown) return <Spinner className="h-5 w-5 text-white/80" />;
   if ("error" in shown) {
     return (
       <div className="max-w-sm space-y-3 text-center text-sm text-white/85">
         <ImageOff size={28} className="mx-auto" aria-hidden />
         <p>{shown.error}</p>
-        <button type="button" onClick={() => void save(item)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/30 px-3 py-1.5 text-xs hover:bg-white/10">
+        <button type="button" onClick={() => void save(item, via)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/30 px-3 py-1.5 text-xs hover:bg-white/10">
           <Download size={13} aria-hidden /> Download
         </button>
       </div>
@@ -217,7 +221,7 @@ function LargePicture({ item }: { item: EvidenceItem }) {
 }
 
 /** One piece of evidence at a time, over the page: arrows, Home and End move, Escape closes, swipes on a phone. */
-function Lightbox({ items, start, onClose, requirementOf }: { items: EvidenceItem[]; start: number; onClose: () => void; requirementOf?: (id: string) => RequirementLink | null }) {
+function Lightbox({ items, via, start, onClose, requirementOf }: { items: EvidenceItem[]; via: string | null; start: number; onClose: () => void; requirementOf?: (id: string) => RequirementLink | null }) {
   const [chosen, setIndex] = useState(Math.min(start, items.length - 1));
   const box = useRef<HTMLDivElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -307,7 +311,7 @@ function Lightbox({ items, start, onClose, requirementOf }: { items: EvidenceIte
             {index + 1} of {count}
           </span>
         ) : null}
-        <button type="button" onClick={() => void save(item)} aria-label={`Download ${item.name}`} title="Download" className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-white/85 hover:bg-white/10">
+        <button type="button" onClick={() => void save(item, via)} aria-label={`Download ${item.name}`} title="Download" className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-white/85 hover:bg-white/10">
           <Download size={17} aria-hidden />
         </button>
         <button ref={closeButton} type="button" onClick={() => close.current()} aria-label="Close" title="Close" className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-white/85 hover:bg-white/10">
@@ -326,9 +330,9 @@ function Lightbox({ items, start, onClose, requirementOf }: { items: EvidenceIte
           </button>
         ) : null}
         {evidenceShow(item) === "video" ? (
-          <video key={item.id} src={evidenceUrl(item.id)} controls playsInline preload="metadata" aria-label={describe(item)} className="max-h-full max-w-full rounded-md bg-black" />
+          <video key={item.id} src={evidenceUrl(item.id, via)} controls playsInline preload="metadata" aria-label={describe(item)} className="max-h-full max-w-full rounded-md bg-black" />
         ) : (
-          <LargePicture key={item.id} item={item} />
+          <LargePicture key={item.id} item={item} via={via} />
         )}
         {count > 1 ? (
           <button type="button" onClick={() => go(1)} aria-label="Next" title="Next" className={`${nav} right-2`}>
@@ -359,10 +363,12 @@ function Lightbox({ items, start, onClose, requirementOf }: { items: EvidenceIte
 
 /**
  * Evidence as a gallery: pictures and videos in a grid that opens into the lightbox, other files as
- * downloads. `requirementOf` names the requirement a piece is for (a plan's ledger).
+ * downloads. `requirementOf` names the requirement a piece is for (a plan's ledger); `messageId` is the
+ * message that shows these files, which is how anyone but their owner may read them.
  */
-export function EvidenceGallery({ items, requirementOf, label = "Evidence", className = "" }: { items: readonly EvidenceItem[]; requirementOf?: (id: string) => RequirementLink | null; label?: string; className?: string }) {
+export function EvidenceGallery({ items, requirementOf, messageId = null, label = "Evidence", className = "" }: { items: readonly EvidenceItem[]; requirementOf?: (id: string) => RequirementLink | null; messageId?: string | null; label?: string; className?: string }) {
   const [open, setOpen] = useState<number | null>(null);
+  const via = messageId;
   if (!items.length) return null;
   const visual = items.filter((item) => evidenceShow(item) !== "download");
   const files = items.filter((item) => evidenceShow(item) === "download");
@@ -374,9 +380,9 @@ export function EvidenceGallery({ items, requirementOf, label = "Evidence", clas
           {visual.map((item, at) => (
             <li key={item.id} className={evidenceShow(item) === "video" && visual.length > 1 ? "col-span-2" : ""}>
               {evidenceShow(item) === "video" ? (
-                <VideoTile item={item} onOpen={() => setOpen(at)} requirement={requirement(item)} />
+                <VideoTile item={item} via={via} onOpen={() => setOpen(at)} requirement={requirement(item)} />
               ) : (
-                <PictureTile item={item} onOpen={() => setOpen(at)} requirement={requirement(item)} />
+                <PictureTile item={item} via={via} onOpen={() => setOpen(at)} requirement={requirement(item)} />
               )}
             </li>
           ))}
@@ -385,11 +391,11 @@ export function EvidenceGallery({ items, requirementOf, label = "Evidence", clas
       {files.length ? (
         <ul className={`flex flex-wrap gap-1.5 ${visual.length ? "mt-1.5" : ""}`}>
           {files.map((item) => (
-            <FileRow key={item.id} item={item} requirement={requirement(item)} />
+            <FileRow key={item.id} item={item} via={via} requirement={requirement(item)} />
           ))}
         </ul>
       ) : null}
-      {open !== null && visual.length ? <Lightbox items={visual} start={open} onClose={() => setOpen(null)} requirementOf={requirementOf} /> : null}
+      {open !== null && visual.length ? <Lightbox items={visual} via={via} start={open} onClose={() => setOpen(null)} requirementOf={requirementOf} /> : null}
     </section>
   );
 }

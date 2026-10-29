@@ -51,7 +51,7 @@ function fixture() {
     },
     {
       id: "r-board", title: "Check moved tasks", nodeId: "tester", roomId: "dm-tester", action: "prompt", instruction: "Check the page of each task that moved.", template: null,
-      trigger: "event", cron: null, timezone: "Asia/Kolkata", event: { on: "task", actions: ["move"], space: "me", windowSeconds: 60 }, webhook: null, notify: "never", status: "paused",
+      trigger: "event", cron: null, timezone: "Asia/Kolkata", event: { on: "task", actions: ["move"], space: "space-acme", spaceName: "Acme", windowSeconds: 60 }, webhook: null, notify: "never", status: "paused",
       when: "When a task changes (move)", nextRunAt: null, lastRunAt: at(-3000),
       runs: [run("run-b1", { trigger: "event", status: "skipped", error: "The routine was paused.", items: 3, startedAt: null })],
     },
@@ -63,7 +63,7 @@ function fixture() {
   const report = { id: "report-1", roomId: "dm-lead", seq: 4, kind: "text", body: "Three tasks moved since yesterday; two are due on Friday.", authorKind: "node", authorAccountId: "me", authorNodeId: "lead", data: {}, private: false, mentions: [], rootMessageId: null, clientId: null, planId: null, createdAt: at(-1254) };
   const boot = { me: { id: "me", name: "Mira Chen", email: "mira@fieldnote.example", verified: true }, nodes, rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
   const job = { id: "j-morning", taskId: "task", title: "Summarise", kind: "code", status: "succeeded", provider: "claude-code", model: "claude-opus-4-6", modelUsed: null, reasoningEffort: null, contextTier: null, progress: null, summary: "Done.", error: null, turns: 1, toolCalls: 3, runId: null, deviceName: "Development laptop", yours: true, folder: "notes", branch: "main", files: [], createdAt: at(-1259), startedAt: at(-1259), finishedAt: at(-1256) };
-  return { boot, routines, messages: { "dm-lead": [card, stepRun, report] }, cards: { "mission-1": card }, jobs: { "j-morning": job }, runs: { "r-morning": [...routines[0].runs], "r-deploy": [], "r-board": [...routines[2].runs] }, calls: [], made: 0 };
+  return { boot, routines, messages: { "dm-lead": [card, stepRun, report] }, cards: { "mission-1": card }, jobs: { "j-morning": job }, runs: { "r-morning": [...routines[0].runs], "r-deploy": [], "r-board": [...routines[2].runs] }, calls: [], reads: [], made: 0 };
 }
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -105,6 +105,7 @@ try {
       const request = route.request();
       const path = new URL(request.url()).pathname;
       const method = request.method();
+      if (method === "GET") state.reads.push(path);
       const json = (data, status = 200) => route.fulfill({ status, json: data, headers: cors });
       if (method === "OPTIONS") return route.fulfill({ status: 204, headers: { ...cors, "access-control-allow-methods": "GET, POST, PATCH, DELETE", "access-control-allow-headers": "content-type, accept" } });
       if (path === "/api/auth/me") return json({ user: state.boot.me });
@@ -119,8 +120,11 @@ try {
       if (/^\/api\/node\/rooms\/[^/]+\/read$/.test(path)) return json({});
       const messages = /^\/api\/node\/rooms\/([^/]+)\/messages$/.exec(path);
       if (messages && method === "GET") return json({ messages: state.messages[messages[1]] ?? [] });
-      const one = /^\/api\/node\/messages\/([^/]+)$/.exec(path);
-      if (one) return state.cards[one[1]] ? json({ message: state.cards[one[1]] }) : json({ error: "That message is not available." }, 404);
+      const plan = /^\/api\/node\/plans\/([^/]+)$/.exec(path);
+      if (plan && method === "GET") {
+        const card = state.cards[plan[1]];
+        return card ? json({ message: card, runs: Object.values(state.messages).flat().filter((row) => row.planId === card.id && row.kind === "run") }) : json({ error: "That plan is not available." }, 404);
+      }
       const job = /^\/api\/agent\/jobs\/([^/]+)$/.exec(path);
       if (job && state.jobs[job[1]]) return json({ job: state.jobs[job[1]], log: "", events: [] });
       if (path === "/api/node/routines" && method === "GET") return json({ routines: state.routines });
@@ -201,6 +205,7 @@ try {
     assert.match((await deploy.locator("code").first().textContent()) ?? "", /^https?:\/\/[^/]+\/api\/node\/hooks\/routines\/r-deploy$/, "the webhook's full address");
     const board = page.getByRole("region", { name: "Tester's routines" }).getByRole("article", { name: "Check moved tasks" });
     assert.ok(await board.getByText("Paused: it runs only when you run it.").isVisible());
+    assert.ok(await board.getByText(/^When a task changes \(move\) in Acme · /).isVisible(), "the space it watches, by name");
     const boardSwitch = board.getByRole("switch", { name: "Check moved tasks active" });
     assert.equal(await boardSwitch.getAttribute("aria-checked"), "false");
     await boardSwitch.click();
@@ -284,6 +289,16 @@ try {
     await page.getByRole("region", { name: "Tester's routines" }).getByRole("button", { name: "History" }).click();
     await board.getByText("The routine was paused.").waitFor();
     assert.ok(await board.getByText(/On a change · .* · 3 changes/).isVisible(), "what a run gathered");
+
+    // A routine that changed elsewhere (a webhook call ran it): the event stream reads the list again.
+    const hooked = state.routines.find((item) => item.id === "r-deploy");
+    hooked.runs = [{ id: "run-d1", trigger: "webhook", status: "failed", missionId: null, missionStatus: null, error: "The deploy log was empty.", dueAt: at(-1), startedAt: at(-1), createdAt: at(-1), items: 0 }];
+    hooked.lastRunAt = at(-1);
+    const reads = () => state.reads.filter((path) => path === "/api/node/routines").length;
+    const before = reads();
+    await page.evaluate(() => { for (const source of window.__nodeEvents) source.dispatchEvent(new MessageEvent("node.routine", { data: JSON.stringify({ id: "r-deploy" }) })); });
+    await deploy.getByText("Failed", { exact: true }).waitFor();
+    assert.equal(reads(), before + 1, "one read for the change, no polling");
 
     // A run's card opens in a drawer: the routine on it, and what its agent was told.
     await history.locator("li").filter({ hasText: "Succeeded" }).getByRole("button", { name: "Open" }).click();

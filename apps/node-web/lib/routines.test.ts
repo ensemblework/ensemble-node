@@ -6,6 +6,7 @@ import {
   cronSchedule,
   DEFAULT_SCHEDULE,
   draftOf,
+  watchedSpace,
   draftProblems,
   isTimeZone,
   itemsText,
@@ -166,6 +167,11 @@ test("a routine opens in its form as it is, and an edit sends where it reports o
   const own = draftOf(routine({ trigger: "event", cron: null, event: { on: "page", actions: ["save"], space: "me", windowSeconds: 90 } }), "me");
   assert.deepEqual(own.event, { on: "page", actions: ["save"], space: "", windowSeconds: "90" }, "the owner's own space shows empty");
   assert.equal(draftOf(routine({ trigger: "event", event: { on: "task", space: "space-2", windowSeconds: 60 } }), "me").event.space, "space-2");
+  const named = draftOf(routine({ trigger: "event", cron: null, event: { on: "task", space: "space-2", spaceName: "Acme", windowSeconds: 60 } }), "me");
+  assert.equal(named.event.space, "Acme", "a space shows by its name");
+  assert.equal((patchBody(named, named).event as { space?: string }).space, "space-2", "left as it was, it goes back by its id");
+  assert.equal((patchBody({ ...named, event: { ...named.event, space: "Beta" } }, named).event as { space?: string }).space, "Beta");
+  assert.equal("space" in (patchBody({ ...named, event: { ...named.event, space: " " } }, named).event as object), false, "emptied: the owner's own space");
 });
 
 const avatar = { shape: "orb" as const, color: "#fff", eyes: "dot" as const };
@@ -237,4 +243,11 @@ test("time zones are found by city, by region and by their newer names", () => {
   assert.equal(isTimeZone("Asia/Kolkata"), true);
   assert.equal(isTimeZone("Mars/Olympus"), false);
   assert.equal(isTimeZone(" "), false);
+});
+
+test("an event routine names the space it watches unless it is the owner's own", () => {
+  assert.equal(watchedSpace({ trigger: "event", event: { on: "task", space: "space-2", spaceName: "Acme", windowSeconds: 60 } }, "me"), "Acme");
+  assert.equal(watchedSpace({ trigger: "event", event: { on: "task", space: "space-2", windowSeconds: 60 } }, "me"), "another space");
+  assert.equal(watchedSpace({ trigger: "event", event: { on: "task", space: "me", spaceName: "Mira", windowSeconds: 60 } }, "me"), null);
+  assert.equal(watchedSpace({ trigger: "schedule", event: null }, "me"), null);
 });

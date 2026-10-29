@@ -1,5 +1,5 @@
 import { ENSEMBLE_API } from "./config";
-import type { FileRecord } from "./types";
+import type { FileRecord, SessionAction, SessionDetail } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -127,6 +127,36 @@ export async function fileOriginal(id: string, signal?: AbortSignal): Promise<Bl
   if (!response.ok) throw new ApiError(response.status, `The file could not be read (${response.status}).`);
   return response.blob();
 }
+
+/** A run's evidence, for its owner (`GET /api/node/evidence/:id`). Shown only when it is a safe picture (lib/evidence.ts). */
+export async function evidenceBlob(id: string, signal?: AbortSignal): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(`${ENSEMBLE_API}/api/node/evidence/${encodeURIComponent(id)}`, { credentials: "include", signal });
+  } catch {
+    throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
+  }
+  if (!response.ok) throw new ApiError(response.status, response.status === 404 ? "This file is not available any more." : `The file could not be read (${response.status}).`);
+  return response.blob();
+}
+
+/** The address a video player streams a run's evidence from; the session cookie goes with it. */
+export const evidenceUrl = (id: string): string => `${ENSEMBLE_API}/api/node/evidence/${encodeURIComponent(id)}`;
+
+const sessionPath = (id: string) => `/api/node/sessions/${encodeURIComponent(id)}`;
+
+/**
+ * An agent session's controls (Ensemble's node/sessions.ts; the owner's own browser session only).
+ * They take the same path as a node's session tools, and the node's work board records each one.
+ */
+export const sessions = {
+  get: (id: string) => api<{ session: SessionDetail }>(sessionPath(id)).then((result) => result.session),
+  /** queue, steer, replace (stop and send this instead) or stop (`queued`: keep or drop what waits). */
+  control: (id: string, body: SessionAction) => api<{ ok: true; jobId?: string }>(`${sessionPath(id)}/control`, { body }),
+  /** The queued messages' job ids in their new order. */
+  reorder: (id: string, order: string[]) => api<{ ok: true }>(`${sessionPath(id)}/queue`, { body: { order } }),
+  cancel: (id: string, jobId: string) => api<void>(`${sessionPath(id)}/queue/${encodeURIComponent(jobId)}`, { method: "DELETE" }),
+};
 
 export const oauthStartUrl = (provider: string): string => `${ENSEMBLE_API}/api/auth/oauth/${provider}/start?return=node`;
 

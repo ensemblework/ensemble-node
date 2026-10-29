@@ -8,7 +8,7 @@ import { previewText, SOURCE_LABEL } from "@/lib/ensemble";
 import { nodesById, useActivity, useApprovals, useBootstrap, useDecisions, useSettle } from "@/lib/hooks";
 import { requestJump } from "@/lib/jump";
 import { ago } from "@/lib/text";
-import type { AgentDecision, ApprovalRecord, Message, NodePublic } from "@/lib/types";
+import type { AgentDecision, ApprovalRecord, Message, NodePublic, Room } from "@/lib/types";
 import { ApprovalActions, DecisionActions } from "./decision-answer";
 import { NodeAvatar } from "./node-avatar";
 import { SecretBox } from "./secret-box";
@@ -63,8 +63,8 @@ function DecisionItem({ decision }: { decision: AgentDecision }) {
   );
 }
 
-/** One of my nodes' approval cards: answered right here, or opened in its conversation. */
-function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePublic; roomTitle: string }) {
+/** One of my nodes' approval cards: answered right here, or opened in its conversation (My crew, for a room with other people). */
+function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: NodePublic; roomTitle: string; where: string }) {
   const settle = useSettle();
   const type = typeof card.data.type === "string" ? card.data.type : "tools";
   const words = cardWords(card.data, node?.slug ?? "node", roomTitle);
@@ -74,11 +74,11 @@ function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePub
       <div className="flex gap-3">
         <NodeAvatar node={node} size={30} />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="font-medium">
+          <div className="flex items-start justify-between gap-2">
+            <span className="min-w-0 font-medium">
               @{node?.slug ?? "node"} {words.wants}
             </span>
-            <span className="text-xs text-muted">{ago(card.createdAt)}</span>
+            <span className="mt-0.5 shrink-0 text-xs text-muted">{ago(card.createdAt)}</span>
           </div>
           <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{type === "secret" ? `${String(card.data.name ?? "")}: ${card.body}` : card.body}</p>
           {type === "secret" ? (
@@ -99,7 +99,7 @@ function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePub
               </Button>
             )}
             <Link href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="text-xs text-accent hover:underline">
-              {type === "post" ? "Review the draft" : "Open in"} “{roomTitle}”
+              {type === "post" ? "Review the draft in" : "Open in"} {where}
             </Link>
           </div>
         </div>
@@ -109,6 +109,13 @@ function NodeCardItem({ card, node, roomTitle }: { card: Message; node?: NodePub
 }
 
 const TASK_STATUS: Record<string, string> = { blocked: "Blocked", waiting_approval: "Awaiting approval" };
+
+/** Where a card is, for its link: "Lead's chat", "“Release crew”", "“Launch” (My crew)" for a private card in a room with other people. */
+function cardPlace(room: Pick<Room, "kind" | "title"> | undefined, isPrivate: boolean): string {
+  if (!room) return "its conversation";
+  if (room.kind === "dm") return `${room.title}'s chat`;
+  return `“${room.title}”${room.kind === "room" && isPrivate ? " (My crew)" : ""}`;
+}
 
 /**
  * Needs me, the same list as Ensemble's (the Hub and the CLI show it too): agents' questions, my
@@ -134,8 +141,8 @@ export function NeedsMe() {
       ) : null}
       {decisions.error ? <Notice tone="error">Questions from agents: {decisions.error.message}</Notice> : null}
       {(decisions.data ?? []).length ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Questions from agents ({decisions.data!.length})</h3>
+        <section className="space-y-2" aria-labelledby="needs-decisions">
+          <h3 id="needs-decisions" className="text-xs font-semibold uppercase tracking-wide text-muted">Questions from agents ({decisions.data!.length})</h3>
           <ul className="space-y-2">
             {decisions.data!.map((row) => (
               <DecisionItem key={row.id} decision={row} />
@@ -145,11 +152,17 @@ export function NeedsMe() {
       ) : null}
 
       {cards.length ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">From your nodes ({cards.length})</h3>
+        <section className="space-y-2" aria-labelledby="needs-nodes">
+          <h3 id="needs-nodes" className="text-xs font-semibold uppercase tracking-wide text-muted">From your nodes ({cards.length})</h3>
           <ul className="space-y-2">
             {cards.map((card) => (
-              <NodeCardItem key={card.id} card={card} node={card.authorNodeId ? nodes.get(card.authorNodeId) : undefined} roomTitle={rooms.get(card.roomId)?.title ?? "the conversation"} />
+              <NodeCardItem
+                key={card.id}
+                card={card}
+                node={card.authorNodeId ? nodes.get(card.authorNodeId) : undefined}
+                roomTitle={rooms.get(card.roomId)?.title ?? "the conversation"}
+                where={cardPlace(rooms.get(card.roomId), card.private)}
+              />
             ))}
           </ul>
         </section>
@@ -157,8 +170,8 @@ export function NeedsMe() {
 
       {approvals.error ? <Notice tone="error">Run approvals: {approvals.error.message}</Notice> : null}
       {(approvals.data ?? []).length ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Run approvals ({approvals.data!.length})</h3>
+        <section className="space-y-2" aria-labelledby="needs-runs">
+          <h3 id="needs-runs" className="text-xs font-semibold uppercase tracking-wide text-muted">Run approvals ({approvals.data!.length})</h3>
           <ul className="space-y-2">
             {approvals.data!.map((row) => (
               <ApprovalItem key={row.id} approval={row} />
@@ -168,8 +181,8 @@ export function NeedsMe() {
       ) : null}
 
       {tasks.length ? (
-        <section className="space-y-2">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Waiting tasks ({tasks.length})</h3>
+        <section className="space-y-2" aria-labelledby="needs-tasks">
+          <h3 id="needs-tasks" className="text-xs font-semibold uppercase tracking-wide text-muted">Waiting tasks ({tasks.length})</h3>
           <ul className="grid gap-2 sm:grid-cols-2">
             {tasks.map((task) => (
               <li key={task.id}>

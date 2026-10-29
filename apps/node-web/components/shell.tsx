@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity as ActivityIcon, Inbox, Lock, Menu, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plug, Search, Settings, ShieldQuestion, SquarePen, Users } from "lucide-react";
+import { Activity as ActivityIcon, Inbox, Lock, Menu, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plug, Repeat, Search, Settings, ShieldQuestion, SquarePen, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { requestJump } from "@/lib/jump";
@@ -94,6 +94,7 @@ function Sidebar({ boot, onNavigate, onSearch, needsMe, compact = false, onColla
 
       <div className="space-y-0.5 border-t border-line px-2 pb-2 pt-2" role="navigation" aria-label="More">
         <NavLink compact={compact} href="/needs-me" icon={ShieldQuestion} label="Needs me" badge={needsMe} active={pathname === "/needs-me"} onNavigate={onNavigate} />
+        <NavLink compact={compact} href="/routines" icon={Repeat} label="Routines" active={pathname === "/routines"} onNavigate={onNavigate} />
         <NavLink compact={compact} href="/requests" icon={Inbox} label="Invites" badge={boot.invites?.length ?? 0} active={pathname === "/requests"} onNavigate={onNavigate} />
         <NavLink compact={compact} href="/connections" icon={Plug} label="Connections" active={pathname === "/connections"} onNavigate={onNavigate} />
       </div>

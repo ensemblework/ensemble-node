@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, eventsUrl, sessions } from "./api";
+import { api, ApiError, eventsUrl, messageById, routines, sessions } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
 import { live, type LiveCall } from "./live";
 import { refsOf } from "./entity-text";
@@ -32,6 +32,8 @@ import type {
   NodePublic,
   QueuedRun,
   Room,
+  Routine,
+  RoutineRun,
   RunStep,
   SearchResult,
   SessionAction,
@@ -64,6 +66,11 @@ export const keys = {
   runSteps: (jobId: string) => ["run-steps", jobId] as const,
   /** An agent session: what runs now and its queue. */
   session: (sessionId: string) => ["session", sessionId] as const,
+  /** The owner's routines, and one routine's runs. */
+  routines: ["routines"] as const,
+  routineRuns: (routineId: string) => ["routine-runs", routineId] as const,
+  /** One message read by id: a routine run's plan card, which no conversation's list shows. */
+  message: (messageId: string) => ["message", messageId] as const,
 };
 
 /** How often an active run on screen is read again. */
@@ -115,9 +122,9 @@ async function fetchMessages(client: QueryClient, roomId: string, author: Author
 }
 
 /** A room's newest messages; earlier pages loaded with `loadOlder` stay through refetches. */
-export function useMessages(roomId: string, author: Author = "all") {
+export function useMessages(roomId: string, author: Author = "all", enabled = true) {
   const client = useQueryClient();
-  return useQuery({ queryKey: keys.messages(roomId, author), queryFn: () => fetchMessages(client, roomId, author) });
+  return useQuery({ queryKey: keys.messages(roomId, author), queryFn: () => fetchMessages(client, roomId, author), enabled: enabled && Boolean(roomId) });
 }
 
 /** The room's loaded messages, fetching the newest page first when nothing is loaded yet. */
@@ -465,6 +472,79 @@ export function useConnectors() {
   return useQuery({ queryKey: keys.connectors, queryFn: () => api<{ entries: ConnectorEntry[] }>("/api/connectors/catalog").then((result) => result.entries), staleTime: 60_000 });
 }
 
+/** The owner's routines, with when each runs next and its newest runs. Read again every half minute; a routine run's card changing reads them at once. */
+export function useRoutines(enabled = true) {
+  return useQuery({ queryKey: keys.routines, queryFn: routines.list, enabled, refetchInterval: 30_000 });
+}
+
+/** A routine's runs, newest first, while its history is open. */
+export function useRoutineRuns(routineId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.routineRuns(routineId), queryFn: () => routines.runs(routineId), enabled, refetchInterval: enabled ? 30_000 : false });
+}
+
+/** One message by its id; the event stream keeps it current once it is read. */
+export function useMessageById(messageId: string | null | undefined) {
+  return useQuery({
+    queryKey: keys.message(messageId ?? ""),
+    queryFn: () => messageById(messageId!),
+    enabled: Boolean(messageId),
+    retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+  });
+}
+
+function putRoutine(client: QueryClient, routine: Routine) {
+  client.setQueryData<Routine[]>(keys.routines, (list) => (list ? (list.some((row) => row.id === routine.id) ? list.map((row) => (row.id === routine.id ? routine : row)) : [...list, routine]) : list));
+}
+
+/**
+ * What the routines list does to a routine: pause or resume it (at once, put back when Ensemble
+ * refuses), run it now, delete it and give its webhook a new token. Each reads the list again after.
+ */
+export function useRoutineActions() {
+  const client = useQueryClient();
+  const refresh = (id: string) => {
+    void client.invalidateQueries({ queryKey: keys.routines });
+    void client.invalidateQueries({ queryKey: keys.routineRuns(id) });
+  };
+  return {
+    /** The saved routine, in the list at once; for a form that made or changed it. */
+    saved(routine: Routine) {
+      putRoutine(client, routine);
+      refresh(routine.id);
+    },
+    async setStatus(routine: Routine, status: Routine["status"]) {
+      const before = client.getQueryData<Routine[]>(keys.routines);
+      putRoutine(client, { ...routine, status, ...(status === "paused" ? { nextRunAt: null } : {}) });
+      try {
+        putRoutine(client, await routines.update(routine.id, { status }));
+      } catch (error) {
+        if (before) client.setQueryData(keys.routines, before);
+        throw error;
+      } finally {
+        refresh(routine.id);
+      }
+    },
+    async runNow(routine: Routine): Promise<RoutineRun> {
+      const run = await routines.run(routine.id);
+      client.setQueryData<RoutineRun[]>(keys.routineRuns(routine.id), (list) => (list ? [run, ...list.filter((row) => row.id !== run.id)] : list));
+      putRoutine(client, { ...routine, runs: [run, ...routine.runs.filter((row) => row.id !== run.id)].slice(0, 5) });
+      refresh(routine.id);
+      return run;
+    },
+    async remove(routine: Routine) {
+      await routines.remove(routine.id);
+      client.setQueryData<Routine[]>(keys.routines, (list) => list?.filter((row) => row.id !== routine.id));
+      client.removeQueries({ queryKey: keys.routineRuns(routine.id) });
+    },
+    async newToken(routine: Routine): Promise<string> {
+      const token = await routines.token(routine.id);
+      putRoutine(client, { ...routine, webhook: routine.webhook ? { ...routine.webhook, hasToken: true } : routine.webhook });
+      refresh(routine.id);
+      return token;
+    },
+  };
+}
+
 export function useMcpConnections() {
   return useQuery({ queryKey: keys.mcp, queryFn: () => api<{ connections: McpConnection[] }>("/api/mcp-connections").then((result) => result.connections), staleTime: 60_000 });
 }
@@ -509,10 +589,26 @@ export function useNodeEvents(enabled: boolean) {
         void client.invalidateQueries({ queryKey: keys.bootstrap });
       }, 600);
     };
+    // A routine run's card changed: its routine's next and last runs, and its history, read again (once per burst).
+    const changedRoutines = new Set<string>();
+    let routineTimer: ReturnType<typeof setTimeout> | null = null;
+    const laterRoutine = (routineId: string) => {
+      changedRoutines.add(routineId);
+      if (routineTimer) return;
+      routineTimer = setTimeout(() => {
+        routineTimer = null;
+        void client.invalidateQueries({ queryKey: keys.routines });
+        for (const id of changedRoutines) void client.invalidateQueries({ queryKey: keys.routineRuns(id) });
+        changedRoutines.clear();
+      }, 800);
+    };
     const source = new EventSource(eventsUrl(), { withCredentials: true });
     const onMessage = (event: MessageEvent<string>) => {
       const message = JSON.parse(event.data) as Message;
       putMessage(client, message);
+      // A message read on its own (a routine run's card) follows its changes too.
+      client.setQueryData<Message>(keys.message(message.id), (current) => (current ? message : current));
+      if (message.kind === "plan" && typeof message.data?.routine?.id === "string") laterRoutine(message.data.routine.id);
       if (message.authorNodeId) live.posted(message.roomId, message.authorNodeId);
       if (message.kind === "approval" || message.kind === "run") void client.invalidateQueries({ queryKey: keys.activity });
       // A run card changed: its open view reads the job (and the work log, when open) again.
@@ -555,6 +651,8 @@ export function useNodeEvents(enabled: boolean) {
     source.onopen = () => {
       if (opened) {
         void client.invalidateQueries({ queryKey: ["messages"] });
+        void client.invalidateQueries({ queryKey: ["message"] });
+        void client.invalidateQueries({ queryKey: keys.routines });
         void client.invalidateQueries({ queryKey: keys.invites });
         void client.invalidateQueries({ queryKey: keys.approvals });
         void client.invalidateQueries({ queryKey: keys.decisions });
@@ -565,6 +663,7 @@ export function useNodeEvents(enabled: boolean) {
     return () => {
       source.close();
       if (refresh.current) clearTimeout(refresh.current);
+      if (routineTimer) clearTimeout(routineTimer);
     };
   }, [client, enabled]);
 }

@@ -13,6 +13,7 @@ import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { ModelPicker } from "./model-picker";
 import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "./node-avatar";
+import { NodeRoutines } from "./routines";
 import { Button, Field, Input, Notice, Segmented, Switch, Textarea } from "./ui";
 
 type Memory = { id: string; content: string; createdAt: string };
@@ -216,6 +217,10 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
             <Choice name={`rooms-${node.id}`} checked={sharedRooms === "auto"} onChange={() => void change({ autonomy: { sharedRooms: "auto" } }, "Saved: it posts on its own.")} title="Post on its own" hint="changes to your workspace and computer still wait for you." />
           </div>
         </Field>
+      </Section>
+
+      <Section title="Routines" hint={`Work ${node.name} does on its own: on a schedule, when something changes in Ensemble, or when a webhook calls.`}>
+        <NodeRoutines node={node} />
       </Section>
 
       <Section title="Memory" hint={`What ${node.name} remembers between chats.`}>

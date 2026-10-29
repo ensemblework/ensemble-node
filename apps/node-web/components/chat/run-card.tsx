@@ -18,6 +18,7 @@ import { ENSEMBLE_LINKS } from "@/lib/config";
 import { approvalsForRun, decisionsForJob } from "@/lib/decisions";
 import { evidenceItems } from "@/lib/evidence";
 import { useApprovals, useDecisions, useJob, useRunSteps, useStopJob } from "@/lib/hooks";
+import { sessionAgent } from "@/lib/session";
 import { RUN_LABEL } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
 import type { AgentDecision, ApprovalRecord, Message, NodePublic, RunSession, RunSettings, StepReport } from "@/lib/types";
@@ -28,7 +29,7 @@ import { EvidenceGallery, type RequirementLink } from "./evidence";
 import type { MessageContext } from "./message";
 import { ReportView } from "./report";
 import { RichText } from "./rich-text";
-import { SessionPanel, SettingsView } from "./session";
+import { SessionPanel, sessionPanelShows, SettingsView, ToldDisclosure } from "./session";
 import { WorkLogView } from "./work-log";
 import { ModelLogo } from "../model-logo";
 
@@ -199,15 +200,20 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const runApprovals = approvalsForRun(approvals.data, detail?.runId);
   const stop = useStopJob();
   const session = sessionOf(data.session);
+  const agent = sessionAgent(session);
   const report = reportOf(data.report);
   const evidence = useMemo(() => evidenceItems(data.evidence), [data.evidence]);
   const owner = node?.ownerId === ctx.meId;
+  // The packet Ensemble compiled for the agent (a plan step sent straight to it), or its one request for a result.
+  const told = typeof data.told === "string" && data.told.trim() ? data.told : null;
+  const reportAsked = data.reportAsked === true;
 
   const progress = (detail?.progress ?? data.progress ?? "").trim();
   const summary = (detail?.summary ?? data.summary ?? log?.result ?? "").trim();
   const error = (detail?.error ?? data.error ?? "").trim();
   const computer = detail?.deviceName ?? data.computer ?? null;
-  const facts = detail ? runFacts(detail) : [];
+  // Before the job is read (or when it cannot be), the session's agent names the engine.
+  const facts = detail ? runFacts(detail) : agent.name ? [agent.name] : [];
   const took = ended ? elapsedSeconds(detail?.startedAt, detail?.finishedAt) : null;
   const toolCalls = detail?.toolCalls ?? 0;
   const quiet = typeof data.quiet === "string" ? QUIET[data.quiet] : undefined;
@@ -217,6 +223,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const queuedNote = status === "queued" && data.delivery === "queue" ? "Queued in the session: it starts when the run before it ends." : null;
   const waiting = status === "waiting_approval";
   const attempt = typeof data.attempt === "number" && data.attempt > 1 ? data.attempt : null;
+  const sessionPanel = Boolean(session && !quiet && sessionPanelShows(status));
 
   const stopRun = () => {
     if (!confirm("Stop this run? The agent stops where it is; what it changed so far stays.")) return;
@@ -226,11 +233,16 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   return (
     <div ref={box} className="mt-1 rounded-2xl border border-line bg-panel p-3">
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 shrink-0"><ModelLogo provider={detail?.provider} model={detail?.provider === "ensemble" ? detail.model : undefined} size={19} /></span>
+        <span className="mt-0.5 shrink-0"><ModelLogo provider={detail?.provider ?? agent.id} model={detail?.provider === "ensemble" ? detail.model : undefined} size={19} /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
             <p className="min-w-0 break-words text-sm font-medium">{message.body}</p>
             <div className="flex shrink-0 items-center gap-1.5">
+              {reportAsked ? (
+                <span title="It ended without reporting its result, so Ensemble asked it once, in the same session.">
+                  <Pill tone="muted">Asked for its result</Pill>
+                </span>
+              ) : null}
               <Pill tone={pill.tone}>{pill.label}</Pill>
               {canStop ? (
                 <button
@@ -268,6 +280,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
             {attempt ? <span className="whitespace-nowrap">{` · attempt ${attempt}`}</span> : null}
           </p>
           <SettingsView settings={data.settings as RunSettings | undefined} />
+          {told && !sessionPanel ? <ToldDisclosure told={told} handles={ctx.handles} /> : null}
         </div>
       </div>
 
@@ -281,7 +294,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
 
       {asks.length || runApprovals.length ? <NeedsYou decisions={asks} approvals={runApprovals} jobId={jobId} /> : null}
 
-      {session && !quiet ? <SessionPanel session={session} jobId={jobId} runStatus={status} runTitle={message.body} onScreen={onScreen} owner={owner} /> : null}
+      {sessionPanel && session ? <SessionPanel session={session} jobId={jobId} runStatus={status} runTitle={message.body} onScreen={onScreen} owner={owner} told={told} handles={ctx.handles} /> : null}
 
       {jobId ? (
         <div className="mt-2 border-t border-line/70 pt-1.5">

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentName, moveQueued, observedMissing, queuedLine, queueOrder, sessionActions, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
+import { agentName, moveQueued, observedMissing, queuedLine, queueOrder, sessionActions, sessionAgent, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
 import type { QueuedRun } from "./types";
 
 test("settings asked for, sent and reported read side by side; not reported is said, and changes are marked", () => {
@@ -26,6 +26,16 @@ test("settings asked for, sent and reported read side by side; not reported is s
   assert.equal(settingValue("fast", false), "off");
   assert.equal(agentName("cursor-agent"), "Cursor");
   assert.equal(agentName("my-agent"), "my-agent");
+});
+
+test("a session's agent: the name for people and the id for logic, from a card or the session read", () => {
+  assert.deepEqual(sessionAgent({ agent: "Claude Code", agentId: "claude-code" }), { id: "claude-code", name: "Claude Code" }, "a card: agent is the name");
+  assert.deepEqual(sessionAgent(null, { agent: "copilot-cli", agentName: "GitHub Copilot" }), { id: "copilot-cli", name: "GitHub Copilot" }, "the session read: agent is the id");
+  assert.deepEqual(sessionAgent({ agent: "Codex", agentId: "codex" }, { agent: "copilot-cli", agentName: "GitHub Copilot" }), { id: "copilot-cli", name: "GitHub Copilot" }, "the session read is newer");
+  assert.deepEqual(sessionAgent(null, { agent: "cursor-agent", agentName: null }), { id: "cursor-agent", name: "Cursor" }, "an id is never shown as it is");
+  assert.deepEqual(sessionAgent({ agent: "claude-code" }), { id: "claude-code", name: "Claude Code" }, "a card from before agentId");
+  assert.deepEqual(sessionAgent({ agent: "Team agent" }), { id: null, name: "Team agent" }, "a name it does not know is not taken for an id");
+  assert.deepEqual(sessionAgent({ agent: " ", agentId: null }, undefined), { id: null, name: null });
 });
 
 test("a session says what it may be told now", () => {

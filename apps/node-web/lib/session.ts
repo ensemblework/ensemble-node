@@ -204,3 +204,10 @@ const LIVE_SESSION: ReadonlySet<string> = new Set(["working", "waiting", "queued
 
 /** A session with something going on or waiting: read often while it is open; an idle one waits for the event stream. */
 export const sessionLive = (status: string | null | undefined): boolean => LIVE_SESSION.has(status ?? "");
+
+/** Where a run card is, as a link into its conversation at that message; null without both. */
+export function cardLink(card: { messageId?: string | null; roomId?: string | null } | null | undefined): { href: string; roomId: string; messageId: string } | null {
+  const messageId = text(card?.messageId);
+  const roomId = text(card?.roomId);
+  return messageId && roomId ? { href: `/r/${encodeURIComponent(roomId)}#m-${encodeURIComponent(messageId)}`, roomId, messageId } : null;
+}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentName, handOverChoices, moveQueued, newestSessionCards, observedMissing, queuedLine, queueOrder, runsCount, sessionActions, sessionAgent, sessionLatest, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
+import { agentName, cardLink, handOverChoices, moveQueued, newestSessionCards, observedMissing, queuedLine, queueOrder, runsCount, sessionActions, sessionAgent, sessionLatest, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
 import type { QueuedRun } from "./types";
 
 test("settings asked for, sent and reported read side by side; not reported is said, and changes are marked", () => {
@@ -107,4 +107,11 @@ test("a session in the list: where it runs, its newest task, its runs, and wheth
   assert.equal(sessionLive("queued"), true);
   assert.equal(sessionLive("idle"), false);
   assert.equal(sessionLive(undefined), false);
+});
+
+test("a session's or a run's card, as a link into its conversation", () => {
+  assert.deepEqual(cardLink({ messageId: "m1", roomId: "crew" }), { href: "/r/crew#m-m1", roomId: "crew", messageId: "m1" });
+  assert.equal(cardLink({ messageId: null, roomId: "crew" }), null);
+  assert.equal(cardLink({ messageId: "m1" }), null, "a run from before roomId");
+  assert.equal(cardLink(null), null, "a Hub or CLI session has no card");
 });

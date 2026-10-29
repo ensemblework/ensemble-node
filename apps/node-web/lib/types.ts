@@ -88,8 +88,8 @@ export type PlanConstraints = {
   integrate?: IntegrateHow;
   notes?: string[];
 };
-/** A check's pass that a later change in the same place no longer covers: the step that changed it, and to what. */
-export type StaleAfter = { step: string; handle: string; candidate: string; at: string };
+/** A check's pass that a later change in the same place no longer covers: what it tested, the step that changed it, and to what. */
+export type StaleAfter = { step: string; handle: string; candidate: string; at: string; tested?: string };
 
 /** How a step's agent runs go, as the owner asked. */
 export type StepRun = { agent?: string; model?: string; effort?: string; context?: "default" | "long_context" };
@@ -179,7 +179,41 @@ export type SessionDetail = {
   folder: string | null;
   running: { jobId: string; title: string; prompt: string } | null;
   queue: QueuedRun[];
-  runs?: unknown[];
+  runs?: SessionRunRow[];
+};
+/** One of a session's recent runs, newest first, as `GET /api/node/sessions/:id` lists them. */
+export type SessionRunRow = {
+  jobId: string;
+  title: string;
+  prompt: string | null;
+  status: string;
+  position: number | null;
+  summary: string | null;
+  error?: string | null;
+  settings?: RunSettings | null;
+  messageId: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+};
+/**
+ * One of the owner's agent sessions (`GET /api/node/sessions`), most recently active first: `agent` is
+ * its id and `agentName` its name; `nodeId` the node that manages it, null when none does (a session
+ * started in the Hub or the CLI); `title` its first task and `latestTask` its newest.
+ */
+export type SessionSummary = {
+  id: string;
+  nodeId: string | null;
+  status: string;
+  agent: string;
+  agentName: string;
+  model: string | null;
+  computer: string | null;
+  folder: string;
+  title: string;
+  latestTask: string;
+  summary: string;
+  runs: number;
+  lastActiveAt: string;
 };
 /** `POST /api/node/sessions/:id/control`. replace: stop the run and the queue, then send this. */
 export type SessionAction = { action: "queue" | "steer" | "replace" | "stop"; prompt?: string; title?: string; queued?: "keep" | "drop" };

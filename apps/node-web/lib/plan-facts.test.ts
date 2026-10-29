@@ -51,4 +51,6 @@ test("a pass that a later change no longer covers says so", () => {
   assert.equal(staleNote(own, [build, own])?.startsWith("Passed for 5e5e5e5,"), true, "its own tested commit first");
   assert.equal(staleNote({ ...check, attempts: [] }, [check]), "It passed, but @designer's step then changed it (9f8e7d6): this pass doesn't cover that change.");
   assert.equal(staleNote({ ...check, staleAfter: null }, [check]), null);
+  const named = { ...check, staleAfter: { ...check.staleAfter!, tested: "4d4d4d4d4d4d" } };
+  assert.equal(staleNote(named, [build, named])?.startsWith("Passed for 4d4d4d4,"), true, "what Ensemble says the pass tested comes first");
 });

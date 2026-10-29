@@ -1,6 +1,6 @@
 import { ENSEMBLE_API } from "./config";
 import { evidencePath } from "./evidence";
-import type { FileRecord, Message, PeerKind, PeerRequest, RequestCandidate, Routine, RoutineRun, SessionAction, SessionDetail, ShareableItem, StatusCard, TrustSettings, TrustView } from "./types";
+import type { FileRecord, Message, PeerKind, PeerRequest, RequestCandidate, Routine, RoutineRun, SessionAction, SessionDetail, SessionSummary, ShareableItem, StatusCard, TrustSettings, TrustView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -154,6 +154,8 @@ const sessionPath = (id: string) => `/api/node/sessions/${encodeURIComponent(id)
  * They take the same path as a node's session tools, and the node's work board records each one.
  */
 export const sessions = {
+  /** My sessions, most recently active first; `q` matches titles, tasks, summaries, folders, agents and computers. */
+  list: (q = "", limit = 50) => api<{ sessions: SessionSummary[] }>(`/api/node/sessions?limit=${limit}${q ? `&q=${encodeURIComponent(q.slice(0, 200))}` : ""}`).then((result) => result.sessions),
   get: (id: string) => api<{ session: SessionDetail }>(sessionPath(id)).then((result) => result.session),
   /** queue, steer, replace (stop and send this instead) or stop (`queued`: keep or drop what waits). */
   control: (id: string, body: SessionAction) => api<{ ok: true; jobId?: string }>(`${sessionPath(id)}/control`, { body }),

@@ -185,3 +185,22 @@ export function newestSessionCards(messages: readonly SessionCard[]): Map<string
   }
   return new Map([...newest].map(([id, message]) => [id, message.id]));
 }
+
+/** Where a session runs: "ensemble on Laptop", or just its folder when the computer is not known. */
+export function sessionPlace(row: { folder?: string | null; computer?: string | null }): string {
+  return [row.folder?.trim(), row.computer?.trim()].filter(Boolean).join(" on ");
+}
+
+/** A session's newest task, when it is not the one it started with. */
+export function sessionLatest(row: { title: string; latestTask?: string | null }): string | null {
+  const latest = row.latestTask?.trim();
+  return latest && latest !== row.title.trim() ? latest : null;
+}
+
+/** "1 run", "4 runs". */
+export const runsCount = (runs: number): string => `${runs} ${runs === 1 ? "run" : "runs"}`;
+
+const LIVE_SESSION: ReadonlySet<string> = new Set(["working", "waiting", "queued", "running", "claimed", "waiting_approval", "stopping"]);
+
+/** A session with something going on or waiting: read often while it is open; an idle one waits for the event stream. */
+export const sessionLive = (status: string | null | undefined): boolean => LIVE_SESSION.has(status ?? "");

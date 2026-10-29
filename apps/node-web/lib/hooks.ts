@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, eventsUrl, messageById, routines, sessions } from "./api";
+import { api, ApiError, eventsUrl, messageById, peerRequests, peopleRooms, planById, routines, sessions, shareToRoom } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
 import { live, type LiveCall } from "./live";
 import { refsOf } from "./entity-text";
@@ -30,6 +30,7 @@ import type {
   Message,
   ModelList,
   NodePublic,
+  PeerRequest,
   QueuedRun,
   Room,
   Routine,
@@ -37,6 +38,8 @@ import type {
   RunStep,
   SearchResult,
   SessionAction,
+  StatusCard,
+  TrustView,
 } from "./types";
 
 export type Author = "all" | "people" | "nodes";
@@ -69,8 +72,13 @@ export const keys = {
   /** The owner's routines, and one routine's runs. */
   routines: ["routines"] as const,
   routineRuns: (routineId: string) => ["routine-runs", routineId] as const,
-  /** One message read by id: a routine run's plan card, which no conversation's list shows. */
-  message: (messageId: string) => ["message", messageId] as const,
+  /** A plan card with its steps' run cards (`GET /api/node/plans/:id`). */
+  plan: (planId: string) => ["plan", planId] as const,
+  /** A room with other people: status cards, my trust settings, my shareable items, its peer requests. */
+  roomStatus: (roomId: string) => ["room-status", roomId] as const,
+  trust: (roomId: string) => ["trust", roomId] as const,
+  shareable: (roomId: string) => ["shareable", roomId] as const,
+  requests: (roomId: string) => ["requests", roomId] as const,
 };
 
 /** How often an active run on screen is read again. */
@@ -472,23 +480,122 @@ export function useConnectors() {
   return useQuery({ queryKey: keys.connectors, queryFn: () => api<{ entries: ConnectorEntry[] }>("/api/connectors/catalog").then((result) => result.entries), staleTime: 60_000 });
 }
 
-/** The owner's routines, with when each runs next and its newest runs. Read again every half minute; a routine run's card changing reads them at once. */
+/** The owner's routines, with when each runs next and its newest runs. The event stream (`node.routine`) reads them again when one changes or starts a run; the slow poll only catches up. */
 export function useRoutines(enabled = true) {
-  return useQuery({ queryKey: keys.routines, queryFn: routines.list, enabled, refetchInterval: 30_000 });
+  return useQuery({ queryKey: keys.routines, queryFn: routines.list, enabled, refetchInterval: 5 * 60_000 });
 }
 
 /** A routine's runs, newest first, while its history is open. */
 export function useRoutineRuns(routineId: string, enabled: boolean) {
-  return useQuery({ queryKey: keys.routineRuns(routineId), queryFn: () => routines.runs(routineId), enabled, refetchInterval: enabled ? 30_000 : false });
+  return useQuery({ queryKey: keys.routineRuns(routineId), queryFn: () => routines.runs(routineId), enabled, refetchInterval: enabled ? 5 * 60_000 : false });
 }
 
-/** One message by its id; the event stream keeps it current once it is read. */
-export function useMessageById(messageId: string | null | undefined) {
+/** A plan card with its steps' run cards, which are not in the timeline; the event stream keeps both current once read. */
+export function usePlan(planId: string | null | undefined, enabled = true) {
   return useQuery({
-    queryKey: keys.message(messageId ?? ""),
-    queryFn: () => messageById(messageId!),
-    enabled: Boolean(messageId),
+    queryKey: keys.plan(planId ?? ""),
+    queryFn: () => planById(planId!),
+    enabled: Boolean(planId) && enabled,
     retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+  });
+}
+
+/** Every person's status card in a room with other people (presence, away, their work at the detail they chose). Read again each minute while shown. */
+export function useRoomStatus(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomStatus(roomId), queryFn: () => peopleRooms.status(roomId), enabled, refetchInterval: enabled ? 60_000 : false });
+}
+
+export function useTrust(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.trust(roomId), queryFn: () => peopleRooms.trust(roomId), enabled });
+}
+
+export function useShareable(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.shareable(roomId), queryFn: () => peopleRooms.shareable(roomId), enabled });
+}
+
+/** A room's peer requests as I may see them; `node.request` reads them again when one changes. */
+export function useRoomRequests(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.requests(roomId), queryFn: () => peopleRooms.requests(roomId), enabled });
+}
+
+/** Cards that changed after a decision: read again at once, so the page does not wait for the event stream. */
+function rereadCards(client: QueryClient, ids: ReadonlyArray<string | null | undefined>) {
+  for (const id of new Set(ids.filter((row): row is string => Boolean(row)))) void messageById(id).then((message) => putMessage(client, message), () => undefined);
+}
+
+/** Accepts (optionally edited, optionally always), declines (with a note) or cancels a peer request. */
+export function usePeerDecision(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { requestId: string; action: "accept" | "decline" | "cancel"; text?: string; always?: boolean; note?: string; cardId?: string }) =>
+      input.action === "accept"
+        ? peerRequests.accept(input.requestId, { ...(input.text ? { text: input.text } : {}), ...(input.always ? { always: true } : {}) })
+        : input.action === "decline"
+          ? peerRequests.decline(input.requestId, input.note ? { note: input.note } : {})
+          : peerRequests.cancel(input.requestId),
+    onSuccess: (request, input) => {
+      client.setQueryData<PeerRequest[]>(keys.requests(roomId), (current) => current?.map((row) => (row.id === request.id ? { ...row, ...request } : row)));
+      void client.invalidateQueries({ queryKey: keys.requests(roomId) });
+      rereadCards(client, [request.cardId, request.ownerCardId, input.cardId]);
+    },
+  });
+}
+
+/** Asks another person here something, through their lead: its public card comes back at once. */
+export function useCreateRequest(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof peopleRooms.request>[1]) => peopleRooms.request(roomId, body),
+    onSuccess: (request) => {
+      client.setQueryData<PeerRequest[]>(keys.requests(roomId), (current) => (current ? [request, ...current.filter((row) => row.id !== request.id)] : current));
+      void client.invalidateQueries({ queryKey: keys.requests(roomId) });
+      rereadCards(client, [request.cardId]);
+    },
+  });
+}
+
+/** Share to room: the copy lands in the Room at once. */
+export function useShareToRoom() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { messageId: string; as: "me" | "lead" }) => shareToRoom(input.messageId, input.as),
+    onSuccess: (message) => putMessage(client, message),
+  });
+}
+
+/** I am away (until a time, with a note) or back: my card changes at once. */
+export function useSetAway(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof peopleRooms.setAway>[1]) => peopleRooms.setAway(roomId, body),
+    onSuccess: (card) => client.setQueryData<StatusCard[]>(keys.roomStatus(roomId), (current) => (current ? current.map((row) => (row.accountId === card.accountId ? card : row)) : [card])),
+  });
+}
+
+export function useSetTrust(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof peopleRooms.setTrust>[1]) => peopleRooms.setTrust(roomId, body),
+    onSuccess: (trust) => client.setQueryData<TrustView>(keys.trust(roomId), trust),
+  });
+}
+
+export function useSetShareable(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof peopleRooms.setShareable>[1]) => peopleRooms.setShareable(roomId, body),
+    onSuccess: (items) => client.setQueryData(keys.shareable(roomId), items),
+  });
+}
+
+/** My pages and tasks in Ensemble, newest first; `q` matches their titles and text (`GET /api/pages?all=true`). */
+export function usePageDirectory(q: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["page-directory", q] as const,
+    queryFn: () => api<{ pages: Array<{ id: string; kind: "page" | "task"; title: string; updatedAt: string }> }>(`/api/pages?all=true${q ? `&q=${encodeURIComponent(q.slice(0, 200))}` : ""}`).then((result) => result.pages),
+    enabled,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -551,15 +658,15 @@ export function useMcpConnections() {
 
 const readTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-/** Marks a room read up to seq, at most once a second. */
-export function markRead(client: QueryClient, roomId: string, seq: number) {
+/** Marks a room read up to seq, at most once a second. `left`: what stays unread after it (a room's other tab). */
+export function markRead(client: QueryClient, roomId: string, seq: number, left = 0) {
   const boot = client.getQueryData<Bootstrap>(keys.bootstrap);
   const room = boot?.rooms.find((row) => row.id === roomId);
   if (!room || (room.readSeq ?? 0) >= seq) return;
   const key = `${boot?.me.id}:${roomId}`;
   if (!confirmedReads.has(key)) confirmedReads.set(key, room.readSeq ?? 0);
   client.setQueryData<Bootstrap>(keys.bootstrap, (current) =>
-    current ? { ...current, rooms: current.rooms.map((row) => (row.id === roomId ? { ...row, readSeq: seq, unread: 0 } : row)) } : current,
+    current ? { ...current, rooms: current.rooms.map((row) => (row.id === roomId ? { ...row, readSeq: seq, unread: left } : row)) } : current,
   );
   clearTimeout(readTimers.get(key));
   readTimers.set(key, setTimeout(() => {
@@ -606,8 +713,9 @@ export function useNodeEvents(enabled: boolean) {
     const onMessage = (event: MessageEvent<string>) => {
       const message = JSON.parse(event.data) as Message;
       putMessage(client, message);
-      // A message read on its own (a routine run's card) follows its changes too.
-      client.setQueryData<Message>(keys.message(message.id), (current) => (current ? message : current));
+      // A plan read with its run cards follows their changes too.
+      if (message.kind === "plan") client.setQueryData<{ message: Message; runs: Message[] }>(keys.plan(message.id), (current) => (current ? { ...current, message } : current));
+      if (message.planId) client.setQueryData<{ message: Message; runs: Message[] }>(keys.plan(message.planId), (current) => (current ? { ...current, runs: mergeMessage(current.runs, message) } : current));
       if (message.kind === "plan" && typeof message.data?.routine?.id === "string") laterRoutine(message.data.routine.id);
       if (message.authorNodeId) live.posted(message.roomId, message.authorNodeId);
       if (message.kind === "approval" || message.kind === "run") void client.invalidateQueries({ queryKey: keys.activity });
@@ -637,6 +745,17 @@ export function useNodeEvents(enabled: boolean) {
       if (data.roomId) void client.invalidateQueries({ queryKey: keys.pins(data.roomId) });
       later();
     }) as EventListener);
+    // A routine changed or started a run: its list and history are read again (no content in the event).
+    source.addEventListener("node.routine", ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { id?: string };
+      if (typeof data.id === "string") laterRoutine(data.id);
+      else void client.invalidateQueries({ queryKey: keys.routines });
+    }) as EventListener);
+    // A peer request changed in a room: its list is read again; its card comes as a message update.
+    source.addEventListener("node.request", ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { roomId?: string };
+      if (typeof data.roomId === "string") void client.invalidateQueries({ queryKey: keys.requests(data.roomId) });
+    }) as EventListener);
     // Needs me changed (a run asks, or a card was answered somewhere): re-read it now, not at the next poll.
     source.addEventListener("node.needs", () => {
       void client.invalidateQueries({ queryKey: keys.approvals });
@@ -651,7 +770,8 @@ export function useNodeEvents(enabled: boolean) {
     source.onopen = () => {
       if (opened) {
         void client.invalidateQueries({ queryKey: ["messages"] });
-        void client.invalidateQueries({ queryKey: ["message"] });
+        void client.invalidateQueries({ queryKey: ["plan"] });
+        void client.invalidateQueries({ queryKey: ["requests"] });
         void client.invalidateQueries({ queryKey: keys.routines });
         void client.invalidateQueries({ queryKey: keys.invites });
         void client.invalidateQueries({ queryKey: keys.approvals });

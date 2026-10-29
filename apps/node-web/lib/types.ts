@@ -15,9 +15,11 @@ export type NodeFull = NodePublic & {
   runProfileId: string | null;
   /**
    * computerWork "ask": starting work on the owner's computer waits for an approval card (default: on its own).
-   * `grant`: what a helper may do, as its parent granted (read when not said).
+   * `grant`: what a helper may do, as its parent granted (read when not said). `createNodes`: nodes and
+   * crews it makes are proposed on a card (ask, the default) or made at once (auto). `helpers`: helpers
+   * working at once (4 when not said; 0: no limit; the account allows twice this).
    */
-  autonomy: { sharedRooms?: "ask" | "auto"; computerFiles?: boolean; computerWork?: "auto" | "ask"; grant?: HelperGrant };
+  autonomy: { sharedRooms?: "ask" | "auto"; computerFiles?: boolean; computerWork?: "auto" | "ask"; answerAgentQuestions?: boolean; grant?: HelperGrant; createNodes?: "ask" | "auto"; helpers?: number };
   /** How long its chat model thinks, when the model takes a level (default low: nodes answer fast). */
   effort?: "low" | "medium" | "high";
   templateId: string | null;
@@ -29,8 +31,11 @@ export type NodeMember = { id: string; kind: "node"; handle: string; accountId: 
 export type PersonMember = { id: string; kind: "person"; handle: string; accountId: string; role: string; name: string; responsibility: string | null; me: boolean };
 export type Member = NodeMember | PersonMember;
 
-/** plan: a lead's plan for its crew, with its steps; cards of the steps carry its id in `planId`. */
-export type MessageKind = "text" | "approval" | "run" | "status" | "error" | "plan";
+/**
+ * plan: a lead's plan for its crew, with its steps; cards of the steps carry its id in `planId`.
+ * request: a peer request's public card in a room with other people, updated in place.
+ */
+export type MessageKind = "text" | "approval" | "run" | "status" | "error" | "plan" | "request";
 
 export type PlanStepStatus = "waiting" | "working" | "done" | "blocked" | "skipped" | "stopped";
 export type StepKind = "build" | "verify" | "write" | "research" | "other";
@@ -156,8 +161,8 @@ export type SessionAction = { action: "queue" | "steer" | "replace" | "stop"; pr
 
 /** A file a run attached as evidence (`data.evidence` on a run card), read with `GET /api/node/evidence/:id`. */
 export type EvidenceItem = { id: string; kind: string; name: string; mime: string; size?: number | null; caption?: string | null; requirementId?: string | null; createdAt?: string | null };
-/** Evidence a node sends in a message (`data.media`). */
-export type MediaItem = { evidenceId: string; kind: string; name: string; mime: string; caption?: string | null };
+/** Evidence a message shows (`data.media`: node replies, plan reports, approved drafts, shared messages). */
+export type MediaItem = { evidenceId: string; kind: string; name: string; mime: string; caption?: string | null; size?: number | null };
 
 /** `refs`: the records the call's result names (Ensemble's AssistantRef): ids for links, titles to show. */
 export type ToolChip = { id: string; name: string; state?: string; summary: string | null; href: string | null; refs?: EntityRef[] };
@@ -232,7 +237,7 @@ export type Room = {
    */
   originRoomId?: string | null;
   originMessageId?: string | null;
-  helper?: { parentNodeId?: string | null; helperNodeId?: string | null; originRoomId?: string | null; originMessageId?: string | null; originPrivate?: boolean } | null;
+  helper?: { parentNodeId?: string | null; helperNodeId?: string | null; originRoomId?: string | null; originMessageId?: string | null; originPrivate?: boolean; planId?: string | null } | null;
   settings?: Record<string, unknown> | null;
 };
 
@@ -303,8 +308,8 @@ export type Turn = { id: string; nodeId: string; roomId: string | null; reason: 
 export type RoutineTrigger = "schedule" | "event" | "webhook";
 /** always: the node posts the result; needed: only when something failed, changed or needs the owner; never: it is only listed with the routine. */
 export type RoutineNotify = "always" | "needed" | "never";
-/** What an event routine watches: tasks or pages changing in a space (`space`: its id; the owner's own when left out), gathered over `windowSeconds`. */
-export type RoutineEvent = { on: "task" | "page"; actions?: string[]; space?: string; windowSeconds: number };
+/** What an event routine watches: tasks or pages changing in a space (`space`: its id, `spaceName` its name; the owner's own when left out), gathered over `windowSeconds`. */
+export type RoutineEvent = { on: "task" | "page"; actions?: string[]; space?: string; spaceName?: string | null; windowSeconds: number };
 
 /**
  * One occurrence of a routine (Ensemble's `node_routine_runs`): `missionId` is the plan card it
@@ -513,4 +518,76 @@ export type McpConnection = {
 export type Me = {
   user: { id: string; email: string; name: string | null; emailVerified?: boolean };
   verificationRequired: boolean;
+};
+
+// ── Rooms with other people (rooms v2, Ensemble docs/35 §12) ─────────────────────────────────────
+
+export type Presence = "online" | "away" | "offline";
+export type StatusDetail = "nothing" | "titles" | "details";
+
+/** A person's status card in a room, as the reader may see it (`GET /api/node/rooms/:id/status`, and `@leads status`). */
+export type StatusCard = {
+  accountId: string;
+  name: string;
+  handle: string;
+  lead: { nodeId: string; handle: string; name: string } | null;
+  presence: Presence;
+  away: { until: string | null; note: string | null } | null;
+  detail: StatusDetail;
+  /** They ask to be asked before their status is shared: presence only. */
+  asks: boolean;
+  missions: Array<{ title: string; status: string; requirements?: Array<{ text: string; status: string }>; steps?: { done: number; total: number } }>;
+  tasks: Array<{ title: string; status: string; due?: string | null }>;
+};
+
+export type PeerKind = "question" | "share" | "review" | "work";
+export type RequestStatus = "open" | "answered" | "awaiting_owner" | "approved" | "declined" | "done" | "cancelled";
+
+/** What a person's lead may do for others in a room without asking (their own choices, §12.5). */
+export type TrustSettings = {
+  status: "answer" | "ask";
+  statusDetail: StatusDetail;
+  shareSpaceArtefacts: "answer" | "ask";
+  shareOther: "ask" | "never";
+  workRequests: "ask" | "accept";
+  acceptKinds: PeerKind[];
+  freeFormAnswers: "allow" | "ask";
+};
+
+/** `GET/PUT /api/node/rooms/:id/trust`: my settings for everyone, each other person's own (overrides and what applies), and my monthly budget. */
+export type TrustView = {
+  defaults: TrustSettings;
+  everyone: TrustSettings;
+  people: Array<{ accountId: string; name: string; handle: string; overrides: Partial<TrustSettings> | null; effective: TrustSettings }>;
+  budget: { credits: number | null; usedThisMonth: number };
+};
+
+/** An item I marked shareable in a room: my lead may read it out there (`GET/PUT /api/node/rooms/:id/shareable`). */
+export type ShareableItem = { kind: "page" | "task" | "file"; id: string; spaceId: string; title: string; addedAt: string };
+
+export type RequestPerson = { accountId: string; name: string; handle: string | null };
+/** A request's reference: a record, a file, a link or a message it is about. */
+export type RequestRef = { kind: "task" | "page" | "file" | "link" | "message"; id?: string; title: string; url?: string };
+export type RequestCandidate = { repo?: string; commit?: string; url?: string };
+
+/** A peer request as I may see it (`GET /api/node/rooms/:id/requests`); its target also sees their own card and the mission. */
+export type PeerRequest = {
+  id: string;
+  roomId: string;
+  kind: PeerKind;
+  status: RequestStatus;
+  text: string;
+  refs: RequestRef[] | null;
+  candidate: RequestCandidate | null;
+  from: RequestPerson & { nodeId: string | null; nodeHandle: string | null };
+  to: RequestPerson & { leadNodeId: string | null; leadHandle: string | null };
+  answer: string | null;
+  outcome: string | null;
+  requirements: Array<{ text: string; status: string }>;
+  cardId: string | null;
+  ownerCardId?: string | null;
+  missionId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  decidedAt: string | null;
 };

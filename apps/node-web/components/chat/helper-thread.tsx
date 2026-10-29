@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * A helper's conversation shown inline (build block B18): a chip under the message that brought the
- * helper in ("@scout, helper of @lead · working · 4 messages") that opens in place to the helper's
- * thread, read only, read from its task room's messages. Its header says what the helper may do and
- * offers to keep it as a lasting node; a link opens the task room itself.
+ * A helper's conversation shown inline (build block B18): a chip under the message that asked for the
+ * work ("@scout, helper of @lead · working · 4 messages") that opens in place to the helper's thread,
+ * read only, read from its task room's messages: the brief its parent wrote and the report it gave.
+ * Its header says what the helper may do and offers to keep it as a lasting node; a link opens the
+ * task room itself.
  */
 import Link from "next/link";
 import { ChevronDown, Lock, MessagesSquare, UserPlus } from "lucide-react";
@@ -13,13 +14,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { messageRefs } from "@/lib/entity-text";
 import { keys, markRead, useBootstrap, useMessages } from "@/lib/hooks";
+import { outcomeBadge } from "@/lib/plan";
 import { useBusyNodes, useLiveRoom } from "@/lib/live";
 import { clock } from "@/lib/text";
 import { grantLabel, threadLabel, type HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
 import type { NodeFull, NodePublic } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
-import { Spinner } from "../ui";
+import { Pill, Spinner } from "../ui";
 import { RichText } from "./rich-text";
 
 /**
@@ -97,12 +99,18 @@ export function HelperThreadView({ thread, id }: { thread: HelperThread; id?: st
           <ol className="space-y-2.5" aria-label={`${thread.title}, read only`}>
             {list.map((row) => {
               const node = author(row.authorNodeId);
+              // The parent's brief opens the thread; the helper's report closes its step.
+              const brief = Boolean(row.data?.brief);
+              const report = row.data?.report && typeof row.data.report === "object" ? (row.data.report as { outcome?: string }) : null;
+              const verdict = report ? outcomeBadge(report.outcome) : null;
               return (
                 <li key={row.id} className="flex gap-2">
                   <span className="mt-0.5 shrink-0">{node ? <NodeAvatar node={node} size={20} /> : <PersonAvatar name={row.authorKind === "system" ? "Ensemble" : "You"} size={20} />}</span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2 text-xs">
                       <span className="font-medium">{node ? node.name : row.authorKind === "system" ? "Ensemble" : "You"}</span>
+                      {brief ? <Pill>Brief</Pill> : null}
+                      {report ? <Pill tone={verdict?.tone ?? "muted"}>{verdict ? `Report · ${verdict.label}` : "Report"}</Pill> : null}
                       <span className="text-[10px] text-muted">{clock(row.createdAt)}</span>
                     </div>
                     {row.kind === "status" || row.kind === "error" ? (

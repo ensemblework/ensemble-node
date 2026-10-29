@@ -1,7 +1,8 @@
 "use client";
 
-import { ArrowUp, CornerUpLeft, Lock, Square, X } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { ArrowUp, CornerUpLeft, ListChecks, Lock, Square, Users, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { leadsStatus } from "@/lib/rooms";
 import { insertMention, matchHandles, typingMention } from "@/lib/text";
 import type { Avatar, MessageFile, NodePublic } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
@@ -16,11 +17,19 @@ export type ComposerReply = { id: string; author: string; excerpt: string; priva
 /** A message put back into the composer (a failed one, to edit). A new `nonce` puts it back again. */
 export type ComposerDraft = { nonce: number; body: string; private: boolean; files: MessageFile[] };
 
+/**
+ * Who reads what is sent. none: a chat with only my nodes. choice: a room's shared thread, where I send
+ * to everyone or ask my nodes privately. private: my My crew, where everything is mine and my nodes'.
+ */
+export type ComposerPrivacy = "none" | "choice" | "private";
+
 export function Composer({
   options,
   draftKey,
   placeholder,
-  canBePrivate,
+  privatePlaceholder,
+  privacy,
+  extra,
   busy,
   disabled,
   disabledReason,
@@ -34,7 +43,11 @@ export function Composer({
   options: MentionOption[];
   draftKey: string;
   placeholder: string;
-  canBePrivate: boolean;
+  /** The placeholder while it goes only to my nodes. */
+  privatePlaceholder?: string;
+  privacy: ComposerPrivacy;
+  /** More buttons beside the attach button (a room's Request…). */
+  extra?: ReactNode;
   busy: boolean;
   disabled?: boolean;
   disabledReason?: React.ReactNode;
@@ -57,9 +70,10 @@ export function Composer({
   const blockerId = useId();
   const typing = typingMention(value, cursor);
   const matches = typing ? matchHandles(options, typing.query) : [];
-  // A public reply may not quote a private message, so a reply to one is private too.
-  const lockedPrivate = Boolean(reply?.private);
+  // A public reply may not quote a private message, so a reply to one is private too; My crew is all private.
+  const lockedPrivate = Boolean(reply?.private) || privacy === "private";
   const privateNow = isPrivate || lockedPrivate;
+  const statusAsk = privacy !== "none" && leadsStatus(value);
   useEffect(() => {
     if (value) drafts.set(draftKey, { body: value, private: privateNow });
     else drafts.delete(draftKey);
@@ -159,13 +173,18 @@ export function Composer({
             </button>
           </div>
         ) : null}
+        {statusAsk ? (
+          <p className="mx-1 mb-1 flex items-center gap-1.5 rounded-xl bg-bg/70 px-3 py-1.5 text-xs text-muted" role="status">
+            <ListChecks size={13} className="shrink-0 text-accent" aria-hidden /> Ensemble answers with everyone&apos;s status card. No node is woken.
+          </p>
+        ) : null}
         <AttachmentShelf attachments={attachments} />
         <textarea
           ref={area}
           value={value}
           disabled={disabled}
           rows={1}
-          placeholder={placeholder}
+          placeholder={privateNow && privatePlaceholder ? privatePlaceholder : placeholder}
           onChange={(event) => {
             setValue(event.target.value);
             setCursor(event.target.selectionStart);
@@ -189,23 +208,47 @@ export function Composer({
               send();
             }
           }}
-          aria-label={placeholder}
+          aria-label={privateNow && privatePlaceholder ? privatePlaceholder : placeholder}
           className="max-h-[220px] w-full resize-none bg-transparent px-3 py-2 text-[15px] outline-none placeholder:text-muted disabled:opacity-60"
         />
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex min-w-0 items-center gap-1">
             {attachHint ? <AttachButton attachments={attachments} hint={attachHint} disabled={disabled} /> : null}
-            {canBePrivate || privateNow ? (
-              <button
-                type="button"
-                onClick={() => setPrivate(!isPrivate)}
-                disabled={lockedPrivate}
-                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs transition disabled:cursor-not-allowed ${privateNow ? "bg-private/15 text-private" : "text-muted hover:bg-raised"}`}
-                aria-pressed={privateNow}
-                title={lockedPrivate ? "A reply to a private message stays private" : "Only you and your own nodes see it"}
-              >
-                <Lock size={12} /> Only me
-              </button>
+            {extra}
+            {privacy === "choice" ? (
+              <div role="radiogroup" aria-label="Who reads it" className="inline-flex shrink-0 rounded-full border border-line p-0.5 text-xs">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={!privateNow}
+                  aria-label="Send to everyone"
+                  disabled={lockedPrivate}
+                  onClick={() => setPrivate(false)}
+                  title="Everyone here reads it. Only a lead you name answers, in the room."
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition disabled:cursor-not-allowed disabled:opacity-50 ${privateNow ? "text-muted hover:text-ink" : "bg-raised font-medium text-ink"}`}
+                >
+                  <Users size={12} aria-hidden />
+                  <span className="sm:hidden">Everyone</span>
+                  <span className="hidden sm:inline">Send to everyone</span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={privateNow}
+                  aria-label="Ask my nodes"
+                  onClick={() => setPrivate(true)}
+                  title="Only you and your nodes read it. Your lead, or the node you name, answers in My crew."
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-1 transition ${privateNow ? "bg-private/15 font-medium text-private" : "text-muted hover:text-ink"}`}
+                >
+                  <Lock size={12} aria-hidden />
+                  <span className="sm:hidden">My nodes</span>
+                  <span className="hidden sm:inline">Ask my nodes</span>
+                </button>
+              </div>
+            ) : privacy === "private" ? (
+              <span className="inline-flex min-w-0 items-center gap-1 truncate rounded-full bg-private/15 px-2.5 py-1 text-xs text-private" title="Only you and your nodes read My crew">
+                <Lock size={12} className="shrink-0" aria-hidden /> <span className="truncate">Only you and your nodes</span>
+              </span>
             ) : null}
             {blocker ? (
               <span id={blockerId} className="min-w-0 truncate text-xs text-warn" role="status" title={blocker}>

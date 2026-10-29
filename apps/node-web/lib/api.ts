@@ -1,5 +1,6 @@
 import { ENSEMBLE_API } from "./config";
-import type { FileRecord, Message, Routine, RoutineRun, SessionAction, SessionDetail } from "./types";
+import { evidencePath } from "./evidence";
+import type { FileRecord, Message, PeerKind, PeerRequest, RequestCandidate, Routine, RoutineRun, SessionAction, SessionDetail, ShareableItem, StatusCard, TrustSettings, TrustView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -128,11 +129,14 @@ export async function fileOriginal(id: string, signal?: AbortSignal): Promise<Bl
   return response.blob();
 }
 
-/** A run's evidence, for its owner (`GET /api/node/evidence/:id`). Shown only when it is a safe picture (lib/evidence.ts). */
-export async function evidenceBlob(id: string, signal?: AbortSignal): Promise<Blob> {
+/**
+ * A file a run attached (`GET /api/node/evidence/:id`): its owner reads it; anyone else only through the
+ * message that shows it (`messageId`). Shown only when it is a safe picture (lib/evidence.ts).
+ */
+export async function evidenceBlob(id: string, signal?: AbortSignal, messageId?: string | null): Promise<Blob> {
   let response: Response;
   try {
-    response = await fetch(`${ENSEMBLE_API}/api/node/evidence/${encodeURIComponent(id)}`, { credentials: "include", signal });
+    response = await fetch(`${ENSEMBLE_API}${evidencePath(id, messageId)}`, { credentials: "include", signal });
   } catch {
     throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
   }
@@ -141,7 +145,7 @@ export async function evidenceBlob(id: string, signal?: AbortSignal): Promise<Bl
 }
 
 /** The address a video player streams a run's evidence from; the session cookie goes with it. */
-export const evidenceUrl = (id: string): string => `${ENSEMBLE_API}/api/node/evidence/${encodeURIComponent(id)}`;
+export const evidenceUrl = (id: string, messageId?: string | null): string => `${ENSEMBLE_API}${evidencePath(id, messageId)}`;
 
 const sessionPath = (id: string) => `/api/node/sessions/${encodeURIComponent(id)}`;
 
@@ -177,8 +181,41 @@ export const routines = {
   runs: (id: string) => api<{ runs: RoutineRun[] }>(`${routinePath(id)}/runs`).then((result) => result.runs),
 };
 
-/** One message I may see (`GET /api/node/messages/:id`): a routine run's plan card, which is not in the chat. */
+/** One message I may see (`GET /api/node/messages/:id`). */
 export const messageById = (id: string) => api<{ message: Message }>(`/api/node/messages/${encodeURIComponent(id)}`).then((result) => result.message);
+
+/** A plan card (or a routine's run) with its steps' run cards, which are not in the timeline (`GET /api/node/plans/:id`). */
+export const planById = (id: string) => api<{ message: Message; runs: Message[] }>(`/api/node/plans/${encodeURIComponent(id)}`);
+
+const roomPath = (id: string) => `/api/node/rooms/${encodeURIComponent(id)}`;
+
+/** A person's own settings in a room with other people, its status cards and its peer requests (Ensemble docs/35 §12). */
+export const peopleRooms = {
+  /** Every person's status card as I may see it; my own in full. */
+  status: (roomId: string) => api<{ cards: StatusCard[] }>(`${roomPath(roomId)}/status`).then((result) => result.cards),
+  /** I am away (until a time, with a note) or back. */
+  setAway: (roomId: string, body: { away: boolean; until?: string | null; note?: string | null }) => api<{ card: StatusCard }>(`${roomPath(roomId)}/status`, { method: "PUT", body }).then((result) => result.card),
+  trust: (roomId: string) => api<{ trust: TrustView }>(`${roomPath(roomId)}/trust`).then((result) => result.trust),
+  /** `people[id]: null` takes back that person's own settings. */
+  setTrust: (roomId: string, body: { everyone?: Partial<TrustSettings>; people?: Record<string, Partial<TrustSettings> | null>; budget?: number | null }) =>
+    api<{ trust: TrustView }>(`${roomPath(roomId)}/trust`, { method: "PUT", body }).then((result) => result.trust),
+  shareable: (roomId: string) => api<{ items: ShareableItem[] }>(`${roomPath(roomId)}/shareable`).then((result) => result.items),
+  setShareable: (roomId: string, body: { kind: ShareableItem["kind"]; id: string; spaceId?: string; shared: boolean }) =>
+    api<{ items: ShareableItem[] }>(`${roomPath(roomId)}/shareable`, { method: "PUT", body }).then((result) => result.items),
+  requests: (roomId: string) => api<{ requests: PeerRequest[] }>(`${roomPath(roomId)}/requests`).then((result) => result.requests),
+  request: (roomId: string, body: { to: string; kind: PeerKind; text: string; candidate?: RequestCandidate }) =>
+    api<{ request: PeerRequest }>(`${roomPath(roomId)}/requests`, { body }).then((result) => result.request),
+};
+
+/** A peer request's decisions: its target accepts (optionally edited, optionally always) or declines; its asker cancels. */
+export const peerRequests = {
+  accept: (id: string, body: { text?: string; always?: boolean }) => api<{ request: PeerRequest }>(`/api/node/requests/${encodeURIComponent(id)}/accept`, { body }).then((result) => result.request),
+  decline: (id: string, body: { note?: string }) => api<{ request: PeerRequest }>(`/api/node/requests/${encodeURIComponent(id)}/decline`, { body }).then((result) => result.request),
+  cancel: (id: string) => api<{ request: PeerRequest }>(`/api/node/requests/${encodeURIComponent(id)}/cancel`, { body: {} }).then((result) => result.request),
+};
+
+/** Share to room: one of my private messages, or my own node's private reply, published as me or through my lead. */
+export const shareToRoom = (messageId: string, as: "me" | "lead") => api<{ message: Message }>(`/api/node/messages/${encodeURIComponent(messageId)}/share`, { body: { as } }).then((result) => result.message);
 
 export const oauthStartUrl = (provider: string): string => `${ENSEMBLE_API}/api/auth/oauth/${provider}/start?return=node`;
 

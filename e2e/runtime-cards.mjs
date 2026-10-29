@@ -209,6 +209,12 @@ try {
         state.messages["dm-scout"] = [];
         return json({ node: helper, room: { id: "dm-scout", title: helper.name } }, 201);
       }
+      const planRead = /^\/api\/node\/plans\/([^/]+)$/.exec(path);
+      if (planRead && request.method() === "GET") {
+        const all = Object.values(state.messages).flat();
+        const card = all.find((row) => row.id === planRead[1] && row.kind === "plan");
+        return card ? json({ message: card, runs: all.filter((row) => row.planId === card.id && row.kind === "run") }) : json({ error: "That plan is not available." }, 404);
+      }
       const stop = /^\/api\/node\/(rooms|plans)\/([^/]+)\/stop$/.exec(path);
       if (stop) {
         state.calls.push({ stop: `${stop[1]}/${stop[2]}` });

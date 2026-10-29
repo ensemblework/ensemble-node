@@ -7,12 +7,15 @@
  * it, its attempts with their checks and candidates, its report and evidence. The agent runs a step
  * started sit inside it, folded, instead of in the conversation; the steps' nodes never post there.
  * A node's own piece of work (`kind: "self"`) is the same card in one compact block, a work card.
- * Plans made before outcomes (contract 1) show what they have.
+ * Plans made before outcomes (contract 1) show what they have. A step a helper does (`executor:
+ * "helper"`) names the helper and opens its thread. The steps' run cards are read with the plan
+ * (`GET /api/node/plans/:id`) once a step is opened: a helper's runs are in its own room.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Check, ChevronRight, Circle, CircleStop, CircleX, Hourglass, MinusCircle, Repeat } from "lucide-react";
 import { api } from "@/lib/api";
+import { usePlan } from "@/lib/hooks";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { formatEntityText } from "@/lib/entity-text";
 import { evidenceCount, evidenceOfCards } from "@/lib/evidence";
@@ -23,6 +26,7 @@ import type { Attempt, Message, PlanData, PlanRoutine, PlanStep } from "@/lib/ty
 import { NodeAvatar } from "../node-avatar";
 import { Pill, Spinner } from "../ui";
 import { EvidenceGallery, type RequirementLink } from "./evidence";
+import { HelperThreadChip } from "./helper-thread";
 import type { MessageContext } from "./message";
 import { CandidateTag, CheckList } from "./report";
 import { RichText } from "./rich-text";
@@ -35,6 +39,14 @@ export const requirementAnchor = (planId: string, id: string) => `req-${planId}-
 const oneLine = (text: string | null | undefined) => formatEntityText(text ?? "", [], { plain: true, kindLinks: true, app: ENSEMBLE_APP }).replace(/\s+/g, " ").trim();
 
 const sorted = (attempts: readonly Attempt[] | undefined) => [...(attempts ?? [])].sort((a, b) => a.n - b.n);
+
+/** The step cards the conversation has, with those read with the plan; each once, oldest first. */
+function withRuns(loaded: readonly Message[], read: readonly Message[] | undefined): Message[] {
+  if (!read?.length) return [...loaded];
+  const byId = new Map(read.map((row) => [row.id, row]));
+  for (const row of loaded) byId.set(row.id, row);
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.seq - b.seq);
+}
 
 function StepIcon({ step, held }: { step: PlanStep; held: boolean }) {
   const outcome = stepOutcome(step);
@@ -194,7 +206,7 @@ function Ledger({ plan, planId }: { plan: PlanData; planId: string }) {
   );
 }
 
-function Step({ step, plan, planId, cards, ctx }: { step: PlanStep; plan: PlanData; planId: string; cards: Message[]; ctx: MessageContext }) {
+function Step({ step, plan, planId, cards, ctx, onOpen }: { step: PlanStep; plan: PlanData; planId: string; cards: Message[]; ctx: MessageContext; onOpen: () => void }) {
   const [open, setOpen] = useState(false);
   const node = ctx.nodes.get(step.nodeId);
   const steps = plan.steps;
@@ -202,7 +214,10 @@ function Step({ step, plan, planId, cards, ctx }: { step: PlanStep; plan: PlanDa
   const badges = stepBadges(step, steps);
   const after = (step.after ?? []).map((id) => steps.find((row) => row.id === id)).filter((row): row is PlanStep => Boolean(row));
   const said = step.result ?? step.progress;
-  const kindLine = stepKindLine(step);
+  // A helper's step: the helper by name, and its thread (its brief and its report) in the step.
+  const helping = step.executor === "helper";
+  const thread = helping ? ctx.helperOf?.(step.nodeId) : undefined;
+  const kindLine = helping ? stepKindLine({ kind: step.kind }) : stepKindLine(step);
   const attempts = attemptsToShow(step);
   const current = sorted(step.attempts).at(-1);
   const evidence = evidenceOfCards(runs);
@@ -216,14 +231,23 @@ function Step({ step, plan, planId, cards, ctx }: { step: PlanStep; plan: PlanDa
   };
   return (
     <li className="rounded-xl border border-line bg-bg/60">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={bodyId} className="flex w-full items-start gap-2.5 px-3 py-2 text-left">
+      <button
+        type="button"
+        onClick={() => {
+          if (!open) onOpen();
+          setOpen(!open);
+        }}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        className="flex w-full items-start gap-2.5 px-3 py-2 text-left"
+      >
         <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
           <StepIcon step={step} held={badges.held} />
         </span>
         {node ? <NodeAvatar node={node} size={20} /> : null}
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
-            <span className="font-medium">@{step.handle}</span>
+            <span className="font-medium">{helping ? `Helper · ${node?.name ?? step.name ?? `@${step.handle}`}` : `@${step.handle}`}</span>
             {kindLine ? <span className="text-xs text-muted">{kindLine}</span> : null}
             <Pill tone={badges.status.tone}>{badges.status.label}</Pill>
             {badges.outcome ? <Pill tone={badges.outcome.tone}>{badges.outcome.label}</Pill> : null}
@@ -277,6 +301,7 @@ function Step({ step, plan, planId, cards, ctx }: { step: PlanStep; plan: PlanDa
               ))}
             </div>
           ) : null}
+          {helping ? thread ? <HelperThreadChip thread={thread} /> : <p className="text-xs text-muted">Its thread is gone: a helper and its room go after 3 quiet days.</p> : null}
         </div>
       ) : said && !working ? (
         <div className="line-clamp-3 border-t border-line px-3 py-2 text-sm">
@@ -292,7 +317,7 @@ function Step({ step, plan, planId, cards, ctx }: { step: PlanStep; plan: PlanDa
 }
 
 /** A node's own piece of work: one step, shown as one block. */
-function WorkCard({ message, plan, cards, ctx }: { message: Message; plan: PlanData; cards: Message[]; ctx: MessageContext }) {
+function WorkCard({ message, plan, cards, ctx, onOpen }: { message: Message; plan: PlanData; cards: Message[]; ctx: MessageContext; onOpen: () => void }) {
   const [open, setOpen] = useState(false);
   const step = plan.steps[0];
   const mission = missionView(plan.status);
@@ -336,7 +361,16 @@ function WorkCard({ message, plan, cards, ctx }: { message: Message; plan: PlanD
       ) : null}
       {step ? (
         <div className="border-t border-line/70 pt-1.5">
-          <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls={bodyId} className="flex min-h-7 w-full items-center gap-2 rounded-md px-1 text-left text-[13px] text-muted hover:bg-raised/70 hover:text-ink">
+          <button
+            type="button"
+            onClick={() => {
+              if (!open) onOpen();
+              setOpen(!open);
+            }}
+            aria-expanded={open}
+            aria-controls={bodyId}
+            className="flex min-h-7 w-full items-center gap-2 rounded-md px-1 text-left text-[13px] text-muted hover:bg-raised/70 hover:text-ink"
+          >
             <ChevronRight size={13} className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
             <span className="min-w-0 flex-1 truncate">
               {[open ? "Hide the details" : "Details", attempts.length ? `${attempts.length} attempts` : null, runs.length ? `${runs.length} agent run${runs.length === 1 ? "" : "s"}` : null, evidenceCount(evidence)].filter(Boolean).join(" · ")}
@@ -362,13 +396,18 @@ function WorkCard({ message, plan, cards, ctx }: { message: Message; plan: PlanD
   );
 }
 
-export function PlanCard({ message, ctx }: { message: Message; ctx: MessageContext }) {
+/** `detached`: shown on its own (a routine's run, opened from a list), so its step cards are read at once. */
+export function PlanCard({ message, ctx, detached = false }: { message: Message; ctx: MessageContext; detached?: boolean }) {
   const data = message.data as PlanData;
   const plan: PlanData = { ...data, steps: Array.isArray(data.steps) ? data.steps : [] };
   const mission = missionView(plan.status);
   const { stop, stopping } = useStopPlan(message.id, "plan");
-  const cards = ctx.inPlan.get(message.id) ?? [];
-  if (isWorkCard(plan)) return <WorkCard message={message} plan={plan} cards={cards} ctx={ctx} />;
+  const [wanted, setWanted] = useState(detached);
+  const read = usePlan(message.id, wanted);
+  const loaded = ctx.inPlan.get(message.id);
+  const cards = useMemo(() => withRuns(loaded ?? [], read.data?.runs), [loaded, read.data?.runs]);
+  const want = () => setWanted(true);
+  if (isWorkCard(plan)) return <WorkCard message={message} plan={plan} cards={cards} ctx={ctx} onOpen={want} />;
   const progress = planProgress(plan);
   const counting = mission.status === "running" && mission.live;
   const routine = routineOf(plan.routine);
@@ -391,7 +430,7 @@ export function PlanCard({ message, ctx }: { message: Message; ctx: MessageConte
       <Ledger plan={plan} planId={message.id} />
       <ol className="space-y-1.5">
         {plan.steps.map((step) => (
-          <Step key={step.id} step={step} plan={plan} planId={message.id} cards={cards} ctx={ctx} />
+          <Step key={step.id} step={step} plan={plan} planId={message.id} cards={cards} ctx={ctx} onOpen={want} />
         ))}
       </ol>
     </div>

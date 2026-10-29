@@ -1,9 +1,12 @@
 "use client";
 
 /**
- * A coding run inside a conversation. A status line (engine, model, thinking level, computer, live
- * time, Stop), the latest progress, what the run asks you (answered right here), the work log
- * (read from the job's run while it is open), the files it changed and its summary.
+ * A coding run inside a conversation, and the session card of the agent session it belongs to. A
+ * status line (engine, model, thinking level, computer, live time, Stop) with the settings asked for,
+ * sent and reported, the latest progress, what the run asks you (answered right here), the session
+ * (status, what it does now, its queue and controls: components/chat/session.tsx), the work log (read
+ * from the job's run while it is open), the structured report, the evidence, the files it changed and
+ * its summary.
  *
  * The status line and live timer are adapted from T3 Code's ThreadStatusLine, AgentElapsed and
  * WorkingTimer, the changed-file counts from its DiffStatLabel, and the inline approvals from its
@@ -13,15 +16,19 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, CircleStop, ExternalLink, Hammer } from "lucide-react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { approvalsForRun, decisionsForJob } from "@/lib/decisions";
+import { evidenceItems } from "@/lib/evidence";
 import { useApprovals, useDecisions, useJob, useRunSteps, useStopJob } from "@/lib/hooks";
 import { RUN_LABEL } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
-import type { AgentDecision, ApprovalRecord, Message, NodePublic } from "@/lib/types";
+import type { AgentDecision, ApprovalRecord, Message, NodePublic, RunSession, RunSettings, StepReport } from "@/lib/types";
 import { elapsedSeconds, formatElapsed, runEnded, runFacts, runStatus, shortPath, workLog } from "@/lib/work-log";
 import { ApprovalActions, DecisionActions } from "../decision-answer";
 import { External, Pill, Spinner } from "../ui";
+import { EvidenceGallery, type RequirementLink } from "./evidence";
 import type { MessageContext } from "./message";
+import { ReportView } from "./report";
 import { RichText } from "./rich-text";
+import { SessionPanel, SettingsView } from "./session";
 import { WorkLogView } from "./work-log";
 import { ModelLogo } from "../model-logo";
 
@@ -161,7 +168,19 @@ function NeedsYou({ decisions, approvals, jobId }: { decisions: AgentDecision[];
   );
 }
 
-export function RunCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
+/** A run's agent session (`data.session`), when Ensemble sends one with an id. */
+function sessionOf(value: unknown): RunSession | null {
+  const raw = value as Partial<RunSession> | null | undefined;
+  return raw && typeof raw.id === "string" ? { ...raw, id: raw.id, status: typeof raw.status === "string" ? raw.status : "", queue: Array.isArray(raw.queue) ? raw.queue : [] } : null;
+}
+
+/** A run's structured report (`data.report`), when it is one. */
+function reportOf(value: unknown): StepReport | null {
+  const raw = value as Partial<StepReport> | null | undefined;
+  return raw && typeof raw.outcome === "string" && typeof raw.summary === "string" ? (raw as StepReport) : null;
+}
+
+export function RunCard({ message, ctx, node, requirementOf, inStep = false }: { message: Message; ctx: MessageContext; node?: NodePublic; requirementOf?: (id: string) => RequirementLink | null; inStep?: boolean }) {
   const data = message.data;
   const jobId = typeof data.jobId === "string" ? data.jobId : "";
   const box = useRef<HTMLDivElement>(null);
@@ -179,6 +198,10 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
   const asks = decisionsForJob(decisions.data, jobId);
   const runApprovals = approvalsForRun(approvals.data, detail?.runId);
   const stop = useStopJob();
+  const session = sessionOf(data.session);
+  const report = reportOf(data.report);
+  const evidence = useMemo(() => evidenceItems(data.evidence), [data.evidence]);
+  const owner = node?.ownerId === ctx.meId;
 
   const progress = (detail?.progress ?? data.progress ?? "").trim();
   const summary = (detail?.summary ?? data.summary ?? log?.result ?? "").trim();
@@ -188,10 +211,12 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
   const took = ended ? elapsedSeconds(detail?.startedAt, detail?.finishedAt) : null;
   const toolCalls = detail?.toolCalls ?? 0;
   const quiet = typeof data.quiet === "string" ? QUIET[data.quiet] : undefined;
-  const canStop = !ended && status !== "stopping" && !quiet && node?.ownerId === ctx.meId && detail?.yours !== false;
+  // A run in a session stops from its session (keeping or dropping the queue); others from here.
+  const canStop = !session && !ended && status !== "stopping" && !quiet && owner && detail?.yours !== false;
   const pill = quiet && (ended || status === "stopping") ? { label: quiet.label, tone: "muted" as const } : { label: RUN_LABEL[status] ?? status, tone: RUN_TONE[status] ?? "muted" };
   const queuedNote = status === "queued" && data.delivery === "queue" ? "Queued in the session: it starts when the run before it ends." : null;
   const waiting = status === "waiting_approval";
+  const attempt = typeof data.attempt === "number" && data.attempt > 1 ? data.attempt : null;
 
   const stopRun = () => {
     if (!confirm("Stop this run? The agent stops where it is; what it changed so far stays.")) return;
@@ -240,7 +265,9 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
                 <span className="whitespace-nowrap tabular-nums">{formatElapsed(took)}</span>
               </>
             ) : null}
+            {attempt ? <span className="whitespace-nowrap">{` · attempt ${attempt}`}</span> : null}
           </p>
+          <SettingsView settings={data.settings as RunSettings | undefined} />
         </div>
       </div>
 
@@ -253,6 +280,8 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
       ) : null}
 
       {asks.length || runApprovals.length ? <NeedsYou decisions={asks} approvals={runApprovals} jobId={jobId} /> : null}
+
+      {session && !quiet ? <SessionPanel session={session} jobId={jobId} runStatus={status} runTitle={message.body} onScreen={onScreen} owner={owner} /> : null}
 
       {jobId ? (
         <div className="mt-2 border-t border-line/70 pt-1.5">
@@ -291,8 +320,11 @@ export function RunCard({ message, ctx, node }: { message: Message; ctx: Message
         </div>
       ) : null}
 
+      {report ? <ReportView report={report} handles={ctx.handles} /> : null}
+      {/* Inside a plan step, the step's own gallery already holds its runs' evidence. */}
+      {evidence.length && !inStep ? <EvidenceGallery items={evidence} requirementOf={requirementOf} className="mt-3" /> : null}
       {detail?.files?.length ? <ChangedFiles files={detail.files} /> : null}
-      {summary && ended ? (
+      {summary && ended && !report ? (
         <div className="mt-3">
           <RichText text={summary} handles={ctx.handles} small />
         </div>

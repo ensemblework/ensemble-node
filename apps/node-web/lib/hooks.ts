@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, eventsUrl } from "./api";
+import { api, ApiError, eventsUrl, sessions } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
 import { live, type LiveCall } from "./live";
 import { refsOf } from "./entity-text";
+import { moveQueued, withoutQueued } from "./session";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
 import { runEnded } from "./work-log";
@@ -29,9 +30,11 @@ import type {
   Message,
   ModelList,
   NodePublic,
+  QueuedRun,
   Room,
   RunStep,
   SearchResult,
+  SessionAction,
 } from "./types";
 
 export type Author = "all" | "people" | "nodes";
@@ -59,6 +62,8 @@ export const keys = {
   /** A run card's computer job, and its run's steps; both keyed by the job. */
   job: (jobId: string) => ["job", jobId] as const,
   runSteps: (jobId: string) => ["run-steps", jobId] as const,
+  /** An agent session: what runs now and its queue. */
+  session: (sessionId: string) => ["session", sessionId] as const,
 };
 
 /** How often an active run on screen is read again. */
@@ -348,6 +353,81 @@ export function useStopJob() {
   });
 }
 
+/** An agent session: its status, what runs now and its queue. Read again every few seconds while `poll`. */
+export function useSession(sessionId: string | null | undefined, options: { enabled: boolean; poll: boolean }) {
+  return useQuery({
+    queryKey: keys.session(sessionId ?? ""),
+    queryFn: () => sessions.get(sessionId!),
+    enabled: Boolean(sessionId) && options.enabled,
+    refetchInterval: options.poll ? RUN_POLL_MS : false,
+    retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+  });
+}
+
+/** Tells an agent session to queue, steer, replace or stop; the session and the run are read again after. */
+export function useSessionControl(sessionId: string, jobId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SessionAction) => sessions.control(sessionId, body),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: keys.session(sessionId) });
+      if (jobId) void client.invalidateQueries({ queryKey: keys.job(jobId) });
+    },
+  });
+}
+
+const sameOrder = (a: readonly QueuedRun[], b: readonly QueuedRun[]) => a.length === b.length && a.every((row, at) => row.jobId === b[at]!.jobId);
+
+/**
+ * A session's queue with its edits: a move or a cancel shows at once, goes back with the server's
+ * words when Ensemble refuses it, and gives way to Ensemble's queue once that shows the change (or
+ * after a few seconds). One edit at a time.
+ */
+export function useSessionQueue(sessionId: string, base: QueuedRun[]) {
+  const client = useQueryClient();
+  const [pending, setPending] = useState<{ queue: QueuedRun[]; settled: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const baseKey = base.map((row) => row.jobId).join(",");
+  const baseRef = useRef(base);
+  baseRef.current = base;
+  useEffect(() => {
+    if (!pending?.settled) return;
+    if (sameOrder(baseRef.current, pending.queue)) {
+      setPending(null);
+      return;
+    }
+    const timer = setTimeout(() => setPending(null), 8000);
+    return () => clearTimeout(timer);
+  }, [baseKey, pending]);
+  const queue = pending?.queue ?? base;
+  const busy = Boolean(pending && !pending.settled);
+  const apply = async (next: QueuedRun[], call: () => Promise<unknown>) => {
+    setError(null);
+    setPending({ queue: next, settled: false });
+    try {
+      await call();
+      setPending({ queue: next, settled: true });
+      void client.invalidateQueries({ queryKey: keys.session(sessionId) });
+    } catch (failure) {
+      setPending(null);
+      setError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+  return {
+    queue,
+    busy,
+    error,
+    move(jobId: string, delta: -1 | 1) {
+      const next = busy ? null : moveQueued(queue, jobId, delta);
+      if (next) void apply(next, () => sessions.reorder(sessionId, next.map((row) => row.jobId)));
+    },
+    cancel(jobId: string) {
+      if (busy) return;
+      void apply(withoutQueued(queue, jobId), () => sessions.cancel(sessionId, jobId));
+    },
+  };
+}
+
 /** After an answer: Needs me, and the run that waited on it. */
 function refreshNeedsMe(client: QueryClient, jobId: string | undefined) {
   void client.invalidateQueries({ queryKey: keys.decisions });
@@ -440,6 +520,7 @@ export function useNodeEvents(enabled: boolean) {
         void client.invalidateQueries({ queryKey: keys.job(message.data.jobId) });
         void client.invalidateQueries({ queryKey: keys.runSteps(message.data.jobId) });
       }
+      if (message.kind === "run" && typeof message.data?.session?.id === "string") void client.invalidateQueries({ queryKey: keys.session(message.data.session.id) });
       later();
     };
     source.addEventListener("node.message", onMessage as EventListener);

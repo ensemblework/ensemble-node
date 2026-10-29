@@ -2,10 +2,14 @@ import type { Message, Room, RoomKind } from "./types";
 
 export type ConversationFilter = "all" | "unread" | "groups";
 
-/** One recent list across direct chats, crews and rooms; untouched chats follow active ones. */
+/**
+ * One recent list across direct chats, crews and rooms; untouched chats follow active ones. Helpers'
+ * task rooms are not in it: they show as threads in their parent's chat (lib/threads.ts).
+ */
 export function recentConversations(rooms: readonly Room[], filter: ConversationFilter = "all", query = ""): Room[] {
   const search = query.trim().toLowerCase();
-  return rooms.filter(room => (filter !== "unread" || (room.unread ?? 0) > 0)
+  return rooms.filter(room => room.kind !== "task"
+    && (filter !== "unread" || (room.unread ?? 0) > 0)
     && (filter !== "groups" || room.kind !== "dm")
     && (!search || room.title.toLowerCase().includes(search)))
     .sort((a, b) => {

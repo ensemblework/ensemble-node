@@ -20,6 +20,9 @@ test("direct chats and groups sort together by latest interaction, without mutat
   assert.deepEqual(recentConversations(list, "groups").map(row => row.id), ["room", "crew"]);
   assert.deepEqual(recentConversations(list, "unread").map(row => row.id), ["crew"]);
   assert.deepEqual(recentConversations(list, "all", "CREW").map(row => row.id), ["crew"]);
+  const withHelper = [...list, room("helper", "task", "2026-10-27T09:00:00Z", 3)];
+  assert.deepEqual(recentConversations(withHelper).map(row => row.id), ["room", "crew", "old", "empty"], "a helper's room shows in its parent's chat, not the list");
+  assert.deepEqual(recentConversations(withHelper, "unread").map(row => row.id), ["crew"]);
 });
 
 test("new messages update the preview and unread once; reactions and earlier edits never reorder or double-count", () => {

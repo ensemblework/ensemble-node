@@ -21,7 +21,10 @@ ensemble-node/
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, sign out
 │   ├── components/
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
-│   │   │                        run card and its work log (run-card.tsx, work-log.tsx), plan card (plan-card.tsx), composer, attachments
+│   │   │                        run card and its work log (run-card.tsx, work-log.tsx), the session parts of a run
+│   │   │                        card (session.tsx: settings, queue, controls), a worker's report (report.tsx),
+│   │   │                        evidence gallery and lightbox (evidence.tsx), plan card (plan-card.tsx), helper
+│   │   │                        threads (helper-thread.tsx), the "Working on" strip (work-strip.tsx), composer, attachments
 │   │   │                        (attachments.tsx: paperclip menu, Files picker, shelf, drop and paste; also on the
 │   │   │                        start page), files on a message (file-chips.tsx), rich text and code blocks
 │   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer
@@ -50,6 +53,10 @@ ensemble-node/
 │   │   ├── live.ts              who is thinking / writing right now (text batched per frame, per room)
 │   │   ├── jump.ts, toast.ts    open a conversation at a message; short notes on screen
 │   │   ├── entity-text.ts       node replies name records by title, not id (tested)
+│   │   ├── plan.ts, session.ts, evidence.ts, threads.ts, work.ts
+│   │   │                        pure helpers (tested): a plan card's statuses, outcomes, held steps, attempts and
+│   │   │                        ledger; a session's settings, actions and queue edits; which evidence shows inline
+│   │   │                        and which only downloads; helper threads; what is working in a room
 │   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts, decisions.ts, work-log.ts, attachments.ts
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        what a message sends and a retry sends again, the attachment shelf and pasted
@@ -67,7 +74,7 @@ ensemble-node/
                                  actions/vercel-deploy (publish main on Vercel)
 ```
 
-`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; usage is in [05](05_UI_AND_UX.md#browser-regression).
+`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work. Usage is in [05](05_UI_AND_UX.md#browser-regression).
 
 ## Where a change belongs
 

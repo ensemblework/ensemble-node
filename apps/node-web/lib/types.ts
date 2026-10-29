@@ -28,8 +28,122 @@ export type Member = NodeMember | PersonMember;
 export type MessageKind = "text" | "approval" | "run" | "status" | "error" | "plan";
 
 export type PlanStepStatus = "waiting" | "working" | "done" | "blocked" | "skipped" | "stopped";
-export type PlanStep = { id: string; nodeId: string; handle: string; name: string; brief: string; after: string[]; status: PlanStepStatus; result: string | null; progress: string | null; startedAt: string | null; endedAt: string | null };
-export type PlanData = { type: "plan"; leadNodeId: string; leadHandle: string; status: "draft" | "running" | "reporting" | "done" | "stopped"; steps: PlanStep[] };
+export type StepKind = "build" | "verify" | "write" | "research" | "other";
+/** Who does a step: another node, the node's own work lane, an agent session, or a helper. */
+export type StepExecutor = "node" | "self" | "session" | "helper";
+/** A step's result, separate from whether it ran: unknown until reported, unverified when nobody reported. */
+export type StepOutcome = "unknown" | "done" | "pass" | "fail" | "blocked" | "unverified";
+/** `done` is the status of plans made before outcomes existed: they ended. */
+export type MissionStatus = "draft" | "running" | "reporting" | "succeeded" | "partially_completed" | "failed" | "stopped" | "done";
+
+/** One check a worker ran (Ensemble's node/report.ts). */
+export type Check = {
+  id?: string;
+  name: string;
+  verdict: "pass" | "fail" | "blocked" | "skipped";
+  detail?: string;
+  evidence?: string[];
+  rerun?: { command: string; cwd?: string; expects: "exit_0" | { outputMatches: string } };
+};
+/** What a build produced and a verification tested: a commit, or a content hash when nothing was committed. */
+export type Candidate = { repo?: string; folder?: string; branch?: string; commit?: string; contentHash?: string; url?: string };
+export type AttemptReason = "first" | "repair" | "retest" | "nudge";
+export type Attempt = { n: number; reason: AttemptReason; outcome: string; summary: string | null; checks?: Check[]; candidate?: Candidate; startedAt: string | null; endedAt: string | null };
+export type BlockedBy = "needs_owner" | "login_required" | "missing_access" | "environment" | "no_report" | "no_progress" | "unknown";
+/** What a worker reported at the end of its work: on a run card (`data.report`) and in a step's attempts. */
+export type StepReport = {
+  outcome: "done" | "pass" | "fail" | "blocked";
+  summary: string;
+  checks?: Check[];
+  subject?: Candidate;
+  evidence?: Array<{ kind: string; ref: string; caption?: string }>;
+  blockedBy?: BlockedBy;
+};
+
+export type RequirementStatus = "open" | "in_progress" | "accepted" | "failed" | "deferred" | "cancelled";
+export type Requirement = { id: string; text: string; status: RequirementStatus; acceptance: Array<{ id: string; text: string; mandatory: boolean }> };
+
+/** How a step's agent runs go, as the owner asked. */
+export type StepRun = { agent?: string; model?: string; effort?: string; context?: "default" | "long_context" };
+
+/** A plan step. Fields after `endedAt` come with outcomes (contract 2 and later); older cards leave them out. */
+export type PlanStep = {
+  id: string;
+  nodeId: string;
+  handle: string;
+  name: string;
+  brief: string;
+  after: string[];
+  status: PlanStepStatus;
+  result: string | null;
+  progress: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  kind?: StepKind;
+  executor?: StepExecutor;
+  verifies?: string | null;
+  requirementIds?: string[];
+  run?: StepRun;
+  /** Waiting, but an earlier step failed, is blocked or unverified: `heldBy` is that step's id. */
+  held?: boolean;
+  heldBy?: string | null;
+  outcome?: StepOutcome;
+  attempt?: number;
+  attempts?: Attempt[];
+  sessionId?: string | null;
+};
+
+/**
+ * A plan card (`kind: "plan"`): Ensemble's projection of a mission. `kind: "self"` is a node's own
+ * piece of work, one step. Contract 1 cards have only the type, lead, status and steps.
+ */
+export type PlanData = {
+  type: "plan";
+  version?: number;
+  contract?: number;
+  missionId?: string;
+  kind?: "plan" | "self";
+  leadNodeId: string;
+  leadHandle: string;
+  leadTurnId?: string | null;
+  originRoomId?: string;
+  originPrivate?: boolean;
+  status: MissionStatus;
+  goal?: string | null;
+  requirements?: Requirement[];
+  deferred?: Array<{ requirementId: string; reason: string }>;
+  steps: PlanStep[];
+};
+
+/** Agent settings of a run, as asked (`requested`), as sent to the engine (`resolved`) and as the engine said (`observed`). */
+export type RunSettingValues = { agent?: string; model?: string; effort?: string; context?: string; fast?: boolean | string };
+export type RunSettings = { requested?: RunSettingValues | null; resolved?: RunSettingValues | null; observed?: RunSettingValues | null };
+
+/** A queued message of an agent session, in the order it will run. */
+export type QueuedRun = { jobId: string; title: string; prompt: string; position: number };
+/** The agent session a run card belongs to (`data.session`), kept current by Ensemble. */
+export type RunSession = { id: string; status: string; agent?: string | null; model?: string | null; computer?: string | null; folder?: string | null; queue: QueuedRun[] };
+/** `GET /api/node/sessions/:id`. */
+export type SessionDetail = {
+  id: string;
+  nodeId: string;
+  status: string;
+  agent: string | null;
+  agentName?: string | null;
+  model: string | null;
+  computer: string | null;
+  folder: string | null;
+  running: { jobId: string; title: string; prompt: string } | null;
+  queue: QueuedRun[];
+  runs?: unknown[];
+};
+/** `POST /api/node/sessions/:id/control`. replace: stop the run and the queue, then send this. */
+export type SessionAction = { action: "queue" | "steer" | "replace" | "stop"; prompt?: string; title?: string; queued?: "keep" | "drop" };
+
+/** A file a run attached as evidence (`data.evidence` on a run card), read with `GET /api/node/evidence/:id`. */
+export type EvidenceItem = { id: string; kind: string; name: string; mime: string; size?: number | null; caption?: string | null; requirementId?: string | null; createdAt?: string | null };
+/** Evidence a node sends in a message (`data.media`). */
+export type MediaItem = { evidenceId: string; kind: string; name: string; mime: string; caption?: string | null };
 
 /** `refs`: the records the call's result names (Ensemble's AssistantRef): ids for links, titles to show. */
 export type ToolChip = { id: string; name: string; state?: string; summary: string | null; href: string | null; refs?: EntityRef[] };
@@ -97,6 +211,14 @@ export type Room = {
   unread?: number;
   readSeq?: number;
   last?: Message | null;
+  /**
+   * A helper's task room: where its parent was asked and the message that brought the helper in, when
+   * Ensemble sends them (top level, or in `helper` or `settings`). Older servers send neither.
+   */
+  originRoomId?: string | null;
+  originMessageId?: string | null;
+  helper?: { parentNodeId?: string | null; helperNodeId?: string | null; originRoomId?: string | null; originMessageId?: string | null } | null;
+  settings?: Record<string, unknown> | null;
 };
 
 export type Computer = { id: string; name: string; platform: string; online: boolean; lastSeenAt: string | null };

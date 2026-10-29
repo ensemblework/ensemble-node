@@ -6,6 +6,7 @@
  */
 import { CircleCheck, CircleDashed, CircleSlash, CircleX, GitCommitHorizontal } from "lucide-react";
 import { blockedReason, candidateLabel, checkTally, outcomeBadge, verdictLabel } from "@/lib/plan";
+import { candidateWords } from "@/lib/plan-facts";
 import type { Candidate, Check, StepReport } from "@/lib/types";
 import { External, Pill } from "../ui";
 import { RichText } from "./rich-text";
@@ -41,15 +42,18 @@ export function CheckList({ checks }: { checks: readonly Check[] }) {
   );
 }
 
-/** The commit or content a build produced or a verification tested, short, with the rest in its tooltip. */
-export function CandidateTag({ candidate, label = "Candidate" }: { candidate: Candidate | null | undefined; label?: string }) {
+/**
+ * The commit or content a build produced or a verification tested, short, with the rest in its tooltip.
+ * With `verb` it reads as an attempt's line: "built 1a2b3c4 on feature-x", "tested 1a2b3c4".
+ */
+export function CandidateTag({ candidate, label = "Candidate", verb }: { candidate: Candidate | null | undefined; label?: string; verb?: "built" | "tested" }) {
   const shown = candidateLabel(candidate);
   if (!shown) return null;
   const tag = (
     <span className="inline-flex max-w-full items-center gap-1 font-mono text-[11px] text-muted" title={`${label}: ${shown.full}`}>
       <GitCommitHorizontal size={12} className="shrink-0" aria-hidden />
-      <span className="sr-only">{label}: </span>
-      <span className="truncate">{shown.short}</span>
+      {verb ? null : <span className="sr-only">{label}: </span>}
+      <span className="truncate">{verb ? candidateWords(candidate, verb) : shown.short}</span>
     </span>
   );
   return candidate?.url && /^https?:\/\//.test(candidate.url) ? (

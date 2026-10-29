@@ -29,7 +29,7 @@ import { EvidenceGallery, type RequirementLink } from "./evidence";
 import type { MessageContext } from "./message";
 import { ReportView } from "./report";
 import { RichText } from "./rich-text";
-import { SessionPanel, sessionPanelShows, SettingsView, ToldDisclosure } from "./session";
+import { SessionFooter, SessionPanel, sessionPanelShows, SettingsView, ToldDisclosure } from "./session";
 import { WorkLogView } from "./work-log";
 import { ModelLogo } from "../model-logo";
 
@@ -294,7 +294,11 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
 
       {asks.length || runApprovals.length ? <NeedsYou decisions={asks} approvals={runApprovals} jobId={jobId} /> : null}
 
-      {sessionPanel && session ? <SessionPanel session={session} jobId={jobId} runStatus={status} runTitle={message.body} onScreen={onScreen} owner={owner} told={told} handles={ctx.handles} /> : null}
+      {sessionPanel && session ? (
+        <SessionPanel session={session} jobId={jobId} cardId={message.id} runStatus={status} runTitle={message.body} onScreen={onScreen} owner={owner} told={told} handles={ctx.handles} nodes={ctx.nodes} />
+      ) : session && !quiet && ctx.sessionCardOf?.(session.id) === message.id ? (
+        <SessionFooter session={session} cardId={message.id} owner={owner} nodes={ctx.nodes} />
+      ) : null}
 
       {jobId ? (
         <div className="mt-2 border-t border-line/70 pt-1.5">

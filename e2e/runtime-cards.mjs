@@ -1,10 +1,12 @@
 /**
  * Local, stateful browser fixture for the runtime cards: plan cards v3 (held steps, attempts, checks,
- * the requirements ledger, a work card, a contract 1 card), the session card (settings, queue edits,
- * Steer, Stop, what the agent was told), a run asked for its result, evidence and its lightbox, a
- * node's media, a routine's run in the "Working on" strip, helper threads (what a helper may do, keeping
- * it as a node) and the stop path. Never points at a hosted account or calls a model. Usage is in
- * docs/05 (Browser regression).
+ * the requirements ledger, a work card, a contract 1 card), a plan built in parallel (its facts, an
+ * integration step, a pass a later change no longer covers, a step waiting for its place), the session
+ * card (settings, queue edits, Steer, Stop, what the agent was told, who manages it and handing it to
+ * another node), an ended session given to a node, a node's card asking to hand a session over, a run
+ * asked for its result, evidence and its lightbox, a node's media, a routine's run in the "Working on"
+ * strip, helper threads (what a helper may do, keeping it as a node) and the stop path. Never points at
+ * a hosted account or calls a model. Usage is in docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -111,7 +113,7 @@ function fixture() {
     { jobId: "j-q2", title: "Fix the lint", prompt: "Fix the lint warnings", position: 2 },
     { jobId: "j-q3", title: "Update the changelog", prompt: "Update the changelog", position: 3 },
   ];
-  const session = { id: "sess1", status: "running", agent: "claude-code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", queue };
+  const session = { id: "sess1", nodeId: "builder", status: "working", agent: "Claude Code", agentId: "claude-code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", queue };
   const live = message("crew", "run", "Fix the login redirect", { id: "run-live", authorNodeId: "builder", data: { jobId: "j-live", status: "running", delivery: "new", agent: "claude-code", session, told: PACKET, settings: {
     requested: { agent: "claude-code", model: "opus", effort: "high", context: "long_context" },
     resolved: { agent: "claude-code", model: "claude-opus-4-6", effort: "high", context: "default" },
@@ -121,12 +123,32 @@ function fixture() {
   const failed = message("crew", "run", "Check the sign-up page", { id: "run-fail", authorNodeId: "tester", data: { jobId: "j-fail", status: "succeeded", report: { outcome: "fail", summary: "The sign-up page breaks on phones.", checks: [{ name: "Desktop layout", verdict: "pass" }, { name: "Phone layout", verdict: "fail", detail: "The button is off screen at 390 px." }, { name: "Signed-in flow", verdict: "blocked", detail: "Needs a sign-in." }], subject: { commit: "0badc0de1234", branch: "testing" } }, evidence: [{ id: "e-phone", kind: "screenshot", name: "signup-phone.png", mime: "image/png", size: 21004, caption: "Button off screen", createdAt: stamp(9) }] } });
   const askedRun = message("crew", "run", "Report the result", { id: "run-asked", authorNodeId: "tester", data: { jobId: "j-asked", status: "succeeded", reportAsked: true, told: "You finished without reporting your result. Call the Ensemble tool report_result now. Do not redo the work." } });
   const routineRun = message("crew", "plan", "Work", { id: "routine-run", planId: "r-morning", data: { type: "plan", contract: 3, kind: "self", leadNodeId: "lead", leadHandle: "lead", status: "running", goal: "Morning summary", routine: { id: "r-morning", runId: "rr-1", title: "Morning summary", notify: "always", trigger: "Weekdays at 09:00 (Asia/Kolkata)" }, requirements: [], deferred: [], steps: [step("m1", "lead", { kind: "research", executor: "self", brief: "Summarise the board.", status: "working", progress: "Reading the board" })] } });
+  // A plan built in parallel (worktrees): an integration step waiting for its place, and a pass a later change made stale.
+  const parallel = message("crew", "plan", "Two builds at once, then brought together.", {
+    id: "plan4",
+    data: {
+      type: "plan", version: 3, contract: 3, missionId: "plan4", kind: "plan", leadNodeId: "lead", leadHandle: "lead", status: "running", goal: "Export button and a restyled reports page",
+      constraints: { folder: "ensemble", computer: "Development laptop", branch: "testing", publish: "commit", parallel: "worktrees" },
+      requirements: [], deferred: [],
+      steps: [
+        step("p1", "builder", { kind: "build", executor: "session", brief: "Add the export button.", status: "done", outcome: "done", attempt: 1, result: "Added it.", attempts: [attempt(1, "first", "done", { candidate: { commit: "1a2b3c4d5e6f7a8b", branch: "testing-plan4/p1" } })] }),
+        step("p2", "lead", { kind: "build", executor: "session", brief: "Restyle the reports page.", status: "done", outcome: "done", attempt: 1, result: "Restyled it.", attempts: [attempt(1, "first", "done", { candidate: { commit: "7c6b5a4d3e2f1a0b", branch: "testing-plan4/p2" } })] }),
+        step("p3", "tester", { kind: "verify", executor: "session", verifies: "p1", after: ["p1"], status: "done", outcome: "pass", attempt: 1, result: "The button exports a CSV.", attempts: [attempt(1, "first", "pass", { checks: [{ name: "Export a CSV", verdict: "pass" }], candidate: { commit: "1a2b3c4d5e6f7a8b" } })], staleAfter: { step: "p2", handle: "lead", candidate: "9f8e7d6c5b4a3210", at: stamp(6) } }),
+        step("p4", "tester", { kind: "verify", executor: "session", verifies: "p2", after: ["p2"], status: "done", outcome: "pass", attempt: 1, result: "The page reads well at 390 px." }),
+        step("p5", "lead", { kind: "build", executor: "session", brief: "Merge both builds into testing.", integrates: ["p1", "p2"], after: ["p3", "p4"], status: "working", attempt: 1, progress: "Waiting for @builder's step to finish with live-test." }),
+        step("p6", "tester", { kind: "verify", executor: "session", verifies: "p5", after: ["p5"] }),
+      ],
+    },
+  });
+  // An ended run in a session no node manages (started from the Hub), and a node's card asking to hand its session over.
+  const codex = message("crew", "run", "Write the changelog", { id: "run-codex", authorNodeId: "lead", data: { jobId: "j-codex", status: "succeeded", session: { id: "sess2", nodeId: null, status: "idle", agent: "Codex", agentId: "codex", computer: "Development laptop", folder: "ensemble", queue: [] } } });
+  const handOver = message("crew", "approval", "Hand the Claude Code session in ensemble to @tester\n\nIt knows the test setup; it should run the checks next.", { id: "hand1", authorNodeId: "builder", data: { type: "session", status: "pending", action: "hand_over", input: { session: "sess1", to: "tester", note: "It knows the test setup; it should run the checks next." }, private: false } });
   const media = message("crew", "text", "Here is the table now, at both sizes.", { id: "media1", data: { media: [{ evidenceId: "e-home", kind: "screenshot", name: "table-desktop.png", mime: "image/png", caption: "Desktop" }, { evidenceId: "e-video", kind: "video", name: "walkthrough.mp4", mime: "video/mp4", caption: "Walkthrough" }] } });
   const ask = message("dm", "text", "Get an independent audit of the README.", { authorKind: "human", authorNodeId: null });
   const helped = message("dm", "text", "I asked a helper for an independent audit; I will tell you what it finds.", { id: "helped", data: { tools: [{ id: "c1", name: "node_helper", state: "done", summary: "@lead-scout is on it in “Lead · Scout”; it reports back to you there.", href: null }] } });
   const brief = message("task", "text", "@lead-scout Audit the README for stale commands.", { id: "brief" });
   const found = message("task", "text", "@lead Found 3 stale commands: `ensemble login --old`, …", { id: "found", authorNodeId: "lead-scout" });
-  const messages = { crew: [asked, plan, stepRun, legacy, work, live, queued, failed, askedRun, routineRun, media], dm: [ask, helped], task: [brief, found] };
+  const messages = { crew: [asked, plan, stepRun, legacy, work, live, queued, failed, askedRun, routineRun, media, parallel, codex, handOver], dm: [ask, helped], task: [brief, found] };
   for (const row of rooms) {
     row.lastSeq = messages[row.id].length;
     row.readSeq = row.lastSeq;
@@ -134,8 +156,8 @@ function fixture() {
   }
   const boot = { me: { id: "me", name: "Mira Chen", email: "mira@fieldnote.example", verified: true }, nodes, rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍", "❤️", "😂", "🎉", "👀", "✅", "🙏", "🔥"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
   const job = (id, title, status, extra = {}) => ({ id, taskId: "task", title, kind: "code", status, provider: "claude-code", model: "claude-opus-4-6", modelUsed: null, reasoningEffort: "high", contextTier: null, progress: status === "running" ? "Editing src/auth/redirect.ts" : null, summary: null, error: null, turns: 1, toolCalls: 4, runId: null, deviceName: "Development laptop", yours: true, folder: "ensemble", branch: "testing", files: [], createdAt: stamp(1), startedAt: stamp(1), finishedAt: status === "running" || status === "queued" ? null : stamp(2), ...extra });
-  const jobs = { "j-step": job("j-step", "Fix table parsing", "succeeded"), "j-live": job("j-live", "Fix the login redirect", "running"), "j-q1": job("j-q1", "Add tests for expiry", "queued", { startedAt: null }), "j-fail": job("j-fail", "Check the sign-up page", "succeeded"), "j-asked": job("j-asked", "Report the result", "succeeded") };
-  return { boot, messages, jobs, session: { id: "sess1", nodeId: "builder", status: "running", agent: "claude-code", agentName: "Claude Code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", running: { jobId: "j-live", title: "Fix the login redirect", prompt: "Fix the login redirect so it returns to the page you came from." }, queue: queue.map((row) => ({ ...row })), runs: [] }, calls: [], refuseNextReorder: false };
+  const jobs = { "j-codex": job("j-codex", "Write the changelog", "succeeded", { provider: "codex", model: "gpt-6.1-sol" }), "j-step": job("j-step", "Fix table parsing", "succeeded"), "j-live": job("j-live", "Fix the login redirect", "running"), "j-q1": job("j-q1", "Add tests for expiry", "queued", { startedAt: null }), "j-fail": job("j-fail", "Check the sign-up page", "succeeded"), "j-asked": job("j-asked", "Report the result", "succeeded") };
+  return { boot, messages, jobs, session: { id: "sess1", nodeId: "builder", status: "working", agent: "claude-code", agentName: "Claude Code", model: "claude-opus-4-6", computer: "Development laptop", folder: "ensemble", running: { jobId: "j-live", title: "Fix the login redirect", prompt: "Fix the login redirect so it returns to the page you came from." }, queue: queue.map((row) => ({ ...row })), runs: [] }, calls: [], refuseNextReorder: false };
 }
 
 const pictures = { "e-home": png(160, 100, [40, 90, 120]), "e-phone": png(90, 160, [120, 60, 40]) };
@@ -196,6 +218,27 @@ try {
         state.calls.push({ cancel: cancel[1] });
         state.session.queue = state.session.queue.filter((row) => row.jobId !== cancel[1]).map((row, at) => ({ ...row, position: at + 1 }));
         return route.fulfill({ status: 204, headers: cors });
+      }
+      const handTo = /^\/api\/node\/sessions\/([^/]+)\/hand-over$/.exec(path);
+      if (handTo && request.method() === "POST") {
+        const { nodeId } = request.postDataJSON();
+        state.calls.push({ handOver: handTo[1], nodeId });
+        if (handTo[1] === "sess1") state.session.nodeId = nodeId;
+        for (const row of state.messages.crew) if (row.data?.session?.id === handTo[1]) row.data = { ...row.data, session: { ...row.data.session, nodeId } };
+        return json({ ok: true, nodeId });
+      }
+      const oneMessage = /^\/api\/node\/messages\/([^/]+)$/.exec(path);
+      if (oneMessage && request.method() === "GET") {
+        const found = Object.values(state.messages).flat().find((row) => row.id === oneMessage[1]);
+        return found ? json({ message: found }) : json({ error: "That message is not available." }, 404);
+      }
+      const approval = /^\/api\/node\/approvals\/([^/]+)$/.exec(path);
+      if (approval && request.method() === "POST") {
+        const body = request.postDataJSON();
+        state.calls.push({ approval: approval[1], body });
+        const card = state.messages.crew.find((row) => row.id === approval[1]);
+        card.data = { ...card.data, status: body.decision === "approve" ? "applied" : "discarded", ...(body.decision === "approve" ? { result: { summary: "@tester manages the Claude Code session in ensemble now and sees what it did; you no longer see it.", href: null, failed: [] } } : {}) };
+        return json({ message: card });
       }
       const promote = /^\/api\/node\/nodes\/([^/]+)\/promote$/.exec(path);
       if (promote && request.method() === "POST") {
@@ -279,7 +322,8 @@ try {
     await plan.getByRole("button", { name: /Fix table parsing for titles/ }).click();
     const s1 = plan.locator('[id^="step-plan3-s1"]');
     await s1.getByText("Attempt 2 · repair").waitFor();
-    assert.ok(await s1.getByText("9f8e7d6 on testing").isVisible(), "the repair's commit");
+    assert.ok(await s1.getByText("built 9f8e7d6 on testing").isVisible(), "the repair's commit, as built");
+    assert.ok(await s2.getByText("tested 9f8e7d6").isVisible(), "what the retest tested");
 
     // Evidence: pictures as thumbnails, active formats only as downloads; the lightbox.
     const gallery = s1.getByRole("region", { name: "Evidence from @builder" });
@@ -361,6 +405,58 @@ try {
     const queuedCard = timeline.locator("#m-run-q1");
     await queuedCard.getByText(/Number 2 of 2 in the session's queue/).waitFor();
     if (shots) await card.screenshot({ path: `${shots}/session-${width}.png` });
+
+    // Who manages the session, and handing it to another of my lasting nodes.
+    assert.ok(await sessionPanel.getByText("Managed by").isVisible());
+    assert.ok(await sessionPanel.getByText("@builder", { exact: true }).isVisible());
+    await sessionPanel.getByRole("button", { name: "Hand to…" }).click();
+    const picker = sessionPanel.getByRole("group", { name: "Hand this session to" });
+    assert.deepEqual(await picker.getByRole("radio").evaluateAll((radios) => radios.map((radio) => radio.closest("label")?.textContent?.trim())), ["Lead @lead · manager", "Tester @tester · tester"], "my other lasting nodes, not the one that has it");
+    await picker.getByRole("radio", { name: /Tester/ }).check();
+    if (shots) await card.screenshot({ path: `${shots}/hand-over-${width}.png` });
+    await picker.getByRole("button", { name: "Hand it over" }).click();
+    await page.getByText("@tester manages this session now.").first().waitFor();
+    assert.deepEqual(state.calls.at(-1), { handOver: "sess1", nodeId: "tester" });
+    await sessionPanel.getByText("@tester", { exact: true }).waitFor();
+    assert.equal(await sessionPanel.getByRole("group", { name: "Hand this session to" }).count(), 0, "the picker closes");
+
+    // An ended run of a session no node manages: given to a node from its newest card.
+    const codex = timeline.locator("#m-run-codex");
+    await codex.getByText("No node manages this session yet.").waitFor();
+    await codex.getByRole("button", { name: "Give to…" }).click();
+    const give = codex.getByRole("group", { name: "Give this session to" });
+    assert.equal(await give.getByRole("radio").count(), 3, "every lasting node when none manages it");
+    await give.getByRole("radio", { name: /Lead/ }).check();
+    await give.getByRole("button", { name: "Give it" }).click();
+    await codex.getByText("Managed by").waitFor();
+    assert.deepEqual(state.calls.at(-1), { handOver: "sess2", nodeId: "lead" });
+    assert.ok(await codex.getByText("@lead", { exact: true }).isVisible());
+
+    // A node's card asking to hand its session over: no prompt, only who it goes to and why.
+    const handCard = timeline.locator("#m-hand1");
+    assert.ok(await handCard.getByText("@builder wants to hand a session to @tester").isVisible());
+    assert.ok(await handCard.getByText(/It knows the test setup/).isVisible());
+    await handCard.getByRole("button", { name: "Hand it over" }).click();
+    await handCard.getByText("Handed over", { exact: true }).waitFor();
+    assert.ok(await handCard.getByText("@tester manages this session now.").isVisible(), "the owner's words, not the node's");
+    assert.deepEqual(state.calls.at(-1), { approval: "hand1", body: { decision: "approve" } });
+    if (shots) await handCard.screenshot({ path: `${shots}/hand-over-card-${width}.png` });
+
+    // A plan built in parallel: its facts, an integration step, a stale pass and a step waiting for its place.
+    const parallel = timeline.locator("#m-plan4");
+    await parallel.getByText("In ensemble on Development laptop · branch testing · Commits, never pushes · Each build in its own worktree, then merged").waitFor();
+    const integration = parallel.locator("#plan-step-plan4-p5");
+    assert.equal(((await integration.locator("p").filter({ hasText: "Brings in" }).textContent()) ?? "").replace(/\s+/g, " ").trim(), "Brings in @builder's and @lead's (step 2) work");
+    assert.equal(await integration.getByRole("link", { name: "@builder's" }).getAttribute("href"), "#plan-step-plan4-p1");
+    assert.ok(await integration.getByText("Waiting for @builder's step to finish with live-test.").isVisible(), "a step waiting for its place says for whom");
+    const stale = parallel.locator("#plan-step-plan4-p3");
+    assert.equal(await stale.getByRole("note").textContent(), "Passed for 1a2b3c4, but @lead's step then changed it (9f8e7d6): this pass doesn't cover that change.");
+    await stale.getByRole("button", { name: /@tester/ }).click();
+    await stale.getByText("tested 1a2b3c4").waitFor();
+    await integration.getByRole("link", { name: "@builder's" }).click();
+    await page.waitForFunction(() => location.hash === "#plan-step-plan4-p1");
+    if (shots) await parallel.screenshot({ path: `${shots}/parallel-${width}.png` });
+    if (shots) await integration.screenshot({ path: `${shots}/integration-${width}.png` });
 
     // A run's report, and a node's media.
     const report = timeline.locator("#m-run-fail").getByRole("region", { name: "Report" });

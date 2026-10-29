@@ -3,15 +3,18 @@
 /**
  * The session parts of a run card (build blocks B3, B16; Ensemble's node/sessions.ts): the settings a
  * run was asked for, sent with and reported back, and the agent session it belongs to with its status,
- * what it is doing now, its queue (move up, move down, cancel) and the owner's controls: Steer…,
- * Queue…, Stop and send… and Stop, keeping or dropping the queue. Each control calls the same code as
- * the node's own session tools, so the node always knows. Changes show at once; refusals show here.
+ * the node that manages it, what it is doing now, its queue (move up, move down, cancel) and the
+ * owner's controls: Steer…, Queue…, Stop and send…, Stop (keeping or dropping the queue) and Hand to…
+ * another node. Each control calls the same code as the node's own session tools, so the node always
+ * knows. Changes show at once; refusals show here.
  */
-import { AlertTriangle, ArrowDown, ArrowUp, ChevronDown, ScrollText, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowRightLeft, ChevronDown, ScrollText, SlidersHorizontal, X } from "lucide-react";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
-import { useSession, useSessionControl, useSessionQueue } from "@/lib/hooks";
-import { observedMissing, queuedLine, queueOrder, sessionActions, sessionStatus, settingsRows } from "@/lib/session";
-import type { RunSession, RunSettings, SessionAction } from "@/lib/types";
+import { useBootstrap, useHandOver, useSession, useSessionControl, useSessionQueue } from "@/lib/hooks";
+import { handOverChoices, observedMissing, queuedLine, queueOrder, sessionActions, sessionManager, sessionStatus, settingsRows } from "@/lib/session";
+import { toast } from "@/lib/toast";
+import type { NodePublic, RunSession, RunSettings, SessionAction } from "@/lib/types";
+import { NodeAvatar } from "../node-avatar";
 import { Button, Input, Pill, Textarea } from "../ui";
 import { RichText } from "./rich-text";
 
@@ -226,6 +229,113 @@ function QueueButton({ label, onClick, inert, children }: { label: string; onCli
   );
 }
 
+/**
+ * Who manages a session and, for its owner, Hand to… another of their lasting nodes (Give to… when no
+ * node manages it). The node it goes to sees what the session did, sends it messages and answers for
+ * it; runs already started still report to the node that started them.
+ */
+export function SessionManager({ sessionId, managerId, cardId, owner, nodes }: { sessionId: string; managerId: string | null; cardId: string; owner: boolean; nodes: ReadonlyMap<string, NodePublic> }) {
+  const boot = useBootstrap();
+  const handOver = useHandOver(sessionId, cardId);
+  const [picking, setPicking] = useState(false);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const id = useId();
+  const mine = boot.data?.nodes ?? [];
+  const manager = managerId ? (nodes.get(managerId) ?? mine.find((row) => row.id === managerId)) : undefined;
+  const choices = handOverChoices(mine, managerId);
+  const close = () => {
+    setPicking(false);
+    setChosen(null);
+    handOver.reset();
+  };
+  const submit = () => {
+    const to = choices.find((row) => row.id === chosen);
+    if (!to) return;
+    handOver.mutate(to.id, {
+      onSuccess: () => {
+        close();
+        toast(`@${to.slug} manages this session now.`, "ok");
+      },
+    });
+  };
+  return (
+    <div className="mt-1.5">
+      <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+        {managerId ? (
+          <>
+            <span>Managed by</span>
+            {manager ? (
+              <span aria-hidden className="inline-flex">
+                <NodeAvatar node={manager} size={16} />
+              </span>
+            ) : null}
+            <span className="font-medium text-ink/90">{manager ? `@${manager.slug}` : "another node"}</span>
+          </>
+        ) : (
+          <span>No node manages this session yet.</span>
+        )}
+        {owner && choices.length && !picking ? (
+          <button type="button" onClick={() => setPicking(true)} className="inline-flex items-center gap-1 rounded-md px-1 text-accent hover:underline">
+            <ArrowRightLeft size={12} aria-hidden /> {managerId ? "Hand to…" : "Give to…"}
+          </button>
+        ) : null}
+      </p>
+      {picking ? (
+        <fieldset className="mt-1.5 rounded-lg border border-line bg-panel/70 p-2">
+          <legend className="px-1 text-xs font-medium">{managerId ? "Hand this session to" : "Give this session to"}</legend>
+          <ul className="space-y-0.5">
+            {choices.map((node) => (
+              <li key={node.id}>
+                <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-[13px] hover:bg-raised">
+                  <input type="radio" name={id} value={node.id} checked={chosen === node.id} onChange={() => setChosen(node.id)} className="shrink-0 accent-[rgb(var(--accent))]" />
+                  <span aria-hidden className="inline-flex shrink-0">
+                    <NodeAvatar node={node} size={20} dim={node.status === "paused"} />
+                  </span>
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium">{node.name}</span> <span className="text-muted">@{node.slug} · {node.role}</span>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 px-1 text-xs text-muted">It sees what the session did, sends it messages and answers for it. Runs already started still report to the node that started them.</p>
+          {handOver.error ? (
+            <p role="alert" className="mt-1 px-1 text-xs text-danger">
+              {handOver.error.message}
+            </p>
+          ) : null}
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            <Button size="sm" busy={handOver.isPending} disabled={!chosen} onClick={submit}>
+              {managerId ? "Hand it over" : "Give it"}
+            </Button>
+            <Button size="sm" tone="quiet" disabled={handOver.isPending} onClick={close}>
+              Cancel
+            </Button>
+          </div>
+        </fieldset>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * A session's line on its newest card once that card's run has ended: its state and who manages it,
+ * with Hand to… for its owner. The card of a live run has the whole panel instead.
+ */
+export function SessionFooter({ session, cardId, owner, nodes }: { session: RunSession; cardId: string; owner: boolean; nodes: ReadonlyMap<string, NodePublic> }) {
+  const badge = sessionStatus(session.status);
+  return (
+    <section className="mt-2 rounded-xl border border-line/70 bg-bg/40 px-2.5 py-1.5" aria-label="Agent session">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <span className="font-semibold uppercase tracking-wide text-muted">Session</span>
+        <Pill tone={badge.tone}>{badge.label}</Pill>
+        {session.queue.length ? <span className="text-muted">{session.queue.length} queued</span> : null}
+      </div>
+      <SessionManager sessionId={session.id} managerId={sessionManager(session)} cardId={cardId} owner={owner} nodes={nodes} />
+    </section>
+  );
+}
+
 const LIVE_RUN: ReadonlySet<string> = new Set(["running", "claimed", "waiting_approval", "stopping"]);
 
 /** Whether a run card's session panel shows (its run is live or queued); it then shows what the run was told. */
@@ -243,7 +353,29 @@ const DONE: Record<string, (queued: SessionAction["queued"]) => string> = {
  * what it is doing (and what it was told: the card's packet, `told`, before the session's own prompt),
  * its queue and the controls; on a queued run, its place in line and Cancel.
  */
-export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, owner, told, handles }: { session: RunSession; jobId: string; runStatus: string; runTitle: string; onScreen: boolean; owner: boolean; told?: string | null; handles: ReadonlySet<string> }) {
+export function SessionPanel({
+  session,
+  jobId,
+  cardId,
+  runStatus,
+  runTitle,
+  onScreen,
+  owner,
+  told,
+  handles,
+  nodes,
+}: {
+  session: RunSession;
+  jobId: string;
+  cardId: string;
+  runStatus: string;
+  runTitle: string;
+  onScreen: boolean;
+  owner: boolean;
+  told?: string | null;
+  handles: ReadonlySet<string>;
+  nodes: ReadonlyMap<string, NodePublic>;
+}) {
   const live = sessionPanelShows(runStatus);
   const query = useSession(session.id, { enabled: owner && onScreen && live, poll: owner && onScreen && live });
   const detail = query.data;
@@ -254,6 +386,8 @@ export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, ow
   const [note, setNote] = useState<string | null>(null);
   const [moved, setMoved] = useState("");
   const status = detail?.status ?? session.status;
+  // A session no node manages is read here but not told anything (Ensemble refuses): it can be given to a node.
+  const managerId = sessionManager(session, detail);
   const running = detail?.running ?? null;
   const current = running ? running.jobId === jobId : LIVE_RUN.has(runStatus);
   if (!live) return null;
@@ -267,7 +401,7 @@ export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, ow
       <>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted">
           <span aria-live="polite">{place >= 0 ? `Number ${place + 1} of ${queue.queue.length} in the session's queue.` : "Taken out of the queue."}</span>
-          {owner && place >= 0 ? (
+          {owner && managerId && place >= 0 ? (
             <button type="button" disabled={queue.busy} onClick={() => queue.cancel(jobId)} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs hover:bg-raised hover:text-danger disabled:opacity-50">
               <X size={12} aria-hidden /> Cancel this message
             </button>
@@ -284,7 +418,7 @@ export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, ow
   }
 
   const badge = sessionStatus(status);
-  const actions = owner ? sessionActions(status) : [];
+  const actions = owner && managerId ? sessionActions(status) : [];
   const where = [detail?.folder ?? session.folder, detail?.computer ?? session.computer].filter(Boolean).join(" on ");
   const send = (body: SessionAction) => {
     setNote(null);
@@ -308,6 +442,7 @@ export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, ow
           </span>
         ) : null}
       </div>
+      <SessionManager sessionId={session.id} managerId={managerId} cardId={cardId} owner={owner} nodes={nodes} />
       <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-[13px]">
         <span className="min-w-0 break-words">
           <span className="text-muted">Now: </span>
@@ -336,7 +471,7 @@ export function SessionPanel({ session, jobId, runStatus, runTitle, onScreen, ow
                 <span className="min-w-0 flex-1 truncate" title={row.prompt}>
                   {line}
                 </span>
-                {owner ? (
+                {owner && managerId ? (
                   <>
                     <QueueButton
                       label={`Move “${line}” earlier`}

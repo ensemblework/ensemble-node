@@ -9,17 +9,20 @@
  * A node's own piece of work (`kind: "self"`) is the same card in one compact block, a work card.
  * Plans made before outcomes (contract 1) show what they have. A step a helper does (`executor:
  * "helper"`) names the helper and opens its thread. The steps' run cards are read with the plan
- * (`GET /api/node/plans/:id`) once a step is opened: a helper's runs are in its own room.
+ * (`GET /api/node/plans/:id`) once a step is opened: a helper's runs are in its own room. Parallel
+ * work (§8.15): the plan's facts say how its builds share the folder, an integration step what it
+ * brings in, each attempt what it built or tested, and a pass a later change no longer covers says so.
  */
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Check, ChevronRight, Circle, CircleStop, CircleX, Hourglass, MinusCircle, Repeat } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, Circle, CircleStop, CircleX, GitMerge, Hourglass, MinusCircle, Repeat } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePlan } from "@/lib/hooks";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { formatEntityText } from "@/lib/entity-text";
 import { evidenceCount, evidenceOfCards } from "@/lib/evidence";
 import { attemptLabel, attemptsToShow, checkTally, isWorkCard, ledgerSummary, missionView, outcomeBadge, planProgress, requirementBadge, stepBadges, stepKindLine, stepName, stepOutcome, stepRequirements } from "@/lib/plan";
+import { attemptVerb, integratedSteps, planFacts, staleNote } from "@/lib/plan-facts";
 import { settingsLine } from "@/lib/session";
 import { toast, toastError } from "@/lib/toast";
 import type { Attempt, Message, PlanData, PlanRoutine, PlanStep } from "@/lib/types";
@@ -34,6 +37,9 @@ import { RunCard } from "./run-card";
 
 /** Where a requirement is listed on the card, for evidence and steps that name it. */
 export const requirementAnchor = (planId: string, id: string) => `req-${planId}-${id}`.replace(/[^\w-]/g, "-");
+
+/** Where a step is listed on the card, for an integration step that brings it in. */
+const stepAnchor = (planId: string, id: string) => `plan-step-${planId}-${id}`.replace(/[^\w-]/g, "-");
 
 /** A brief or report on one line: records by kind, no links (it sits inside the step's button). */
 const oneLine = (text: string | null | undefined) => formatEntityText(text ?? "", [], { plain: true, kindLinks: true, app: ENSEMBLE_APP }).replace(/\s+/g, " ").trim();
@@ -127,7 +133,7 @@ function Attempts({ attempts, kind, handles }: { attempts: Attempt[]; kind?: str
               {badge ? <Pill tone={badge.tone}>{badge.label}</Pill> : !attempt.endedAt ? <Pill tone="accent">Working</Pill> : null}
               {tally ? <span className="text-muted">{tally}</span> : null}
               <span className="ml-auto min-w-0">
-                <CandidateTag candidate={attempt.candidate} label={kind === "verify" ? "Tested" : "Built"} />
+                <CandidateTag candidate={attempt.candidate} label={kind === "verify" ? "Tested" : "Built"} verb={attemptVerb(kind as PlanStep["kind"])} />
               </span>
             </div>
             {attempt.summary ? (
@@ -225,12 +231,14 @@ function Step({ step, plan, planId, cards, ctx, onOpen }: { step: PlanStep; plan
   const asked = settingsLine(step.run);
   const working = step.status === "working";
   const bodyId = `step-${planId}-${step.id}`.replace(/[^\w-]/g, "-");
+  const brings = integratedSteps(step, steps);
+  const stale = staleNote(step, steps);
   const requirementOf = (id: string): RequirementLink | null => {
     const found = plan.requirements?.find((row) => row.id === id);
     return found ? { text: found.text, href: `#${requirementAnchor(planId, id)}` } : { text: id };
   };
   return (
-    <li className="rounded-xl border border-line bg-bg/60">
+    <li id={stepAnchor(planId, step.id)} tabIndex={-1} className="scroll-mt-16 rounded-xl border border-line bg-bg/60 outline-none transition-shadow target:ring-2 target:ring-accent/50 focus-visible:ring-2 focus-visible:ring-accent/50">
       <button
         type="button"
         onClick={() => {
@@ -264,6 +272,29 @@ function Step({ step, plan, planId, cards, ctx, onOpen }: { step: PlanStep; plan
         </span>
         <ChevronRight size={15} className={`mt-1 shrink-0 text-muted transition ${open ? "rotate-90" : ""}`} aria-hidden />
       </button>
+      {brings.length ? (
+        <p className="flex items-start gap-1 px-3 pb-2 text-xs text-muted">
+          <GitMerge size={12} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+          <span className="min-w-0">
+            Brings in{" "}
+            {brings.map((row, at) => (
+              <span key={row.id}>
+                {at ? (at === brings.length - 1 ? " and " : ", ") : ""}
+                <a href={`#${stepAnchor(planId, row.id)}`} className="text-accent hover:underline">
+                  {row.label}
+                </a>
+              </span>
+            ))}{" "}
+            work
+          </span>
+        </p>
+      ) : null}
+      {stale ? (
+        <p className="mx-3 mb-2 flex items-start gap-1.5 rounded-lg border border-warn/40 bg-warn/5 px-2 py-1.5 text-xs text-warn" role="note">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden />
+          <span>{stale}</span>
+        </p>
+      ) : null}
       {open ? (
         <div id={bodyId} className="space-y-2.5 border-t border-line px-3 py-2.5 text-sm">
           <div className="text-muted">
@@ -411,6 +442,7 @@ export function PlanCard({ message, ctx, detached = false }: { message: Message;
   const progress = planProgress(plan);
   const counting = mission.status === "running" && mission.live;
   const routine = routineOf(plan.routine);
+  const facts = planFacts(plan.constraints);
   return (
     <div className="space-y-2.5 rounded-2xl border border-line bg-panel px-3 py-3">
       {message.body && message.body !== "Plan" ? <RichText text={message.body} handles={ctx.handles} /> : null}
@@ -425,6 +457,11 @@ export function PlanCard({ message, ctx, detached = false }: { message: Message;
         <p className="break-words text-sm">
           <span className="text-muted">Goal: </span>
           {plan.goal.trim()}
+        </p>
+      ) : null}
+      {facts.length ? (
+        <p className="break-words text-xs text-muted">
+          {facts.join(" · ")}
         </p>
       ) : null}
       <Ledger plan={plan} planId={message.id} />

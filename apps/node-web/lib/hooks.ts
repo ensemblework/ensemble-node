@@ -391,6 +391,18 @@ export function useSessionControl(sessionId: string, jobId: string) {
   });
 }
 
+/** Hands a session to another node: the session and its card are read again, so the card says who manages it now. */
+export function useHandOver(sessionId: string, cardId?: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (nodeId: string) => sessions.handOver(sessionId, nodeId),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.session(sessionId) });
+      rereadCards(client, [cardId]);
+    },
+  });
+}
+
 const sameOrder = (a: readonly QueuedRun[], b: readonly QueuedRun[]) => a.length === b.length && a.every((row, at) => row.jobId === b[at]!.jobId);
 
 /**

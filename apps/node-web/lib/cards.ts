@@ -1,8 +1,9 @@
 /**
  * A node's owner-only cards (approval messages) in words: what the card asks and what its two answers
- * are called, the same in a conversation and in Needs me. Held writes, drafts, work on the computer and
- * secrets as before; a proposed node or crew; and in rooms with other people, a request for work or a
- * review, and a question about sharing something private (Ensemble docs/35 §6.1, §12.4, §12.6).
+ * are called, the same in a conversation and in Needs me. Held writes, drafts, work on the computer
+ * (starting or sending to a session, or handing one to another node) and secrets; a proposed node or
+ * crew; and in rooms with other people, a request for work or a review, and a question about sharing
+ * something private (Ensemble docs/35 §6.1, §8.9, §12.4, §12.6).
  */
 
 type CardData = {
@@ -13,6 +14,7 @@ type CardData = {
   name?: unknown;
   from?: { name?: unknown } | null;
   asker?: { name?: unknown } | null;
+  input?: { to?: unknown; [key: string]: unknown } | null;
   disclosure?: unknown;
   peerRequest?: unknown;
   [key: string]: unknown;
@@ -37,8 +39,13 @@ export function cardWords(data: CardData, handle: string, roomTitle: string): Ca
       return data?.disclosure || data?.peerRequest
         ? { title: `Post this answer in “${roomTitle}” for you?`, wants: "drafted an answer for you to post", approve: "Post", discard: "Discard" }
         : { title: `Post this in “${roomTitle}” for you?`, wants: "wants to post for you", approve: "Post", discard: "Discard" };
-    case "session":
-      return { title: `@${handle} wants to start work on your computer`, wants: "wants to start work on your computer", approve: "Start it", discard: "Discard" };
+    case "session": {
+      if (data?.action !== "hand_over") return { title: `@${handle} wants to start work on your computer`, wants: "wants to start work on your computer", approve: "Start it", discard: "Discard" };
+      // Hand-over cards have no prompt or title: only the session, the node it goes to and a note.
+      const to = text(data.input?.to, "");
+      const who = to ? `@${to.replace(/^@/, "")}` : "another of your nodes";
+      return { title: `@${handle} wants to hand a session to ${who}`, wants: `wants to hand a session to ${who}`, approve: "Hand it over", discard: "Discard" };
+    }
     case "secret":
       return { title: `@${handle} needs a secret: ${text(data?.name, "a value")}`, wants: "needs a secret", approve: "Save", discard: "Decline" };
     case "node_proposal":

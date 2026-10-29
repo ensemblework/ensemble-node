@@ -2,7 +2,7 @@
  * An agent session as its card shows it (build blocks B3, B16): the settings asked for, sent to the
  * engine and reported back, the session's state, what it may be told now, and edits to its queue.
  */
-import type { QueuedRun, RunSession, RunSettingValues, RunSettings, SessionAction, SessionDetail, StepRun } from "./types";
+import type { NodePublic, QueuedRun, RunSession, RunSettingValues, RunSettings, SessionAction, SessionDetail, StepRun } from "./types";
 
 /** What an engine that does not say its settings reports for each (Ensemble's run settings). */
 export const NOT_REPORTED = "not_reported";
@@ -102,7 +102,10 @@ export function observedMissing(settings: RunSettings | null | undefined): boole
   return KEYS.every((key) => observed[key] === undefined || observed[key] === null || observed[key] === NOT_REPORTED);
 }
 
+// A session's state is Ensemble's (`working`, `waiting` on Needs me, `queued`, `idle`); older cards carry its run's status.
 const STATUS: Record<string, { label: string; tone: "muted" | "accent" | "ok" | "warn" | "danger" }> = {
+  working: { label: "Working", tone: "accent" },
+  waiting: { label: "Needs you", tone: "warn" },
   running: { label: "Running", tone: "accent" },
   claimed: { label: "Starting", tone: "accent" },
   queued: { label: "Queued", tone: "muted" },
@@ -119,8 +122,8 @@ export function sessionStatus(status: string | null | undefined): { label: strin
   return STATUS[key] ?? { label: key ? key.replace(/_/g, " ").replace(/^./, (first) => first.toUpperCase()) : "Idle", tone: "muted" };
 }
 
-const RUNNING: ReadonlySet<string> = new Set(["running", "claimed", "waiting_approval"]);
-const OPEN: ReadonlySet<string> = new Set(["running", "claimed", "waiting_approval", "queued", "idle", "stopping"]);
+const RUNNING: ReadonlySet<string> = new Set(["working", "waiting", "running", "claimed", "waiting_approval"]);
+const OPEN: ReadonlySet<string> = new Set([...RUNNING, "queued", "idle", "stopping"]);
 
 /** What the owner may tell a session now. A run going on can be steered, replaced or stopped; an open session takes a queued message. */
 export function sessionActions(status: string | null | undefined): Array<SessionAction["action"]> {
@@ -156,4 +159,29 @@ export function withoutQueued(queue: readonly QueuedRun[], jobId: string): Queue
 /** A queued message's one line: its title, else the first line of what it says. */
 export function queuedLine(row: Pick<QueuedRun, "title" | "prompt">): string {
   return row.title?.trim() || row.prompt.trim().split("\n")[0]!.slice(0, 160) || "A message";
+}
+
+/** The node that manages a session: what the session read says, else its card's; null when no node does. */
+export function sessionManager(card?: Pick<RunSession, "nodeId"> | null, detail?: Pick<SessionDetail, "nodeId"> | null): string | null {
+  if (detail && "nodeId" in detail) return detail.nodeId ?? null;
+  return text(card?.nodeId);
+}
+
+/** Who a session can be handed to: the owner's other lasting nodes (never a helper), by name. */
+export function handOverChoices<T extends Pick<NodePublic, "id" | "name" | "parentNodeId">>(nodes: readonly T[], managerId: string | null): T[] {
+  return nodes.filter((node) => !node.parentNodeId && node.id !== managerId).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+type SessionCard = { id: string; seq: number; createdAt: string; kind: string; data?: { session?: { id?: unknown } | null; [key: string]: unknown } | null };
+
+/** Each session's newest card in a conversation, by session id: the one that offers its controls once its run ended. */
+export function newestSessionCards(messages: readonly SessionCard[]): Map<string, string> {
+  const newest = new Map<string, SessionCard>();
+  for (const message of messages) {
+    const id = message.kind === "run" ? message.data?.session?.id : undefined;
+    if (typeof id !== "string") continue;
+    const seen = newest.get(id);
+    if (!seen || message.createdAt > seen.createdAt || (message.createdAt === seen.createdAt && message.seq > seen.seq)) newest.set(id, message);
+  }
+  return new Map([...newest].map(([id, message]) => [id, message.id]));
 }

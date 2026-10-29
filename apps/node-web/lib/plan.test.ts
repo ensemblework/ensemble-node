@@ -56,6 +56,16 @@ test("a waiting step is held by a failed, blocked or unverified step before it; 
   assert.equal(stepName(build, [build, step("again", { handle: "builder" })]), "@builder (step 1)");
 });
 
+test("Ensemble names the step that holds another by its id; the card names it by handle", () => {
+  const check = step("s2", { handle: "tester", kind: "verify", status: "done", outcome: "fail", after: ["s1"] });
+  const next = step("s3", { handle: "docs", after: ["s2"], held: true, heldBy: "s2" });
+  const steps = [step("s1", { handle: "builder", status: "done", outcome: "done" }), check, next];
+  assert.equal(heldState(next, steps).holder, check);
+  assert.equal(stepName(heldState(next, steps).holder!, steps), "@tester");
+  assert.equal(heldState({ ...next, heldBy: "tester" }, steps).holder, check, "older cards named a handle");
+  assert.equal(heldState({ ...next, heldBy: "gone" }, steps).holder, check, "an id not on the card: found from the steps it waits on");
+});
+
 test("a step's status and outcome badges keep running and passing apart", () => {
   const steps = [step("t", { status: "done", outcome: "pass", kind: "verify" })];
   assert.deepEqual(stepBadges(steps[0]!, steps), { status: { label: "Finished", tone: "muted" }, outcome: { label: "Pass", tone: "ok" }, held: false, holder: null });

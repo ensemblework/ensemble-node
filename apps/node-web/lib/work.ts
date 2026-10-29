@@ -8,7 +8,11 @@ import { sessionStatus } from "./session";
 import { runEnded } from "./work-log";
 import type { Message, PlanData } from "./types";
 
-export type BoardItem = { kind: "plan" | "work" | "session"; id: string; messageId: string; title: string; detail: string };
+/**
+ * `routineId`: a routine's run, whose card is not in the timeline (its `planId` is the routine's id):
+ * its chip opens the card instead of going to it.
+ */
+export type BoardItem = { kind: "plan" | "work" | "session"; id: string; messageId: string; title: string; detail: string; routineId?: string };
 
 const firstLine = (text: string | null | undefined) => (text ?? "").replace(/\s+/g, " ").trim();
 const sentence = (text: string | null | undefined) => firstLine(text).split(/(?<=[.!?])\s/)[0] ?? "";
@@ -31,6 +35,7 @@ export function workBoard(messages: readonly Message[], meId: string, ownerOf: (
       const step = plan.steps[0];
       const progress = planProgress(plan);
       const opening = message.body && message.body !== "Plan" ? sentence(message.body) : "";
+      const routineId = typeof plan.routine?.id === "string" ? plan.routine.id : message.planId;
       items.push({
         kind: work ? "work" : "plan",
         id: message.id,
@@ -38,6 +43,7 @@ export function workBoard(messages: readonly Message[], meId: string, ownerOf: (
         seq: message.seq,
         title: firstLine(plan.goal) || (work ? sentence(step?.brief) : opening) || `Plan by @${plan.leadHandle}`,
         detail: work ? (step?.status === "working" && step.progress ? firstLine(step.progress) : mission.label) : mission.status === "running" ? `${progress.done} of ${progress.total} done` : mission.label,
+        ...(routineId ? { routineId } : {}),
       });
     } else if (message.kind === "run" && !message.planId && ownerOf(message.authorNodeId) === meId) {
       const status = typeof message.data?.status === "string" ? message.data.status : "queued";

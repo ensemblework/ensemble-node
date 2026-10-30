@@ -8,7 +8,7 @@
  */
 import { CheckSquare, FileText, Moon, Paperclip, Plus, RotateCcw, Search, Sun, X } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
-import { useCreateRequest, usePageDirectory, useFiles, useRoomStatus, useSetAway, useSetShareable, useSetTrust, useShareable, useTrust } from "@/lib/hooks";
+import { useCreateRequest, useRoomStatus, useSetAway, useSetShareable, useSetTrust, useShareable, useShareCandidates, useTrust } from "@/lib/hooks";
 import { awayLine, awayUntil, requestBody, requestProblems, REQUEST_KINDS, type AwayFor, type RequestDraft } from "@/lib/rooms";
 import { toast, toastError } from "@/lib/toast";
 import { ACCEPT_KINDS, budgetLine, mergeTrust, ownSettings, TRUST_FIELDS, trustPatch, trustSummary } from "@/lib/trust";
@@ -73,13 +73,14 @@ function ShareableItems({ roomId, open }: { roomId: string; open: boolean }) {
   const set = useSetShareable(roomId);
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState("");
-  const pages = usePageDirectory(q.trim(), adding);
-  const files = useFiles(q.trim(), adding);
+  // My own space's pages, tasks and files, and the room's linked space's when I can open it.
+  const candidates = useShareCandidates(roomId, q.trim(), adding);
   const shared = new Set((items.data ?? []).map((row) => `${row.kind}:${row.id}`));
-  const found = [
-    ...(pages.data ?? []).slice(0, 8).map((row) => ({ kind: row.kind, id: row.id, title: row.title || "Untitled" })),
-    ...(files.data?.files ?? []).slice(0, 5).map((row) => ({ kind: "file" as const, id: row.id, title: row.filename })),
-  ].filter((row) => !shared.has(`${row.kind}:${row.id}`));
+  const spaces = new Set((candidates.data?.items ?? []).map((row) => row.spaceId));
+  const found = (candidates.data?.items ?? [])
+    .filter((row) => !row.shared && !shared.has(`${row.kind}:${row.id}`))
+    .slice(0, 14)
+    .map((row) => ({ kind: row.kind, id: row.id, title: row.title || "Untitled", spaceId: row.spaceId, where: spaces.size > 1 ? row.spaceName : null }));
   const change = (item: { kind: ShareableItem["kind"]; id: string; spaceId?: string }, next: boolean) =>
     set.mutate({ kind: item.kind, id: item.id, ...(item.spaceId ? { spaceId: item.spaceId } : {}), shared: next }, { onSuccess: () => toast(next ? "Your lead may share it here." : "Taken back.", "ok"), onError: toastError });
   return (
@@ -116,7 +117,7 @@ function ShareableItems({ roomId, open }: { roomId: string; open: boolean }) {
               <X size={14} />
             </button>
           </div>
-          {pages.isLoading || files.isLoading ? (
+          {candidates.isLoading ? (
             <div className="flex justify-center py-2 text-muted">
               <Spinner className="h-3.5 w-3.5" />
             </div>
@@ -129,6 +130,7 @@ function ShareableItems({ roomId, open }: { roomId: string; open: boolean }) {
                     <button type="button" disabled={set.isPending} onClick={() => change(row, true)} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-raised disabled:opacity-50">
                       <Icon size={14} className="shrink-0 text-muted" aria-hidden />
                       <span className="min-w-0 flex-1 truncate">{row.title}</span>
+                      {row.where ? <span className="max-w-[40%] shrink-0 truncate text-[11px] text-muted">{row.where}</span> : null}
                       <Plus size={13} className="shrink-0 text-accent" aria-hidden />
                     </button>
                   </li>

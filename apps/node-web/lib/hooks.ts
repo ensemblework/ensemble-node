@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, eventsUrl, evidence, liveFrame, messageById, peerRequests, peopleRooms, planById, routines, sessions, shareToRoom } from "./api";
+import { api, ApiError, eventsUrl, evidence, liveFrame, messageById, ownSpaces, peerRequests, peopleRooms, planById, roomWork, routines, sessions, shareToRoom } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
 import { live, type LiveCall } from "./live";
 import { refsOf } from "./entity-text";
+import { readTab, tabMarker, tabUnreadOf, withTab, type RoomTab } from "./rooms";
 import { moveQueued, withoutQueued } from "./session";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
@@ -41,6 +42,7 @@ import type {
   SessionAction,
   StatusCard,
   TrustView,
+  WorkMode,
 } from "./types";
 
 export type Author = "all" | "people" | "nodes";
@@ -82,6 +84,15 @@ export const keys = {
   trust: (roomId: string) => ["trust", roomId] as const,
   shareable: (roomId: string) => ["shareable", roomId] as const,
   requests: (roomId: string) => ["requests", roomId] as const,
+  /** The space that holds a room's work, its board, the pages it follows, its decisions, its steward and my preferences there. */
+  roomSpace: (roomId: string) => ["room-space", roomId] as const,
+  board: (roomId: string) => ["room-board", roomId] as const,
+  roomPages: (roomId: string) => ["room-pages", roomId] as const,
+  roomDecisions: (roomId: string) => ["room-decisions", roomId] as const,
+  steward: (roomId: string) => ["room-steward", roomId] as const,
+  roomPrefs: (roomId: string) => ["room-prefs", roomId] as const,
+  candidates: (roomId: string, q: string) => ["room-candidates", roomId, q] as const,
+  ownSpaces: ["own-spaces"] as const,
   /** The latest picture of a run's browser tab (owner only). */
   live: (jobId: string) => ["live", jobId] as const,
   /** A node's own captures on my computers. */
@@ -571,8 +582,108 @@ export function usePlan(planId: string | null | undefined, enabled = true) {
 }
 
 /** Every person's status card in a room with other people (presence, away, their work at the detail they chose). Read again each minute while shown. */
+/** Everyone's status card here; `node.presence` and `node.cards` read them again when someone's changes. */
 export function useRoomStatus(roomId: string, enabled: boolean) {
-  return useQuery({ queryKey: keys.roomStatus(roomId), queryFn: () => peopleRooms.status(roomId), enabled, refetchInterval: enabled ? 60_000 : false });
+  return useQuery({ queryKey: keys.roomStatus(roomId), queryFn: () => peopleRooms.status(roomId), enabled });
+}
+
+/** The room's space as I see it, with my offer to join it; `node.room` reads it again when it is linked or unlinked. */
+export function useRoomSpace(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomSpace(roomId), queryFn: () => roomWork.space(roomId), enabled, staleTime: 30_000 });
+}
+
+/** The room's board, for people in its space; read again on `node.room`, and now and then while it is shown. */
+export function useRoomBoard(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.board(roomId), queryFn: () => roomWork.board(roomId), enabled, refetchInterval: enabled ? 60_000 : false });
+}
+
+export function useRoomPages(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomPages(roomId), queryFn: () => roomWork.pages(roomId), enabled });
+}
+
+export function useRoomDecisions(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomDecisions(roomId), queryFn: () => roomWork.decisions(roomId), enabled });
+}
+
+export function useSteward(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.steward(roomId), queryFn: () => roomWork.steward(roomId), enabled });
+}
+
+export function useRoomPrefs(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomPrefs(roomId), queryFn: () => roomWork.prefs(roomId), enabled });
+}
+
+/** The spaces I own: any of them can hold a room's work. */
+export function useOwnSpaces(enabled: boolean) {
+  return useQuery({ queryKey: keys.ownSpaces, queryFn: ownSpaces, enabled, staleTime: 60_000 });
+}
+
+/** Pages, tasks and files of mine and of the room's space, to mark shareable or to give a role. */
+export function useShareCandidates(roomId: string, q: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.candidates(roomId, q), queryFn: () => peopleRooms.candidates(roomId, q), enabled, staleTime: 30_000, placeholderData: keepPreviousData });
+}
+
+/** Everything the room's space shows, read again (a link changed, a page's role, a decision). */
+export function refreshRoomWork(client: QueryClient, roomId: string) {
+  for (const key of [keys.roomSpace(roomId), keys.board(roomId), keys.roomPages(roomId), keys.roomDecisions(roomId), keys.steward(roomId)]) void client.invalidateQueries({ queryKey: key });
+}
+
+/** Linking the room's space (its creator), unlinking it, and my answer to the offer to join it. */
+export function useSpaceActions(roomId: string) {
+  const client = useQueryClient();
+  const settle = (view?: unknown) => {
+    if (view && typeof view === "object" && "space" in view) client.setQueryData(keys.roomSpace(roomId), view);
+    refreshRoomWork(client, roomId);
+    void client.invalidateQueries({ queryKey: keys.bootstrap });
+  };
+  return {
+    link: useMutation({ mutationFn: (body: Parameters<typeof roomWork.link>[1]) => roomWork.link(roomId, body), onSuccess: settle }),
+    unlink: useMutation({ mutationFn: () => roomWork.unlink(roomId), onSuccess: () => settle() }),
+    join: useMutation({
+      mutationFn: (input: { join: boolean; cardId?: string | null }) => roomWork.join(roomId, input.join),
+      onSuccess: (view, input) => {
+        settle(view);
+        rereadCards(client, [input.cardId]);
+      },
+    }),
+  };
+}
+
+/** A page's role (contract, decisions log, watched) and whether I watch it. */
+export function usePageActions(roomId: string) {
+  const client = useQueryClient();
+  const put = (pages: Awaited<ReturnType<typeof roomWork.pages>>) => client.setQueryData(keys.roomPages(roomId), pages);
+  return {
+    role: useMutation({ mutationFn: (input: { pageId: string; role: Parameters<typeof roomWork.setPageRole>[2] }) => roomWork.setPageRole(roomId, input.pageId, input.role), onSuccess: put }),
+    watch: useMutation({ mutationFn: (input: { pageId: string; watching: boolean }) => roomWork.watchPage(roomId, input.pageId, input.watching), onSuccess: put }),
+  };
+}
+
+/** One of my nodes as the room's steward, or none. */
+export function useStewardActions(roomId: string) {
+  const client = useQueryClient();
+  const done = () => {
+    void client.invalidateQueries({ queryKey: keys.steward(roomId) });
+    void client.invalidateQueries({ queryKey: keys.bootstrap });
+  };
+  return {
+    set: useMutation({ mutationFn: (nodeId: string) => roomWork.setSteward(roomId, nodeId), onSuccess: (steward) => (client.setQueryData(keys.steward(roomId), steward), done()) }),
+    end: useMutation({ mutationFn: () => roomWork.endSteward(roomId), onSuccess: () => (client.setQueryData(keys.steward(roomId), null), done()) }),
+  };
+}
+
+export function useSetRoomPrefs(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: (body: Parameters<typeof roomWork.setPrefs>[1]) => roomWork.setPrefs(roomId, body), onSuccess: (prefs) => client.setQueryData(keys.roomPrefs(roomId), prefs) });
+}
+
+/** Starts one of my tasks on the room's board; my lead plans it in My crew. */
+export function useStartTask(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { taskId: string; mode: Parameters<typeof roomWork.startTask>[2] }) => roomWork.startTask(roomId, input.taskId, input.mode),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.board(roomId) }),
+  });
 }
 
 export function useTrust(roomId: string, enabled: boolean) {
@@ -597,15 +708,18 @@ function rereadCards(client: QueryClient, ids: ReadonlyArray<string | null | und
 export function usePeerDecision(roomId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { requestId: string; action: "accept" | "decline" | "cancel"; text?: string; always?: boolean; note?: string; cardId?: string }) =>
+    mutationFn: (input: { requestId: string; action: "accept" | "decline" | "cancel"; text?: string; always?: boolean; note?: string; cardId?: string; mode?: WorkMode }) =>
       input.action === "accept"
-        ? peerRequests.accept(input.requestId, { ...(input.text ? { text: input.text } : {}), ...(input.always ? { always: true } : {}) })
+        ? peerRequests.accept(input.requestId, { ...(input.text ? { text: input.text } : {}), ...(input.always ? { always: true } : {}), ...(input.mode ? { mode: input.mode } : {}) })
         : input.action === "decline"
           ? peerRequests.decline(input.requestId, input.note ? { note: input.note } : {})
           : peerRequests.cancel(input.requestId),
     onSuccess: (request, input) => {
       client.setQueryData<PeerRequest[]>(keys.requests(roomId), (current) => current?.map((row) => (row.id === request.id ? { ...row, ...request } : row)));
       void client.invalidateQueries({ queryKey: keys.requests(roomId) });
+      // Its proposed task follows the request on the room's board; Needs me loses the card.
+      if (request.taskId) void client.invalidateQueries({ queryKey: keys.board(roomId) });
+      void client.invalidateQueries({ queryKey: keys.activity });
       rereadCards(client, [request.cardId, request.ownerCardId, input.cardId]);
     },
   });
@@ -655,17 +769,6 @@ export function useSetShareable(roomId: string) {
   return useMutation({
     mutationFn: (body: Parameters<typeof peopleRooms.setShareable>[1]) => peopleRooms.setShareable(roomId, body),
     onSuccess: (items) => client.setQueryData(keys.shareable(roomId), items),
-  });
-}
-
-/** My pages and tasks in Ensemble, newest first; `q` matches their titles and text (`GET /api/pages?all=true`). */
-export function usePageDirectory(q: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ["page-directory", q] as const,
-    queryFn: () => api<{ pages: Array<{ id: string; kind: "page" | "task"; title: string; updatedAt: string }> }>(`/api/pages?all=true${q ? `&q=${encodeURIComponent(q.slice(0, 200))}` : ""}`).then((result) => result.pages),
-    enabled,
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
   });
 }
 
@@ -728,24 +831,36 @@ export function useMcpConnections() {
 
 const readTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-/** Marks a room read up to seq, at most once a second. `left`: what stays unread after it (a room's other tab). */
-export function markRead(client: QueryClient, roomId: string, seq: number, left = 0) {
+/**
+ * Marks a room read up to seq, at most once a second. In a room with other people a tab is read on its
+ * own (`tab`: the Room, or My crew), with what stays unread there (`left`).
+ */
+export function markRead(client: QueryClient, roomId: string, seq: number, left = 0, tab?: RoomTab) {
   const boot = client.getQueryData<Bootstrap>(keys.bootstrap);
   const room = boot?.rooms.find((row) => row.id === roomId);
-  if (!room || (room.readSeq ?? 0) >= seq) return;
-  const key = `${boot?.me.id}:${roomId}`;
-  if (!confirmedReads.has(key)) confirmedReads.set(key, room.readSeq ?? 0);
+  if (!room) return;
+  const marker = tab ? tabMarker(room, tab) : (room.readSeq ?? 0);
+  if (marker >= seq) return;
+  const key = `${boot?.me.id}:${roomId}${tab ? `:${tab}` : ""}`;
+  if (!confirmedReads.has(key)) confirmedReads.set(key, marker);
+  const before = tab ? tabUnreadOf(room)[tab] : (room.unread ?? 0);
   client.setQueryData<Bootstrap>(keys.bootstrap, (current) =>
-    current ? { ...current, rooms: current.rooms.map((row) => (row.id === roomId ? { ...row, readSeq: seq, unread: left } : row)) } : current,
+    current ? { ...current, rooms: current.rooms.map((row) => (row.id === roomId ? (tab ? readTab(row, tab, seq, left) : { ...row, readSeq: seq, unread: left }) : row)) } : current,
   );
   clearTimeout(readTimers.get(key));
   readTimers.set(key, setTimeout(() => {
     readTimers.delete(key);
-    void api(`/api/node/rooms/${roomId}/read`, { body: { seq } }).then(() => {
+    void api(`/api/node/rooms/${roomId}/read`, { body: tab ? { tab, upTo: seq } : { seq } }).then(() => {
       confirmedReads.set(key, Math.max(confirmedReads.get(key) ?? 0, seq));
     }).catch(error => {
+      const confirmed = confirmedReads.get(key) ?? 0;
       client.setQueryData<Bootstrap>(keys.bootstrap, current => current ? {
-        ...current, rooms: current.rooms.map(row => row.id === roomId && row.readSeq === seq ? { ...row, readSeq: confirmedReads.get(key) ?? 0, unread: room.unread } : row),
+        ...current,
+        rooms: current.rooms.map(row => {
+          if (row.id !== roomId) return row;
+          if (tab) return tabMarker(row, tab) === seq ? withTab(row, tab, confirmed, before) : row;
+          return row.readSeq === seq ? { ...row, readSeq: confirmed, unread: room.unread } : row;
+        }),
       } : current);
       void client.invalidateQueries({ queryKey: keys.bootstrap });
       toastError(error);
@@ -812,21 +927,34 @@ export function useNodeEvents(enabled: boolean) {
     source.addEventListener("node.message", onMessage as EventListener);
     source.addEventListener("node.message.updated", onMessage as EventListener);
     source.addEventListener("node.status", ((event: MessageEvent<string>) => {
-      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; state: string };
-      live.status(data.roomId, data.nodeId, data.state === "thinking");
+      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; state: string; private?: boolean };
+      // `private`: the reply is for its owner's My crew in a room with other people.
+      live.status(data.roomId, data.nodeId, data.state === "thinking", typeof data.private === "boolean" ? data.private : undefined);
       if (data.state !== "thinking") void client.invalidateQueries({ queryKey: keys.activity });
     }) as EventListener);
     source.addEventListener("node.frame", ((event: MessageEvent<string>) => {
-      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; showIds?: boolean; frame: { type: string; text?: string; refs?: unknown; call?: LiveCall } };
+      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; showIds?: boolean; private?: boolean; frame: { type: string; text?: string; refs?: unknown; call?: LiveCall } };
+      if (typeof data.private === "boolean") live.place(data.roomId, data.nodeId, data.private);
       if (data.frame.type === "delta" && data.frame.text) live.delta(data.roomId, data.nodeId, data.frame.text);
       else if (data.frame.type === "refs") live.refs(data.roomId, data.nodeId, refsOf(data.frame.refs), data.showIds === true);
       else if (data.frame.call) live.tool(data.roomId, data.nodeId, data.frame.call);
     }) as EventListener);
     source.addEventListener("node.room", ((event: MessageEvent<string>) => {
       const data = JSON.parse(event.data || "{}") as { roomId?: string };
-      if (data.roomId) void client.invalidateQueries({ queryKey: keys.pins(data.roomId) });
+      if (data.roomId) {
+        void client.invalidateQueries({ queryKey: keys.pins(data.roomId) });
+        // Its space was linked or unlinked, a page given a role, a steward set: what the room's work shows is read again.
+        refreshRoomWork(client, data.roomId);
+      }
       later();
     }) as EventListener);
+    // Someone's presence or status card changed in a room with other people: its cards are read again (no content in the event).
+    const cardsChanged = ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { roomId?: string };
+      if (typeof data.roomId === "string") void client.invalidateQueries({ queryKey: keys.roomStatus(data.roomId) });
+    }) as EventListener;
+    source.addEventListener("node.presence", cardsChanged);
+    source.addEventListener("node.cards", cardsChanged);
     // A routine changed or started a run: its list and history are read again (no content in the event).
     source.addEventListener("node.routine", ((event: MessageEvent<string>) => {
       const data = JSON.parse(event.data || "{}") as { id?: string };
@@ -866,6 +994,9 @@ export function useNodeEvents(enabled: boolean) {
         void client.invalidateQueries({ queryKey: ["requests"] });
         void client.invalidateQueries({ queryKey: ["sessions"] });
         void client.invalidateQueries({ queryKey: ["live"] });
+        void client.invalidateQueries({ queryKey: ["room-status"] });
+        void client.invalidateQueries({ queryKey: ["room-space"] });
+        void client.invalidateQueries({ queryKey: ["room-board"] });
         void client.invalidateQueries({ queryKey: keys.routines });
         void client.invalidateQueries({ queryKey: keys.invites });
         void client.invalidateQueries({ queryKey: keys.approvals });

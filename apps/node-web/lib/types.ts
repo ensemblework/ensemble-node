@@ -344,6 +344,11 @@ export type Room = {
   members: Member[];
   unread?: number;
   readSeq?: number;
+  /** A room with other people: each tab's own unread and read marker (`readSeq` is the Room's), and the space that holds its work. */
+  unreadRoom?: number;
+  unreadCrew?: number;
+  readSeqCrew?: number;
+  spaceId?: string | null;
   last?: Message | null;
   /**
    * A helper's task room: whose helper it is and where its parent was asked (`helper`, from Ensemble's
@@ -671,6 +676,8 @@ export type StatusCard = {
 };
 
 export type PeerKind = "question" | "share" | "review" | "work";
+/** How accepted or started work on a task of the room's board runs: in my own space with a shared result, or in the room's space. */
+export type WorkMode = "private" | "shared";
 export type RequestStatus = "open" | "answered" | "awaiting_owner" | "approved" | "declined" | "done" | "cancelled";
 
 /** What a person's lead may do for others in a room without asking (their own choices, §12.5). */
@@ -717,7 +724,66 @@ export type PeerRequest = {
   cardId: string | null;
   ownerCardId?: string | null;
   missionId?: string | null;
+  /** A work request between editors of the room's space is a proposed task there; a review may point at the requester's task. */
+  taskId?: string | null;
+  mode?: WorkMode | null;
   createdAt: string;
   updatedAt: string;
   decidedAt: string | null;
 };
+
+export type SpaceRole = "owner" | "editor" | "viewer";
+
+/** The space that holds a room's work, as one person sees it (`GET /api/node/rooms/:id/space`), with their offer to join it. */
+export type RoomSpaceView = {
+  space: { id: string; name: string | null; ownerId: string | null; ownerName: string | null; role: SpaceRole | null } | null;
+  offer: { messageId: string; status: "pending" | "joined" | "declined" | "expired" | string } | null;
+};
+
+export type BoardPerson = { accountId: string; name: string };
+/** A task of the room's board (`GET /api/node/rooms/:id/board`): who it is with, who asked for it, which node made it for whom. */
+export type BoardTask = {
+  id: string;
+  title: string;
+  status: string;
+  priority: string | null;
+  due: string | null;
+  assignee: BoardPerson | null;
+  requestedBy: (BoardPerson & { node: { id: string; name: string | null } | null }) | null;
+  peerRequestId: string | null;
+  madeBy: { node: { id: string; name: string | null }; for: BoardPerson | null } | null;
+  updatedAt: string;
+};
+export type RoomBoard = { space: { id: string; name: string | null; role: SpaceRole | null } | null; tasks: BoardTask[] };
+
+export type PageRole = "contract" | "decisions" | "watched";
+/** A page of the room's space the room follows (`GET /api/node/rooms/:id/pages`). */
+export type RoomPage = { pageId: string; taskId: string | null; title: string; role: PageRole; watchers: number; watching: boolean; updatedAt: string };
+
+/** A decision logged from the room (`GET /api/node/rooms/:id/decisions`), newest first. */
+export type RoomDecision = {
+  id: string;
+  text: string;
+  messageId: string;
+  pageId: string;
+  saidBy: BoardPerson;
+  loggedBy: BoardPerson;
+  supersedesId: string | null;
+  replaced: boolean;
+  at: string;
+};
+
+/** The room's steward: one person's node, acting for whoever names it, only when asked. */
+export type RoomSteward = { nodeId: string; sponsorId: string; since: string };
+
+/** My own preferences for a room: whether my finished tasks move to Done by themselves. */
+export type RoomPrefs = { closeTasks: "auto" | "me" };
+
+/** What I could mark shareable, or give a role, in a room: my space and the room's linked space. */
+export type ShareCandidates = {
+  spaces: Array<{ id: string; name: string; role: SpaceRole | string; linked: boolean }>;
+  items: Array<{ kind: "page" | "task" | "file"; id: string; title: string; spaceId: string; spaceName: string; updatedAt: string; shared: boolean }>;
+};
+
+/** A space of mine (`GET /api/spaces`): the ones I own can hold a room's work. */
+export type OwnSpace = { id: string; name: string; primary: boolean };

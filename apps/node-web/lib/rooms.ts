@@ -1,14 +1,13 @@
 /**
  * Rooms with other people (rooms v2, Ensemble docs/35 §12) as the website reads them: which tab a
- * message belongs to (Room, or the person's own My crew), unread per tab and the one read marker the
- * server keeps, what may be shared to the room, status cards in words, and a peer request's kind and
- * state, with what a new one needs.
+ * message belongs to (Room, or the person's own My crew), each tab's unread and read marker as Ensemble
+ * keeps them, which tab a live reply is written in, what may be shared to the room, status cards in
+ * words, and a peer request's kind and state, with what a new one needs.
  */
 import { missionView, type Badge, type Tone } from "./plan";
 import type { Message, PeerKind, Presence, RequestCandidate, RequestStatus, Room, StatusCard } from "./types";
 
 export type RoomTab = "room" | "crew";
-export type TabSeen = Record<RoomTab, number>;
 
 /** A room with other people follows rooms v2: a shared Room and each person's own My crew. */
 export const isPeopleRoom = (room: Pick<Room, "kind">): boolean => room.kind === "room";
@@ -16,51 +15,26 @@ export const isPeopleRoom = (room: Pick<Room, "kind">): boolean => room.kind ===
 /** My crew is what only I and my nodes read (private messages and cards); everything else is the Room. */
 export const tabOf = (message: Pick<Message, "private">): RoomTab => (message.private ? "crew" : "room");
 
-/**
- * What was last seen in each tab, as this browser kept it, never behind the server's read marker
- * (everything up to it was seen in both tabs).
- */
-export function mergeSeen(stored: unknown, base: number): TabSeen {
-  const value = stored && typeof stored === "object" ? (stored as Partial<Record<RoomTab, unknown>>) : {};
-  const seq = (raw: unknown) => (typeof raw === "number" && Number.isFinite(raw) ? Math.max(raw, base) : base);
-  return { room: seq(value.room), crew: seq(value.crew) };
+/** Each tab's unread as Ensemble counts it (the Room's public messages, My crew's private ones); an older server counted the room as one. */
+export function tabUnreadOf(room: Pick<Room, "unread" | "unreadRoom" | "unreadCrew">): Record<RoomTab, number> {
+  if (typeof room.unreadRoom === "number" || typeof room.unreadCrew === "number") return { room: room.unreadRoom ?? 0, crew: room.unreadCrew ?? 0 };
+  return { room: room.unread ?? 0, crew: 0 };
 }
 
-type Countable = Pick<Message, "id" | "seq" | "private" | "planId" | "authorKind" | "authorAccountId" | "sending" | "failed">;
+/** Where a tab was read up to: the Room's marker is `readSeq`, My crew's `readSeqCrew`. */
+export const tabMarker = (room: Pick<Room, "readSeq" | "readSeqCrew" | "lastSeq">, tab: RoomTab): number => (tab === "crew" ? (room.readSeqCrew ?? room.readSeq ?? room.lastSeq) : (room.readSeq ?? room.lastSeq));
 
-/** Whether a message can be unread: not a card inside a plan, not my own words, not one still on its way. */
-function counts(message: Countable, meId: string): boolean {
-  if (message.planId || message.sending || message.failed || message.id.startsWith("local-")) return false;
-  return !(message.authorKind === "human" && message.authorAccountId === meId);
+/** A tab's marker and unread set as given; the room's unread is both tabs'. */
+export function withTab<T extends Pick<Room, "readSeq" | "readSeqCrew" | "lastSeq" | "unread" | "unreadRoom" | "unreadCrew">>(room: T, tab: RoomTab, marker: number, unread: number): T {
+  const counts = { ...tabUnreadOf(room), [tab]: Math.max(0, unread) };
+  return { ...room, ...(tab === "crew" ? { readSeqCrew: marker } : { readSeq: marker }), unreadRoom: counts.room, unreadCrew: counts.crew, unread: counts.room + counts.crew };
 }
 
-/** Unread messages in each tab: those after what was last seen in that tab. */
-export function tabUnread(messages: readonly Countable[], seen: TabSeen, meId: string): Record<RoomTab, number> {
-  const out: Record<RoomTab, number> = { room: 0, crew: 0 };
-  for (const message of messages) {
-    const tab = tabOf(message);
-    if (counts(message, meId) && message.seq > seen[tab]) out[tab] += 1;
-  }
-  return out;
-}
+/** A tab read up to `upTo`: its marker moves on (never back) and `left` stays unread there. */
+export const readTab = <T extends Pick<Room, "readSeq" | "readSeqCrew" | "lastSeq" | "unread" | "unreadRoom" | "unreadCrew">>(room: T, tab: RoomTab, upTo: number, left = 0): T => withTab(room, tab, Math.max(tabMarker(room, tab), upTo), left);
 
-/** What the server counts as unread once its marker is at `marker`: every countable message after it, in either tab. */
-export const unreadAfter = (messages: readonly Countable[], marker: number, meId: string): number => messages.filter((message) => message.seq > marker && counts(message, meId)).length;
-
-/**
- * The room's read marker (the server keeps one per person) that leaves neither tab's news behind: just
- * before the first message not yet seen in its own tab, else the newest. It never moves back.
- */
-export function readMarker(messages: readonly Countable[], seen: TabSeen, meId: string, current: number): number {
-  let first = Number.POSITIVE_INFINITY;
-  let newest = 0;
-  for (const message of messages) {
-    if (message.sending || message.id.startsWith("local-")) continue;
-    newest = Math.max(newest, message.seq);
-    if (counts(message, meId) && message.seq > seen[tabOf(message)]) first = Math.min(first, message.seq);
-  }
-  return Math.max(current, Number.isFinite(first) ? first - 1 : newest);
-}
+/** Which tab a node's live reply is written in: the stream says whether it is private (My crew) or for the Room. */
+export const liveTabOf = (row: { private?: boolean }): RoomTab => (row.private ? "crew" : "room");
 
 type Shareable = Pick<Message, "id" | "kind" | "private" | "authorKind" | "authorAccountId" | "sending" | "failed" | "data">;
 
@@ -73,15 +47,6 @@ export function canShare(message: Shareable, meId: string): boolean {
 /** The Room's copy of a message shared from My crew, when it is loaded. */
 export function sharedCopy<T extends Pick<Message, "private" | "data">>(messages: readonly T[], id: string): T | undefined {
   return messages.find((row) => !row.private && row.data?.sharedFrom?.id === id);
-}
-
-/**
- * Which tab a node's live reply is being written for. The live stream does not say, so it follows the
- * newest person's message: a private one wakes my nodes in My crew, a shared one is answered in the Room.
- */
-export function liveTab(messages: readonly Pick<Message, "authorKind" | "private" | "sending">[]): RoomTab {
-  for (let at = messages.length - 1; at >= 0; at -= 1) if (messages[at]!.authorKind === "human") return tabOf(messages[at]!);
-  return "room";
 }
 
 type SharedData = { sharedFrom?: { id?: unknown; authorKind?: unknown; authorNodeId?: unknown } | null; sharedBy?: unknown; [key: string]: unknown } | null | undefined;

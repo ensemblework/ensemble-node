@@ -7,18 +7,21 @@
  * use the same frame as the other approval cards: what is asked, the answers, and what came of it.
  */
 import Link from "next/link";
-import { Check, CircleSlash, ExternalLink, Handshake, Lock, MessageSquareReply, Pencil, X } from "lucide-react";
+import { Check, CheckSquare, CircleSlash, ExternalLink, Handshake, Lock, MessageSquareReply, Pencil, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cardWords } from "@/lib/cards";
+import { ENSEMBLE_LINKS } from "@/lib/config";
+import { modeWords } from "@/lib/room-work";
 import { useBootstrap, usePeerDecision, useSettle } from "@/lib/hooks";
 import type { Badge } from "@/lib/plan";
 import { candidateText, disclosureState, ownerCardState, requestKind, requestRole, requestState, requestUndecided, statusCardView } from "@/lib/rooms";
 import { toast, toastError } from "@/lib/toast";
-import type { Message, NodePublic, PeerKind, RequestCandidate, RequestRef, StatusCard } from "@/lib/types";
+import type { Message, NodePublic, PeerKind, RequestCandidate, RequestRef, StatusCard, WorkMode } from "@/lib/types";
 import { PersonAvatar } from "../node-avatar";
 import { Button, External, Pill, Textarea } from "../ui";
 import type { MessageContext } from "./message";
 import { RichText } from "./rich-text";
+import { ModeChoice } from "./room-work";
 
 /** The frame of a card only its owner sees: what it asks, that it is theirs alone, and where it stands. */
 export function OwnerCard({ title, state, children }: { title: ReactNode; state: Badge; children: ReactNode }) {
@@ -93,7 +96,24 @@ type RequestData = {
   answerMessageId?: string | null;
   outcome?: string | null;
   requirements?: Array<{ text: string; status: string }>;
+  /** A work request between editors of the room's space is a proposed task there, and runs as one of two modes once accepted. */
+  taskId?: string | null;
+  mode?: string | null;
 };
+
+/** The task a request made (or points at) on the room's board, opened in Ensemble in the room's space. */
+function BoardTaskLine({ taskId, spaceId, label, mode }: { taskId: string; spaceId: string | null | undefined; label: string; mode?: string | null }) {
+  const runs = modeWords(mode);
+  return (
+    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+      <External href={ENSEMBLE_LINKS.inSpace(`/tasks/${encodeURIComponent(taskId)}`, spaceId)} className="inline-flex items-center gap-1 rounded-lg border border-line bg-bg px-2 py-0.5 text-ink hover:border-accent">
+        <CheckSquare size={12} className="text-muted" aria-hidden /> {label}
+        <ExternalLink size={10} className="text-muted" aria-hidden />
+      </External>
+      {runs ? <span>{runs}</span> : null}
+    </p>
+  );
+}
 
 const OUTCOME: Record<string, Badge> = {
   succeeded: { label: "Succeeded", tone: "ok" },
@@ -134,6 +154,7 @@ export function RequestCard({ message, ctx }: { message: Message; ctx: MessageCo
       <RichText text={data.text ?? ""} handles={ctx.handles} small />
       <Candidate candidate={data.candidate} />
       <Refs refs={data.refs} />
+      {data.taskId ? <BoardTaskLine taskId={data.taskId} spaceId={ctx.spaceId} label={data.kind === "work" ? (data.status === "open" || data.status === "awaiting_owner" ? "Proposed task on the board" : "Its task on the board") : "The task it is about"} mode={data.mode} /> : null}
       {data.answer ? (
         <div className="rounded-lg bg-bg/70 px-2.5 py-1.5 text-sm">
           <span className="text-xs font-medium text-muted">{data.status === "declined" ? "Declined: " : "Answer: "}</span>
@@ -203,6 +224,11 @@ type OwnerRequestData = {
   cost?: string;
   note?: string | null;
   error?: string | null;
+  /** A proposed task on the room's board: accepting asks how it runs. A review's result goes on the requester's task. */
+  taskId?: string | null;
+  modes?: string[];
+  defaultMode?: string;
+  resultTo?: string;
 };
 
 /**
@@ -219,12 +245,15 @@ export function RequestOwnerCard({ message, ctx, node }: { message: Message; ctx
   const [always, setAlways] = useState(false);
   const [declining, setDeclining] = useState(false);
   const [note, setNote] = useState("");
+  // A proposed task on the room's board asks one question: private work with a shared result (the default), or a shared run.
+  const modes = Array.isArray(data.modes) && data.modes.length > 1;
+  const [mode, setMode] = useState<WorkMode>(data.defaultMode === "shared" ? "shared" : "private");
   const pending = data.status === "pending";
   const kind = data.kind === "review" ? "reviews" : "work";
   const error = decide.error?.message ?? data.error ?? null;
   const accept = () =>
     decide.mutate(
-      { requestId: data.requestId, action: "accept", ...(editing && text.trim() && text.trim() !== data.text ? { text: text.trim() } : {}), ...(always ? { always: true } : {}), cardId: message.id },
+      { requestId: data.requestId, action: "accept", ...(editing && text.trim() && text.trim() !== data.text ? { text: text.trim() } : {}), ...(always ? { always: true } : {}), ...(modes ? { mode } : {}), cardId: message.id },
       { onSuccess: () => toast(`Accepted. ${node ? `@${node.slug}` : "Your lead"} plans it with your nodes.`, "ok") },
     );
   const decline = () => decide.mutate({ requestId: data.requestId, action: "decline", ...(note.trim() ? { note: note.trim() } : {}), cardId: message.id }, { onSuccess: () => toast("Declined. The room's card says so.", "ok") });
@@ -244,6 +273,9 @@ export function RequestOwnerCard({ message, ctx, node }: { message: Message; ctx
             <span className="font-medium text-ink/80">Your nodes here:</span> {data.nodes.map((row) => `@${row.handle}${row.lead ? " (lead)" : ""}`).join(", ")}
           </p>
         ) : null}
+        {data.taskId ? (
+          <BoardTaskLine taskId={data.taskId} spaceId={ctx.spaceId} label={data.resultTo === "requester_task" ? `${data.from?.name ?? "Their"}'s task: the review's result goes there` : "A proposed task on the room's board"} mode={request?.mode} />
+        ) : null}
         {data.cost && pending ? <p className="text-xs text-muted">{data.cost}</p> : null}
         {data.note ? <p className="text-xs text-muted">Your note: {data.note}</p> : null}
         {error ? <p className="text-sm text-danger">{error}</p> : null}
@@ -262,6 +294,7 @@ export function RequestOwnerCard({ message, ctx, node }: { message: Message; ctx
             </div>
           ) : (
             <div className="space-y-2">
+              {modes ? <ModeChoice value={mode} onChange={setMode} name={`mode-${message.id}`} /> : null}
               <label className="flex items-start gap-2 text-xs text-muted">
                 <input type="checkbox" className="mt-0.5 accent-[rgb(var(--accent))]" checked={always} onChange={(event) => setAlways(event.target.checked)} />
                 <span>

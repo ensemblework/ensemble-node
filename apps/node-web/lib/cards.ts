@@ -37,6 +37,8 @@ export function cardWords(data: CardData, handle: string, roomTitle: string): Ca
   const type = text(data?.type, "tools");
   switch (type) {
     case "post":
+      // A result its work delivers to the room: built from the work's ledger, posted only when its owner says.
+      if (data?.result) return { title: `Post this result in “${roomTitle}” for you?`, wants: "drafted a result for you to post", approve: "Post", discard: "Discard" };
       return data?.disclosure || data?.peerRequest
         ? { title: `Post this answer in “${roomTitle}” for you?`, wants: "drafted an answer for you to post", approve: "Post", discard: "Discard" }
         : { title: `Post this in “${roomTitle}” for you?`, wants: "wants to post for you", approve: "Post", discard: "Discard" };

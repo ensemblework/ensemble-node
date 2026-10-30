@@ -406,7 +406,7 @@ function NewRoom({ boot }: { boot: Bootstrap }) {
         <p className="text-xs text-muted">Pick 1–{limits.nodesPerPerson}, and which one is your lead.</p>
         <NodePicker nodes={boot.nodes} selected={picked} onChange={setPicked} lead={leadNow} onLead={setLead} max={limits.nodesPerPerson} label="Your nodes in the room" />
       </div>
-      <Field label="Invite people by email" group hint={`They need an Ensemble account (signing up on Node makes one). Up to ${limits.roomPeople} people in a room, counting open requests. Someone who declines can be asked again after ${limits.declineBlockDays} days.`}>
+      <Field label="Invite people by email" group hint={`They need an Ensemble account (signing up on Node makes one). Up to ${limits.roomPeople} people in a room (your own limit, in Ensemble's Settings › Sharing), counting open requests. Someone who declines can be asked again after ${limits.declineBlockDays} days.`}>
         <EmailChips emails={emails} onChange={setEmails} max={limits.roomPeople - 1} label="Invite people by email" />
       </Field>
       {error ? <Notice tone="error">{error}</Notice> : null}

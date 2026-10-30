@@ -30,6 +30,9 @@ export const ENSEMBLE_LINKS = {
   metrics: `${ENSEMBLE_APP}/metrics`,
   board: `${ENSEMBLE_APP}/board`,
   task: (id: string) => `${ENSEMBLE_APP}/tasks/${id}`,
+  /** A place in another space (a room's shared one): Ensemble switches to it first. */
+  inSpace: (path: string, spaceId: string | null | undefined) => `${ENSEMBLE_APP}${path}${spaceId ? `${path.includes("?") ? "&" : "?"}openSpace=${encodeURIComponent(spaceId)}` : ""}`,
+  sharing: `${ENSEMBLE_APP}/settings?tab=sharing`,
   files: `${ENSEMBLE_APP}/files`,
   file: (id: string) => `${ENSEMBLE_APP}/files/${encodeURIComponent(id)}`,
   forgot: `${ENSEMBLE_APP}/forgot`,

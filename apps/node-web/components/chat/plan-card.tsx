@@ -1,111 +1,473 @@
 "use client";
 
 /**
- * A lead's plan for its crew (Ensemble's node/plans.ts): its opening words, then each step with its
- * node, what it was asked, where it stands and its report. The agent runs a step started sit inside
- * its step, folded, instead of in the conversation; the steps' nodes never post there.
+ * A plan card: Ensemble's projection of a mission (node/plans.ts; build blocks B1, B2, B6). A crew's
+ * plan shows its opening words, goal, status, requirements ledger and one row per step: the node, what
+ * kind of step it is and who does it, whether it ran (status) and what came of it (outcome), what holds
+ * it, its attempts with their checks and candidates, its report and evidence. The agent runs a step
+ * started sit inside it, folded, instead of in the conversation; the steps' nodes never post there.
+ * A node's own piece of work (`kind: "self"`) is the same card in one compact block, a work card.
+ * Plans made before outcomes (contract 1) show what they have. A step a helper does (`executor:
+ * "helper"`) names the helper and opens its thread. The steps' run cards are read with the plan
+ * (`GET /api/node/plans/:id`) once a step is opened: a helper's runs are in its own room. Parallel
+ * work (§8.15): the plan's facts say how its builds share the folder, an integration step what it
+ * brings in, each attempt what it built or tested, and a pass a later change no longer covers says so.
  */
-import { useState } from "react";
-import { AlertTriangle, Check, ChevronRight, Circle, CircleStop, MinusCircle } from "lucide-react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, Check, ChevronRight, Circle, CircleStop, CircleX, GitMerge, Hourglass, MinusCircle, Repeat } from "lucide-react";
 import { api } from "@/lib/api";
+import { usePlan } from "@/lib/hooks";
+import { ENSEMBLE_APP } from "@/lib/config";
+import { formatEntityText } from "@/lib/entity-text";
+import { evidenceCount, evidenceOfCards } from "@/lib/evidence";
+import { attemptLabel, attemptsToShow, checkTally, isWorkCard, ledgerSummary, missionView, outcomeBadge, planProgress, requirementBadge, stepBadges, stepKindLine, stepName, stepOutcome, stepRequirements } from "@/lib/plan";
+import { attemptVerb, integratedSteps, planFacts, staleNote } from "@/lib/plan-facts";
+import { settingsLine } from "@/lib/session";
 import { toast, toastError } from "@/lib/toast";
-import type { Message, PlanData, PlanStep, PlanStepStatus } from "@/lib/types";
+import type { Attempt, Message, PlanData, PlanRoutine, PlanStep } from "@/lib/types";
 import { NodeAvatar } from "../node-avatar";
 import { Pill, Spinner } from "../ui";
+import { EvidenceGallery, type RequirementLink } from "./evidence";
+import { HelperThreadChip } from "./helper-thread";
 import type { MessageContext } from "./message";
+import { CandidateTag, CheckList } from "./report";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 
-const STEP_LABEL: Record<PlanStepStatus, string> = { waiting: "Waiting", working: "Working", done: "Done", blocked: "Blocked", skipped: "Skipped", stopped: "Stopped" };
-const STEP_TONE: Record<PlanStepStatus, "muted" | "accent" | "ok" | "warn"> = { waiting: "muted", working: "accent", done: "ok", blocked: "warn", skipped: "muted", stopped: "muted" };
+/** Where a requirement is listed on the card, for evidence and steps that name it. */
+export const requirementAnchor = (planId: string, id: string) => `req-${planId}-${id}`.replace(/[^\w-]/g, "-");
 
-function StepIcon({ status }: { status: PlanStepStatus }) {
-  if (status === "working") return <Spinner className="h-3.5 w-3.5 text-accent" />;
-  if (status === "done") return <Check size={15} className="text-ok" />;
-  if (status === "blocked") return <AlertTriangle size={15} className="text-warn" />;
-  if (status === "skipped" || status === "stopped") return <MinusCircle size={15} className="text-muted" />;
-  return <Circle size={15} className="text-muted" />;
+/** Where a step is listed on the card, for an integration step that brings it in. */
+const stepAnchor = (planId: string, id: string) => `plan-step-${planId}-${id}`.replace(/[^\w-]/g, "-");
+
+/** A brief or report on one line: records by kind, no links (it sits inside the step's button). */
+const oneLine = (text: string | null | undefined) => formatEntityText(text ?? "", [], { plain: true, kindLinks: true, app: ENSEMBLE_APP }).replace(/\s+/g, " ").trim();
+
+const sorted = (attempts: readonly Attempt[] | undefined) => [...(attempts ?? [])].sort((a, b) => a.n - b.n);
+
+/** The step cards the conversation has, with those read with the plan; each once, oldest first. */
+function withRuns(loaded: readonly Message[], read: readonly Message[] | undefined): Message[] {
+  if (!read?.length) return [...loaded];
+  const byId = new Map(read.map((row) => [row.id, row]));
+  for (const row of loaded) byId.set(row.id, row);
+  return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.seq - b.seq);
 }
 
-function Step({ step, plan, cards, ctx }: { step: PlanStep; plan: PlanData; cards: Message[]; ctx: MessageContext }) {
-  const [open, setOpen] = useState(false);
-  const node = ctx.nodes.get(step.nodeId);
-  const runs = cards.filter((row) => row.kind === "run" && row.data?.plan?.step === step.id);
-  const after = step.after.map((id) => plan.steps.find((row) => row.id === id)?.handle).filter(Boolean);
-  const said = step.result ?? step.progress;
+function StepIcon({ step, held }: { step: PlanStep; held: boolean }) {
+  const outcome = stepOutcome(step);
+  if (held) return <Hourglass size={14} className="text-warn" aria-hidden />;
+  if (step.status === "working") return <Spinner className="h-3.5 w-3.5 text-accent" />;
+  if (step.status === "done" && outcome === "fail") return <CircleX size={15} className="text-danger" aria-hidden />;
+  if (step.status === "done" && (outcome === "blocked" || outcome === "unverified")) return <AlertTriangle size={15} className="text-warn" aria-hidden />;
+  if (step.status === "done") return <Check size={15} className="text-ok" aria-hidden />;
+  if (step.status === "blocked") return <AlertTriangle size={15} className="text-warn" aria-hidden />;
+  if (step.status === "skipped" || step.status === "stopped") return <MinusCircle size={15} className="text-muted" aria-hidden />;
+  return <Circle size={15} className="text-muted" aria-hidden />;
+}
+
+/** The routine a card's mission ran for, when it is one (`data.routine`). */
+function routineOf(value: unknown): PlanRoutine | null {
+  const raw = value as Partial<PlanRoutine> | null | undefined;
+  return raw && typeof raw.id === "string" && typeof raw.title === "string" ? (raw as PlanRoutine) : null;
+}
+
+/** "Routine · Morning summary": a routine's run names its routine, which opens in Routines. */
+function RoutineChip({ routine }: { routine: PlanRoutine }) {
   return (
-    <li className="rounded-xl border border-line bg-bg/60">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-start gap-2.5 px-3 py-2 text-left">
-        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-          <StepIcon status={step.status} />
-        </span>
-        {node ? <NodeAvatar node={node} size={20} /> : null}
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-x-2 text-sm">
-            <span className="font-medium">@{step.handle}</span>
-            <Pill tone={STEP_TONE[step.status]}>{STEP_LABEL[step.status]}</Pill>
-            {step.status === "waiting" && after.length ? <span className="text-xs text-muted">after {after.map((handle) => `@${handle}`).join(", ")}</span> : null}
-            {runs.length ? <span className="text-xs text-muted">{runs.length} agent run{runs.length === 1 ? "" : "s"}</span> : null}
-          </span>
-          <span className={`block text-sm text-muted ${open ? "whitespace-pre-wrap" : "line-clamp-1"}`}>{step.brief}</span>
-        </span>
-        <ChevronRight size={15} className={`mt-1 shrink-0 text-muted transition ${open ? "rotate-90" : ""}`} />
-      </button>
-      {said && (open || step.status !== "working") ? (
-        <div className={`border-t border-line px-3 py-2 text-sm ${open ? "" : "line-clamp-3"}`}>
-          <RichText text={said} handles={ctx.handles} />
-        </div>
-      ) : null}
-      {open && runs.length ? (
-        <div className="space-y-2 border-t border-line px-3 py-2">
-          {runs.map((run) => (
-            <RunCard key={run.id} message={run} ctx={ctx} node={node} />
-          ))}
-        </div>
-      ) : null}
-    </li>
+    <Link
+      href={`/routines#routine-${routine.id}`}
+      title={routine.trigger ? `${routine.title} · ${routine.trigger}` : routine.title}
+      className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-line px-2 py-0.5 text-[11px] text-muted transition hover:border-accent/50 hover:text-ink"
+    >
+      <Repeat size={11} className="shrink-0 text-accent" aria-hidden />
+      <span className="truncate">Routine · {routine.title}</span>
+    </Link>
   );
 }
 
-export function PlanCard({ message, ctx }: { message: Message; ctx: MessageContext }) {
-  const plan = message.data as PlanData;
+/** Stops a plan or a piece of work, after a confirm: Stop shows only while it runs. */
+export function useStopPlan(planId: string, what: "plan" | "work") {
   const [stopping, setStopping] = useState(false);
-  const steps = Array.isArray(plan.steps) ? plan.steps : [];
-  const done = steps.filter((row) => row.status === "done").length;
-  const live = plan.status === "running" || plan.status === "draft";
-  const cards = ctx.inPlan.get(message.id) ?? [];
-  const status =
-    plan.status === "done" ? <Pill tone="ok">Done</Pill>
-    : plan.status === "stopped" ? <Pill>Stopped</Pill>
-    : plan.status === "reporting" ? <Pill tone="accent">Reporting</Pill>
-    : <Pill tone="accent">{done} of {steps.length} done</Pill>;
   const stop = async () => {
-    if (!confirm("Stop this plan? Its steps stop, with the agent runs they started. What was changed so far stays.")) return;
+    const question = what === "plan" ? "Stop this plan? Its steps stop, with the agent runs they started. What was changed so far stays." : "Stop this work? What was changed so far stays.";
+    if (!confirm(question)) return;
     setStopping(true);
     try {
-      await api(`/api/node/plans/${message.id}/stop`, { body: {} });
-      toast("Plan stopped.", "ok");
+      const result = await api<{ stopped?: number } | undefined>(`/api/node/plans/${planId}/stop`, { body: {} });
+      toast(result?.stopped ? `${what === "plan" ? "Plan" : "Work"} stopped. What was changed so far stays.` : `This ${what} had already ended.`, "ok");
     } catch (error) {
       toastError(error);
     } finally {
       setStopping(false);
     }
   };
+  return { stop, stopping };
+}
+
+function StopButton({ onStop, stopping, label }: { onStop: () => void; stopping: boolean; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onStop}
+      disabled={stopping}
+      aria-label={label}
+      title={label}
+      className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted hover:bg-raised hover:text-danger disabled:opacity-50"
+    >
+      {stopping ? <Spinner className="h-3 w-3" /> : <CircleStop size={13} aria-hidden />} {stopping ? "Stopping…" : "Stop"}
+    </button>
+  );
+}
+
+function Attempts({ attempts, kind, handles }: { attempts: Attempt[]; kind?: string; handles: ReadonlySet<string> }) {
+  return (
+    <ol className="space-y-1.5" aria-label="Attempts">
+      {attempts.map((attempt) => {
+        const badge = outcomeBadge(attempt.outcome);
+        const tally = checkTally(attempt.checks);
+        return (
+          <li key={attempt.n} className="rounded-lg border border-line/70 bg-panel/60 px-2.5 py-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+              <span className="font-medium text-ink">{attemptLabel(attempt)}</span>
+              {badge ? <Pill tone={badge.tone}>{badge.label}</Pill> : !attempt.endedAt ? <Pill tone="accent">Working</Pill> : null}
+              {tally ? <span className="text-muted">{tally}</span> : null}
+              <span className="ml-auto min-w-0">
+                <CandidateTag candidate={attempt.candidate} label={kind === "verify" ? "Tested" : "Built"} verb={attemptVerb(kind as PlanStep["kind"])} />
+              </span>
+            </div>
+            {attempt.summary ? (
+              <div className="mt-1 text-muted">
+                <RichText text={attempt.summary} handles={handles} small kindLinks />
+              </div>
+            ) : null}
+            {attempt.checks?.length ? (
+              <div className="mt-1.5">
+                <CheckList checks={attempt.checks} />
+              </div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Every requirement the owner asked for and where it stands; deferred ones with why. */
+function Ledger({ plan, planId }: { plan: PlanData; planId: string }) {
+  const [criteria, setCriteria] = useState(false);
+  const requirements = Array.isArray(plan.requirements) ? plan.requirements : [];
+  const deferred = Array.isArray(plan.deferred) ? plan.deferred : [];
+  if (!requirements.length && !deferred.length) return null;
+  const hasCriteria = requirements.some((row) => row.acceptance?.length);
+  const textOf = (id: string) => requirements.find((row) => row.id === id)?.text ?? id;
+  return (
+    <section className="rounded-xl border border-line bg-bg/60" aria-label="Requirements">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-xs text-muted">
+        <span className="font-semibold uppercase tracking-wide">Requirements</span>
+        {requirements.length ? <span>{ledgerSummary(requirements)}</span> : null}
+        {hasCriteria ? (
+          <button type="button" onClick={() => setCriteria(!criteria)} aria-expanded={criteria} className="ml-auto rounded-md px-1.5 py-0.5 text-accent hover:bg-raised">
+            {criteria ? "Hide criteria" : "Show criteria"}
+          </button>
+        ) : null}
+      </div>
+      {requirements.length ? (
+        <ul className="divide-y divide-line/70 border-t border-line/70">
+          {requirements.map((row) => {
+            const badge = requirementBadge(row.status);
+            return (
+              <li key={row.id} id={requirementAnchor(planId, row.id)} tabIndex={-1} className="flex items-start gap-2 px-3 py-1.5 text-sm outline-none transition-colors focus:bg-accent/10">
+                <span className="mt-0.5 shrink-0">
+                  <Pill tone={badge.tone}>{badge.label}</Pill>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={criteria ? "block break-words" : "line-clamp-2 break-words"}>{row.text}</span>
+                  {criteria && row.acceptance?.length ? (
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-muted" aria-label="Acceptance criteria">
+                      {row.acceptance.map((item) => (
+                        <li key={item.id}>
+                          {item.text}
+                          {item.mandatory === false ? <span className="ml-1 italic">(optional)</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {deferred.length ? (
+        <ul className="space-y-1 border-t border-line/70 px-3 py-2 text-xs text-muted" aria-label="Deferred">
+          {deferred.map((row) => (
+            <li key={row.requirementId} className="break-words">
+              <span className="font-medium text-ink/80">Deferred: {textOf(row.requirementId)}</span> · {row.reason}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function Step({ step, plan, planId, cards, ctx, onOpen }: { step: PlanStep; plan: PlanData; planId: string; cards: Message[]; ctx: MessageContext; onOpen: () => void }) {
+  const [open, setOpen] = useState(false);
+  const node = ctx.nodes.get(step.nodeId);
+  const steps = plan.steps;
+  const runs = cards.filter((row) => row.kind === "run" && row.data?.plan?.step === step.id);
+  const badges = stepBadges(step, steps);
+  const after = (step.after ?? []).map((id) => steps.find((row) => row.id === id)).filter((row): row is PlanStep => Boolean(row));
+  const said = step.result ?? step.progress;
+  // A helper's step: the helper by name, and its thread (its brief and its report) in the step.
+  const helping = step.executor === "helper";
+  const thread = helping ? ctx.helperOf?.(step.nodeId) : undefined;
+  const kindLine = helping ? stepKindLine({ kind: step.kind }) : stepKindLine(step);
+  const attempts = attemptsToShow(step);
+  const current = sorted(step.attempts).at(-1);
+  const evidence = evidenceOfCards(runs);
+  const covers = stepRequirements(step, plan);
+  const asked = settingsLine(step.run);
+  const working = step.status === "working";
+  const bodyId = `step-${planId}-${step.id}`.replace(/[^\w-]/g, "-");
+  const brings = integratedSteps(step, steps);
+  const stale = staleNote(step, steps);
+  const requirementOf = (id: string): RequirementLink | null => {
+    const found = plan.requirements?.find((row) => row.id === id);
+    return found ? { text: found.text, href: `#${requirementAnchor(planId, id)}` } : { text: id };
+  };
+  return (
+    <li id={stepAnchor(planId, step.id)} tabIndex={-1} className="scroll-mt-16 rounded-xl border border-line bg-bg/60 outline-none transition-shadow target:ring-2 target:ring-accent/50 focus-visible:ring-2 focus-visible:ring-accent/50">
+      <button
+        type="button"
+        onClick={() => {
+          if (!open) onOpen();
+          setOpen(!open);
+        }}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        className="flex w-full items-start gap-2.5 px-3 py-2 text-left"
+      >
+        <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+          <StepIcon step={step} held={badges.held} />
+        </span>
+        {node ? <NodeAvatar node={node} size={20} /> : null}
+        <span className="min-w-0 flex-1">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+            <span className="font-medium">{helping ? `Helper · ${node?.name ?? step.name ?? `@${step.handle}`}` : `@${step.handle}`}</span>
+            {kindLine ? <span className="text-xs text-muted">{kindLine}</span> : null}
+            <Pill tone={badges.status.tone}>{badges.status.label}</Pill>
+            {badges.outcome ? <Pill tone={badges.outcome.tone}>{badges.outcome.label}</Pill> : null}
+            {badges.held ? (
+              <span className="text-xs text-warn">{badges.holder ? `held by ${stepName(badges.holder, steps)}` : "held by an earlier step"}</span>
+            ) : step.status === "waiting" && after.length ? (
+              <span className="text-xs text-muted">after {after.map((row) => stepName(row, steps)).join(", ")}</span>
+            ) : null}
+            {current && current.n > 1 ? <span className="text-xs text-muted">{attemptLabel(current)}</span> : null}
+            {runs.length ? <span className="text-xs text-muted">{runs.length} agent run{runs.length === 1 ? "" : "s"}</span> : null}
+            {evidence.length ? <span className="text-xs text-muted">{evidenceCount(evidence)}</span> : null}
+          </span>
+          {open ? null : <span className="mt-0.5 line-clamp-1 text-sm text-muted">{oneLine(step.brief)}</span>}
+        </span>
+        <ChevronRight size={15} className={`mt-1 shrink-0 text-muted transition ${open ? "rotate-90" : ""}`} aria-hidden />
+      </button>
+      {brings.length ? (
+        <p className="flex items-start gap-1 px-3 pb-2 text-xs text-muted">
+          <GitMerge size={12} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+          <span className="min-w-0">
+            Brings in{" "}
+            {brings.map((row, at) => (
+              <span key={row.id}>
+                {at ? (at === brings.length - 1 ? " and " : ", ") : ""}
+                <a href={`#${stepAnchor(planId, row.id)}`} className="text-accent hover:underline">
+                  {row.label}
+                </a>
+              </span>
+            ))}{" "}
+            work
+          </span>
+        </p>
+      ) : null}
+      {stale ? (
+        <p className="mx-3 mb-2 flex items-start gap-1.5 rounded-lg border border-warn/40 bg-warn/5 px-2 py-1.5 text-xs text-warn" role="note">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0" aria-hidden />
+          <span>{stale}</span>
+        </p>
+      ) : null}
+      {open ? (
+        <div id={bodyId} className="space-y-2.5 border-t border-line px-3 py-2.5 text-sm">
+          <div className="text-muted">
+            <RichText text={step.brief ?? ""} handles={ctx.handles} small kindLinks />
+          </div>
+          {covers.length || asked ? (
+            <div className="space-y-0.5 text-xs text-muted">
+              {covers.length ? (
+                <p>
+                  For:{" "}
+                  {covers.map((row, at) => (
+                    <span key={row.id}>
+                      {at ? ", " : ""}
+                      <a href={`#${requirementAnchor(planId, row.id)}`} className="text-accent hover:underline">
+                        {row.text}
+                      </a>
+                    </span>
+                  ))}
+                </p>
+              ) : null}
+              {asked ? <p>Runs with {asked}</p> : null}
+            </div>
+          ) : null}
+          {said ? (
+            <div className={working ? "live-shine" : ""}>
+              <RichText text={said} handles={ctx.handles} small kindLinks />
+            </div>
+          ) : null}
+          {attempts.length ? <Attempts attempts={attempts} kind={step.kind} handles={ctx.handles} /> : null}
+          {evidence.length ? <EvidenceGallery items={evidence} requirementOf={requirementOf} label={`Evidence from @${step.handle}`} /> : null}
+          {runs.length ? (
+            <div className="space-y-2">
+              {runs.map((run) => (
+                <RunCard key={run.id} message={run} ctx={ctx} node={node} requirementOf={requirementOf} inStep />
+              ))}
+            </div>
+          ) : null}
+          {helping ? thread ? <HelperThreadChip thread={thread} /> : <p className="text-xs text-muted">Its thread is gone: a helper and its room go after 3 quiet days.</p> : null}
+        </div>
+      ) : said && !working ? (
+        <div className="line-clamp-3 border-t border-line px-3 py-2 text-sm">
+          <RichText text={said} handles={ctx.handles} small kindLinks />
+        </div>
+      ) : working && step.progress ? (
+        <p className="live-shine truncate border-t border-line px-3 py-1.5 text-[13px]" title={oneLine(step.progress)} aria-live="polite">
+          {oneLine(step.progress)}
+        </p>
+      ) : null}
+    </li>
+  );
+}
+
+/** A node's own piece of work: one step, shown as one block. */
+function WorkCard({ message, plan, cards, ctx, onOpen }: { message: Message; plan: PlanData; cards: Message[]; ctx: MessageContext; onOpen: () => void }) {
+  const [open, setOpen] = useState(false);
+  const step = plan.steps[0];
+  const mission = missionView(plan.status);
+  const { stop, stopping } = useStopPlan(message.id, "work");
+  const node = ctx.nodes.get(step?.nodeId ?? plan.leadNodeId);
+  const runs = step ? cards.filter((row) => row.kind === "run" && row.data?.plan?.step === step.id) : [];
+  const evidence = evidenceOfCards(runs);
+  const badges = step ? stepBadges(step, plan.steps) : null;
+  const opening = message.body && !["Plan", "Work"].includes(message.body.trim()) ? message.body.trim() : null;
+  const title = plan.goal?.trim() || (step ? oneLine(step.brief).split(/(?<=[.!?])\s/)[0] : null) || "Work";
+  const said = step ? (step.result ?? step.progress) : null;
+  const attempts = step ? attemptsToShow(step) : [];
+  const current = step ? sorted(step.attempts).at(-1) : undefined;
+  const kindLine = step ? stepKindLine({ kind: step.kind }) : "";
+  const bodyId = `work-${message.id}`;
+  const routine = routineOf(plan.routine);
+  return (
+    <div className="space-y-2 rounded-2xl border border-line bg-panel px-3 py-3">
+      {opening && opening !== title ? <RichText text={opening} handles={ctx.handles} /> : null}
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+        {node ? <NodeAvatar node={node} size={18} /> : null}
+        <span className="font-semibold uppercase tracking-wide">Work</span>
+        {kindLine ? <span>{kindLine}</span> : null}
+        <Pill tone={mission.tone}>{mission.label}</Pill>
+        {badges?.outcome && !mission.live ? <Pill tone={badges.outcome.tone}>{badges.outcome.label}</Pill> : null}
+        {current && current.n > 1 ? <span>{attemptLabel(current)}</span> : null}
+        {routine ? <RoutineChip routine={routine} /> : null}
+        {mission.live && message.authorAccountId === ctx.meId ? <StopButton onStop={() => void stop()} stopping={stopping} label="Stop this work" /> : null}
+      </div>
+      <p className="break-words text-sm font-medium">{title}</p>
+      {said ? (
+        step?.status === "working" ? (
+          <p className="live-shine truncate text-[13px]" title={oneLine(said)} aria-live="polite">
+            {oneLine(said)}
+          </p>
+        ) : (
+          <div className={open ? "" : "line-clamp-3"}>
+            <RichText text={said} handles={ctx.handles} small kindLinks />
+          </div>
+        )
+      ) : null}
+      {step ? (
+        <div className="border-t border-line/70 pt-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (!open) onOpen();
+              setOpen(!open);
+            }}
+            aria-expanded={open}
+            aria-controls={bodyId}
+            className="flex min-h-7 w-full items-center gap-2 rounded-md px-1 text-left text-[13px] text-muted hover:bg-raised/70 hover:text-ink"
+          >
+            <ChevronRight size={13} className={`shrink-0 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+            <span className="min-w-0 flex-1 truncate">
+              {[open ? "Hide the details" : "Details", attempts.length ? `${attempts.length} attempts` : null, runs.length ? `${runs.length} agent run${runs.length === 1 ? "" : "s"}` : null, evidenceCount(evidence)].filter(Boolean).join(" · ")}
+            </span>
+          </button>
+          {open ? (
+            <div id={bodyId} className="mt-1.5 space-y-2.5 text-sm">
+              <div className="text-muted">
+                <RichText text={step.brief ?? ""} handles={ctx.handles} small kindLinks />
+              </div>
+              {attempts.length ? <Attempts attempts={attempts} kind={step.kind} handles={ctx.handles} /> : null}
+              {evidence.length ? <EvidenceGallery items={evidence} /> : null}
+              {runs.map((run) => (
+                <RunCard key={run.id} message={run} ctx={ctx} node={node} inStep />
+              ))}
+            </div>
+          ) : evidence.length ? (
+            <EvidenceGallery items={evidence} className="mt-1.5" />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** `detached`: shown on its own (a routine's run, opened from a list), so its step cards are read at once. */
+export function PlanCard({ message, ctx, detached = false }: { message: Message; ctx: MessageContext; detached?: boolean }) {
+  const data = message.data as PlanData;
+  const plan: PlanData = { ...data, steps: Array.isArray(data.steps) ? data.steps : [] };
+  const mission = missionView(plan.status);
+  const { stop, stopping } = useStopPlan(message.id, "plan");
+  const [wanted, setWanted] = useState(detached);
+  const read = usePlan(message.id, wanted);
+  const loaded = ctx.inPlan.get(message.id);
+  const cards = useMemo(() => withRuns(loaded ?? [], read.data?.runs), [loaded, read.data?.runs]);
+  const want = () => setWanted(true);
+  if (isWorkCard(plan)) return <WorkCard message={message} plan={plan} cards={cards} ctx={ctx} onOpen={want} />;
+  const progress = planProgress(plan);
+  const counting = mission.status === "running" && mission.live;
+  const routine = routineOf(plan.routine);
+  const facts = planFacts(plan.constraints);
   return (
     <div className="space-y-2.5 rounded-2xl border border-line bg-panel px-3 py-3">
       {message.body && message.body !== "Plan" ? <RichText text={message.body} handles={ctx.handles} /> : null}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
         <span className="font-semibold uppercase tracking-wide">Plan</span>
-        {status}
-        {live && message.authorAccountId === ctx.meId ? (
-          <button type="button" onClick={() => void stop()} disabled={stopping} className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-muted hover:bg-raised hover:text-ink disabled:opacity-50">
-            <CircleStop size={13} /> Stop
-          </button>
-        ) : null}
+        {counting ? <Pill tone="accent">{progress.done} of {progress.total} done</Pill> : <Pill tone={mission.tone}>{mission.label}</Pill>}
+        {!counting && progress.total && mission.status !== "succeeded" ? <span>{progress.done} of {progress.total} done</span> : null}
+        {routine ? <RoutineChip routine={routine} /> : null}
+        {mission.live && message.authorAccountId === ctx.meId ? <StopButton onStop={() => void stop()} stopping={stopping} label="Stop this plan" /> : null}
       </div>
+      {plan.goal?.trim() ? (
+        <p className="break-words text-sm">
+          <span className="text-muted">Goal: </span>
+          {plan.goal.trim()}
+        </p>
+      ) : null}
+      {facts.length ? (
+        <p className="break-words text-xs text-muted">
+          {facts.join(" · ")}
+        </p>
+      ) : null}
+      <Ledger plan={plan} planId={message.id} />
       <ol className="space-y-1.5">
-        {steps.map((step) => (
-          <Step key={step.id} step={step} plan={plan} cards={cards} ctx={ctx} />
+        {plan.steps.map((step) => (
+          <Step key={step.id} step={step} plan={plan} planId={message.id} cards={cards} ctx={ctx} onOpen={want} />
         ))}
       </ol>
     </div>

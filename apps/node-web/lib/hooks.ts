@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, eventsUrl } from "./api";
+import { api, ApiError, eventsUrl, evidence, liveFrame, messageById, ownSpaces, peerRequests, peopleRooms, planById, roomWork, routines, sessions, shareToRoom } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
 import { live, type LiveCall } from "./live";
+import { waitingLoginCard } from "./login";
 import { refsOf } from "./entity-text";
+import { joinedRefusal, readTab, tabMarker, tabUnreadOf, withTab, type RoomTab } from "./rooms";
+import { moveQueued, withoutQueued } from "./session";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
 import { runEnded } from "./work-log";
@@ -23,15 +26,24 @@ import type {
   FileUsage,
   JobDetail,
   IncomingInvite,
+  LiveFrame,
   Limits,
   McpConnection,
   Me,
   Message,
   ModelList,
   NodePublic,
+  PeerRequest,
+  QueuedRun,
   Room,
+  Routine,
+  RoutineRun,
   RunStep,
   SearchResult,
+  SessionAction,
+  StatusCard,
+  TrustView,
+  WorkMode,
 } from "./types";
 
 export type Author = "all" | "people" | "nodes";
@@ -59,6 +71,33 @@ export const keys = {
   /** A run card's computer job, and its run's steps; both keyed by the job. */
   job: (jobId: string) => ["job", jobId] as const,
   runSteps: (jobId: string) => ["run-steps", jobId] as const,
+  /** An agent session: what runs now and its queue. */
+  session: (sessionId: string) => ["session", sessionId] as const,
+  /** My sessions (`GET /api/node/sessions`), by what was searched. */
+  sessions: (q: string) => ["sessions", q] as const,
+  /** The owner's routines, and one routine's runs. */
+  routines: ["routines"] as const,
+  routineRuns: (routineId: string) => ["routine-runs", routineId] as const,
+  /** A plan card with its steps' run cards (`GET /api/node/plans/:id`). */
+  plan: (planId: string) => ["plan", planId] as const,
+  /** A room with other people: status cards, my trust settings, my shareable items, its peer requests. */
+  roomStatus: (roomId: string) => ["room-status", roomId] as const,
+  trust: (roomId: string) => ["trust", roomId] as const,
+  shareable: (roomId: string) => ["shareable", roomId] as const,
+  requests: (roomId: string) => ["requests", roomId] as const,
+  /** The space that holds a room's work, its board, the pages it follows, its decisions, its steward and my preferences there. */
+  roomSpace: (roomId: string) => ["room-space", roomId] as const,
+  board: (roomId: string) => ["room-board", roomId] as const,
+  roomPages: (roomId: string) => ["room-pages", roomId] as const,
+  roomDecisions: (roomId: string) => ["room-decisions", roomId] as const,
+  steward: (roomId: string) => ["room-steward", roomId] as const,
+  roomPrefs: (roomId: string) => ["room-prefs", roomId] as const,
+  candidates: (roomId: string, q: string) => ["room-candidates", roomId, q] as const,
+  ownSpaces: ["own-spaces"] as const,
+  /** The latest picture of a run's browser tab (owner only). */
+  live: (jobId: string) => ["live", jobId] as const,
+  /** A node's own captures on my computers. */
+  nodeCaptures: (nodeId: string) => ["node-captures", nodeId] as const,
 };
 
 /** How often an active run on screen is read again. */
@@ -102,6 +141,12 @@ export function useActivity() {
   return useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), refetchInterval: 30_000 });
 }
 
+/** A run's open sign-in card, from the Needs me list the shell keeps fresh: no request of its own. */
+export function useRunLoginCard(jobId: string | null): Message | undefined {
+  const activity = useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), enabled: false });
+  return jobId ? waitingLoginCard(activity.data?.approvals ?? [], jobId) : undefined;
+}
+
 const messagesPath = (roomId: string, author: Author, extra = "") => `/api/node/rooms/${roomId}/messages?limit=${PAGE}${author === "all" ? "" : `&author=${author}`}${extra}`;
 
 async function fetchMessages(client: QueryClient, roomId: string, author: Author): Promise<Message[]> {
@@ -110,9 +155,9 @@ async function fetchMessages(client: QueryClient, roomId: string, author: Author
 }
 
 /** A room's newest messages; earlier pages loaded with `loadOlder` stay through refetches. */
-export function useMessages(roomId: string, author: Author = "all") {
+export function useMessages(roomId: string, author: Author = "all", enabled = true) {
   const client = useQueryClient();
-  return useQuery({ queryKey: keys.messages(roomId, author), queryFn: () => fetchMessages(client, roomId, author) });
+  return useQuery({ queryKey: keys.messages(roomId, author), queryFn: () => fetchMessages(client, roomId, author), enabled: enabled && Boolean(roomId) });
 }
 
 /** The room's loaded messages, fetching the newest page first when nothing is loaded yet. */
@@ -244,7 +289,8 @@ export function useReact() {
     onSuccess: (message) => putMessage(client, message),
     onError: (error, { message }) => {
       putMessage(client, message);
-      toastError(error);
+      const kind = client.getQueryData<Bootstrap>(keys.bootstrap)?.rooms.find((room) => room.id === message.roomId)?.kind;
+      toastError(joinedRefusal("react", error instanceof ApiError ? error.status : undefined, kind) ?? error);
     },
   });
 }
@@ -269,7 +315,10 @@ export function usePin(roomId: string) {
       putRoom(client, room);
       void client.invalidateQueries({ queryKey: keys.pins(roomId) });
     },
-    onError: toastError,
+    onError: (error) => {
+      const kind = client.getQueryData<Bootstrap>(keys.bootstrap)?.rooms.find((room) => room.id === roomId)?.kind;
+      toastError(joinedRefusal("pin", error instanceof ApiError ? error.status : undefined, kind) ?? error);
+    },
   });
 }
 
@@ -302,8 +351,8 @@ export function useSearch(q: string, roomId: string | null, author: Author) {
 }
 
 /** Ensemble's paired computers, with the folders each shares. */
-export function useDevices() {
-  return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), refetchInterval: 30_000 });
+export function useDevices(enabled = true) {
+  return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), enabled, refetchInterval: enabled ? 30_000 : false });
 }
 
 /** Ensemble's Needs me: run approvals and questions from agents. The stream's `node.needs` re-reads it at once; the poll is the fallback. */
@@ -327,6 +376,50 @@ export function useJob(jobId: string, options: { enabled: boolean; poll: boolean
   });
 }
 
+/** What the stream last said about each run's live view (`node.live`): when, and why it is paused. */
+const liveHeard = new Map<string, { when: number; at: string | null; paused: string | null }>();
+
+/**
+ * A working run's live view, while its card is on screen: read again when the stream says it changed,
+ * with a gentle poll as the fallback (every 3 s once the computer sends pictures; rarely before, or
+ * while the stream keeps up). Paused, the stream's reason shows when the API's headers cannot be read.
+ */
+export function useLiveView(jobId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.live(jobId),
+    queryFn: async ({ signal }): Promise<LiveFrame | null> => {
+      const frame = await liveFrame(jobId, signal);
+      const heard = liveHeard.get(jobId);
+      // Where the API's headers cannot be read, the stream's reason keeps a paused view paused.
+      if (!frame && heard?.paused && Date.now() - heard.when < 15_000) return { image: null, at: heard.at, tab: null, url: null, title: null, width: null, height: null, paused: heard.paused };
+      return frame;
+    },
+    enabled: Boolean(jobId) && enabled,
+    staleTime: 0,
+    gcTime: 60_000,
+    retry: false,
+    refetchInterval: (query) => {
+      const heard = liveHeard.get(jobId);
+      if (heard && Date.now() - heard.when < 10_000) return 12_000;
+      return query.state.data ? 3_000 : 15_000;
+    },
+  });
+}
+
+/** A node's own captures on my computers, newest first. */
+export function useNodeCaptures(nodeId: string, enabled = true) {
+  return useQuery({ queryKey: keys.nodeCaptures(nodeId), queryFn: () => evidence.ofNode(nodeId).then((rows) => [...rows].reverse()), enabled: Boolean(nodeId) && enabled, staleTime: 30_000 });
+}
+
+/** Sends or discards one held capture; its card settles when all of its files are answered. */
+export function useReleaseHeld() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; decision: "approve" | "discard" }) => evidence.release(input.id, input.decision),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["node-captures"] }),
+  });
+}
+
 /** The engine trace of a job's run: every tool call, thinking, message and the result. Read only while the work log is open. */
 export function useRunSteps(jobId: string, runId: string | null | undefined, enabled: boolean, poll: boolean) {
   return useQuery({
@@ -346,6 +439,100 @@ export function useStopJob() {
     mutationFn: (jobId: string) => api<void>(`/api/agent/jobs/${jobId}/stop`, { method: "POST" }),
     onSettled: (_data, _error, jobId) => void client.invalidateQueries({ queryKey: keys.job(jobId) }),
   });
+}
+
+/** An agent session: its status, what runs now and its queue. Read again every few seconds while `poll`. */
+export function useSession(sessionId: string | null | undefined, options: { enabled: boolean; poll: boolean }) {
+  return useQuery({
+    queryKey: keys.session(sessionId ?? ""),
+    queryFn: () => sessions.get(sessionId!),
+    enabled: Boolean(sessionId) && options.enabled,
+    refetchInterval: options.poll ? RUN_POLL_MS : false,
+    retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+  });
+}
+
+/** My sessions, most recently active first: read again on a session card's change and, gently, every 20 seconds while shown. */
+export function useSessionList(q: string) {
+  return useQuery({ queryKey: keys.sessions(q), queryFn: () => sessions.list(q), refetchInterval: 20_000, placeholderData: keepPreviousData });
+}
+
+/** Tells an agent session to queue, steer, replace or stop; the session and the run are read again after. */
+export function useSessionControl(sessionId: string, jobId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SessionAction) => sessions.control(sessionId, body),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: keys.session(sessionId) });
+      void client.invalidateQueries({ queryKey: ["sessions"] });
+      if (jobId) void client.invalidateQueries({ queryKey: keys.job(jobId) });
+    },
+  });
+}
+
+/** Hands a session to another node: the session and its card are read again, so the card says who manages it now. */
+export function useHandOver(sessionId: string, cardId?: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (nodeId: string) => sessions.handOver(sessionId, nodeId),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: keys.session(sessionId) });
+      void client.invalidateQueries({ queryKey: ["sessions"] });
+      rereadCards(client, [cardId]);
+    },
+  });
+}
+
+const sameOrder = (a: readonly QueuedRun[], b: readonly QueuedRun[]) => a.length === b.length && a.every((row, at) => row.jobId === b[at]!.jobId);
+
+/**
+ * A session's queue with its edits: a move or a cancel shows at once, goes back with the server's
+ * words when Ensemble refuses it, and gives way to Ensemble's queue once that shows the change (or
+ * after a few seconds). One edit at a time.
+ */
+export function useSessionQueue(sessionId: string, base: QueuedRun[]) {
+  const client = useQueryClient();
+  const [pending, setPending] = useState<{ queue: QueuedRun[]; settled: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const baseKey = base.map((row) => row.jobId).join(",");
+  const baseRef = useRef(base);
+  baseRef.current = base;
+  useEffect(() => {
+    if (!pending?.settled) return;
+    if (sameOrder(baseRef.current, pending.queue)) {
+      setPending(null);
+      return;
+    }
+    const timer = setTimeout(() => setPending(null), 8000);
+    return () => clearTimeout(timer);
+  }, [baseKey, pending]);
+  const queue = pending?.queue ?? base;
+  const busy = Boolean(pending && !pending.settled);
+  const apply = async (next: QueuedRun[], call: () => Promise<unknown>) => {
+    setError(null);
+    setPending({ queue: next, settled: false });
+    try {
+      await call();
+      setPending({ queue: next, settled: true });
+      void client.invalidateQueries({ queryKey: keys.session(sessionId) });
+    } catch (failure) {
+      setPending(null);
+      setError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+  return {
+    queue,
+    busy,
+    error,
+    move(jobId: string, delta: -1 | 1) {
+      const next = busy ? null : moveQueued(queue, jobId, delta);
+      if (next) void apply(next, () => sessions.reorder(sessionId, next.map((row) => row.jobId)));
+    },
+    cancel(jobId: string) {
+      if (busy) return;
+      void apply(withoutQueued(queue, jobId), () => sessions.cancel(sessionId, jobId));
+    },
+  };
 }
 
 /** After an answer: Needs me, and the run that waited on it. */
@@ -385,30 +572,315 @@ export function useConnectors() {
   return useQuery({ queryKey: keys.connectors, queryFn: () => api<{ entries: ConnectorEntry[] }>("/api/connectors/catalog").then((result) => result.entries), staleTime: 60_000 });
 }
 
+/** The owner's routines, with when each runs next and its newest runs. The event stream (`node.routine`) reads them again when one changes or starts a run; the slow poll only catches up. */
+export function useRoutines(enabled = true) {
+  return useQuery({ queryKey: keys.routines, queryFn: routines.list, enabled, refetchInterval: 5 * 60_000 });
+}
+
+/** A routine's runs, newest first, while its history is open. */
+export function useRoutineRuns(routineId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.routineRuns(routineId), queryFn: () => routines.runs(routineId), enabled, refetchInterval: enabled ? 5 * 60_000 : false });
+}
+
+/** A plan card with its steps' run cards, which are not in the timeline; the event stream keeps both current once read. */
+export function usePlan(planId: string | null | undefined, enabled = true) {
+  return useQuery({
+    queryKey: keys.plan(planId ?? ""),
+    queryFn: () => planById(planId!),
+    enabled: Boolean(planId) && enabled,
+    retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+  });
+}
+
+/** Every person's status card in a room with other people (presence, away, their work at the detail they chose). Read again each minute while shown. */
+/** Everyone's status card here; `node.presence` and `node.cards` read them again when someone's changes. */
+export function useRoomStatus(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomStatus(roomId), queryFn: () => peopleRooms.status(roomId), enabled });
+}
+
+/** The room's space as I see it, with my offer to join it; `node.room` reads it again when it is linked or unlinked. */
+export function useRoomSpace(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomSpace(roomId), queryFn: () => roomWork.space(roomId), enabled, staleTime: 30_000 });
+}
+
+/** The room's board, for people in its space; read again on `node.room`, and now and then while it is shown. */
+export function useRoomBoard(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.board(roomId), queryFn: () => roomWork.board(roomId), enabled, refetchInterval: enabled ? 60_000 : false });
+}
+
+export function useRoomPages(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomPages(roomId), queryFn: () => roomWork.pages(roomId), enabled });
+}
+
+export function useRoomDecisions(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomDecisions(roomId), queryFn: () => roomWork.decisions(roomId), enabled });
+}
+
+export function useSteward(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.steward(roomId), queryFn: () => roomWork.steward(roomId), enabled });
+}
+
+export function useRoomPrefs(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.roomPrefs(roomId), queryFn: () => roomWork.prefs(roomId), enabled });
+}
+
+/** The spaces I own: any of them can hold a room's work. */
+export function useOwnSpaces(enabled: boolean) {
+  return useQuery({ queryKey: keys.ownSpaces, queryFn: ownSpaces, enabled, staleTime: 60_000 });
+}
+
+/** Pages, tasks and files of mine and of the room's space, to mark shareable or to give a role. */
+export function useShareCandidates(roomId: string, q: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.candidates(roomId, q), queryFn: () => peopleRooms.candidates(roomId, q), enabled, staleTime: 30_000, placeholderData: keepPreviousData });
+}
+
+/** Everything the room's space shows, read again (a link changed, a page's role, a decision). */
+export function refreshRoomWork(client: QueryClient, roomId: string) {
+  for (const key of [keys.roomSpace(roomId), keys.board(roomId), keys.roomPages(roomId), keys.roomDecisions(roomId), keys.steward(roomId)]) void client.invalidateQueries({ queryKey: key });
+}
+
+/** Linking the room's space (its creator), unlinking it, and my answer to the offer to join it. */
+export function useSpaceActions(roomId: string) {
+  const client = useQueryClient();
+  const settle = (view?: unknown) => {
+    if (view && typeof view === "object" && "space" in view) client.setQueryData(keys.roomSpace(roomId), view);
+    refreshRoomWork(client, roomId);
+    void client.invalidateQueries({ queryKey: keys.bootstrap });
+  };
+  return {
+    link: useMutation({ mutationFn: (body: Parameters<typeof roomWork.link>[1]) => roomWork.link(roomId, body), onSuccess: settle }),
+    unlink: useMutation({ mutationFn: () => roomWork.unlink(roomId), onSuccess: () => settle() }),
+    join: useMutation({
+      mutationFn: (input: { join: boolean; cardId?: string | null }) => roomWork.join(roomId, input.join),
+      onSuccess: (view, input) => {
+        settle(view);
+        rereadCards(client, [input.cardId]);
+      },
+    }),
+  };
+}
+
+/** A page's role (contract, decisions log, watched) and whether I watch it. */
+export function usePageActions(roomId: string) {
+  const client = useQueryClient();
+  const put = (pages: Awaited<ReturnType<typeof roomWork.pages>>) => client.setQueryData(keys.roomPages(roomId), pages);
+  return {
+    role: useMutation({ mutationFn: (input: { pageId: string; role: Parameters<typeof roomWork.setPageRole>[2] }) => roomWork.setPageRole(roomId, input.pageId, input.role), onSuccess: put }),
+    watch: useMutation({ mutationFn: (input: { pageId: string; watching: boolean }) => roomWork.watchPage(roomId, input.pageId, input.watching), onSuccess: put }),
+  };
+}
+
+/** One of my nodes as the room's steward, or none. */
+export function useStewardActions(roomId: string) {
+  const client = useQueryClient();
+  const done = () => {
+    void client.invalidateQueries({ queryKey: keys.steward(roomId) });
+    void client.invalidateQueries({ queryKey: keys.bootstrap });
+  };
+  return {
+    set: useMutation({ mutationFn: (nodeId: string) => roomWork.setSteward(roomId, nodeId), onSuccess: (steward) => (client.setQueryData(keys.steward(roomId), steward), done()) }),
+    end: useMutation({ mutationFn: () => roomWork.endSteward(roomId), onSuccess: () => (client.setQueryData(keys.steward(roomId), null), done()) }),
+  };
+}
+
+export function useSetRoomPrefs(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: (body: Parameters<typeof roomWork.setPrefs>[1]) => roomWork.setPrefs(roomId, body), onSuccess: (prefs) => client.setQueryData(keys.roomPrefs(roomId), prefs) });
+}
+
+/** Starts one of my tasks on the room's board; my lead plans it in My crew (409 while my lead here is paused). */
+export function useStartTask(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { taskId: string; mode: Parameters<typeof roomWork.startTask>[2] }) => roomWork.startTask(roomId, input.taskId, input.mode),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.board(roomId) }),
+  });
+}
+
+/** Says no to a task proposed to me on the room's board; whoever asked hears so privately, with my note. */
+export function useDeclineTask(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { taskId: string; note?: string }) => roomWork.declineTask(roomId, input.taskId, input.note),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.board(roomId) }),
+  });
+}
+
+export function useTrust(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.trust(roomId), queryFn: () => peopleRooms.trust(roomId), enabled });
+}
+
+export function useShareable(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.shareable(roomId), queryFn: () => peopleRooms.shareable(roomId), enabled });
+}
+
+/** A room's peer requests as I may see them; `node.request` reads them again when one changes. */
+export function useRoomRequests(roomId: string, enabled: boolean) {
+  return useQuery({ queryKey: keys.requests(roomId), queryFn: () => peopleRooms.requests(roomId), enabled });
+}
+
+/** Cards that changed after a decision: read again at once, so the page does not wait for the event stream. */
+function rereadCards(client: QueryClient, ids: ReadonlyArray<string | null | undefined>) {
+  for (const id of new Set(ids.filter((row): row is string => Boolean(row)))) void messageById(id).then((message) => putMessage(client, message), () => undefined);
+}
+
+/** Accepts (optionally edited, optionally always), declines (with a note) or cancels a peer request. */
+export function usePeerDecision(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { requestId: string; action: "accept" | "decline" | "cancel"; text?: string; always?: boolean; note?: string; cardId?: string; mode?: WorkMode }) =>
+      input.action === "accept"
+        ? peerRequests.accept(input.requestId, { ...(input.text ? { text: input.text } : {}), ...(input.always ? { always: true } : {}), ...(input.mode ? { mode: input.mode } : {}) })
+        : input.action === "decline"
+          ? peerRequests.decline(input.requestId, input.note ? { note: input.note } : {})
+          : peerRequests.cancel(input.requestId),
+    onSuccess: (request, input) => {
+      client.setQueryData<PeerRequest[]>(keys.requests(roomId), (current) => current?.map((row) => (row.id === request.id ? { ...row, ...request } : row)));
+      void client.invalidateQueries({ queryKey: keys.requests(roomId) });
+      // Its proposed task follows the request on the room's board; Needs me loses the card.
+      if (request.taskId) void client.invalidateQueries({ queryKey: keys.board(roomId) });
+      void client.invalidateQueries({ queryKey: keys.activity });
+      rereadCards(client, [request.cardId, request.ownerCardId, input.cardId]);
+    },
+  });
+}
+
+/** Asks another person here something, through their lead: its public card comes back at once. */
+export function useCreateRequest(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof peopleRooms.request>[1]) => peopleRooms.request(roomId, body),
+    onSuccess: (request) => {
+      client.setQueryData<PeerRequest[]>(keys.requests(roomId), (current) => (current ? [request, ...current.filter((row) => row.id !== request.id)] : current));
+      void client.invalidateQueries({ queryKey: keys.requests(roomId) });
+      rereadCards(client, [request.cardId]);
+    },
+  });
+}
+
+/** Share to room: the copy lands in the Room at once. */
+export function useShareToRoom() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { messageId: string; as: "me" | "lead" }) => shareToRoom(input.messageId, input.as),
+    onSuccess: (message) => putMessage(client, message),
+  });
+}
+
+/** I am away (until a time, with a note) or back: my card changes at once. */
+export function useSetAway(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof peopleRooms.setAway>[1]) => peopleRooms.setAway(roomId, body),
+    onSuccess: (card) => client.setQueryData<StatusCard[]>(keys.roomStatus(roomId), (current) => (current ? current.map((row) => (row.accountId === card.accountId ? card : row)) : [card])),
+  });
+}
+
+export function useSetTrust(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof peopleRooms.setTrust>[1]) => peopleRooms.setTrust(roomId, body),
+    onSuccess: (trust) => client.setQueryData<TrustView>(keys.trust(roomId), trust),
+  });
+}
+
+export function useSetShareable(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof peopleRooms.setShareable>[1]) => peopleRooms.setShareable(roomId, body),
+    onSuccess: (items) => client.setQueryData(keys.shareable(roomId), items),
+  });
+}
+
+function putRoutine(client: QueryClient, routine: Routine) {
+  client.setQueryData<Routine[]>(keys.routines, (list) => (list ? (list.some((row) => row.id === routine.id) ? list.map((row) => (row.id === routine.id ? routine : row)) : [...list, routine]) : list));
+}
+
+/**
+ * What the routines list does to a routine: pause or resume it (at once, put back when Ensemble
+ * refuses), run it now, delete it and give its webhook a new token. Each reads the list again after.
+ */
+export function useRoutineActions() {
+  const client = useQueryClient();
+  const refresh = (id: string) => {
+    void client.invalidateQueries({ queryKey: keys.routines });
+    void client.invalidateQueries({ queryKey: keys.routineRuns(id) });
+  };
+  return {
+    /** The saved routine, in the list at once; for a form that made or changed it. */
+    saved(routine: Routine) {
+      putRoutine(client, routine);
+      refresh(routine.id);
+    },
+    async setStatus(routine: Routine, status: Routine["status"]) {
+      const before = client.getQueryData<Routine[]>(keys.routines);
+      putRoutine(client, { ...routine, status, ...(status === "paused" ? { nextRunAt: null } : {}) });
+      try {
+        putRoutine(client, await routines.update(routine.id, { status }));
+      } catch (error) {
+        if (before) client.setQueryData(keys.routines, before);
+        throw error;
+      } finally {
+        refresh(routine.id);
+      }
+    },
+    async runNow(routine: Routine): Promise<RoutineRun> {
+      const run = await routines.run(routine.id);
+      client.setQueryData<RoutineRun[]>(keys.routineRuns(routine.id), (list) => (list ? [run, ...list.filter((row) => row.id !== run.id)] : list));
+      putRoutine(client, { ...routine, runs: [run, ...routine.runs.filter((row) => row.id !== run.id)].slice(0, 5) });
+      refresh(routine.id);
+      return run;
+    },
+    async remove(routine: Routine) {
+      await routines.remove(routine.id);
+      client.setQueryData<Routine[]>(keys.routines, (list) => list?.filter((row) => row.id !== routine.id));
+      client.removeQueries({ queryKey: keys.routineRuns(routine.id) });
+    },
+    async newToken(routine: Routine): Promise<string> {
+      const token = await routines.token(routine.id);
+      putRoutine(client, { ...routine, webhook: routine.webhook ? { ...routine.webhook, hasToken: true } : routine.webhook });
+      refresh(routine.id);
+      return token;
+    },
+  };
+}
+
 export function useMcpConnections() {
   return useQuery({ queryKey: keys.mcp, queryFn: () => api<{ connections: McpConnection[] }>("/api/mcp-connections").then((result) => result.connections), staleTime: 60_000 });
 }
 
 const readTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-/** Marks a room read up to seq, at most once a second. */
-export function markRead(client: QueryClient, roomId: string, seq: number) {
+/**
+ * Marks a room read up to seq, at most once a second. In a room with other people a tab is read on its
+ * own (`tab`: the Room, or My crew), with what stays unread there (`left`).
+ */
+export function markRead(client: QueryClient, roomId: string, seq: number, left = 0, tab?: RoomTab) {
   const boot = client.getQueryData<Bootstrap>(keys.bootstrap);
   const room = boot?.rooms.find((row) => row.id === roomId);
-  if (!room || (room.readSeq ?? 0) >= seq) return;
-  const key = `${boot?.me.id}:${roomId}`;
-  if (!confirmedReads.has(key)) confirmedReads.set(key, room.readSeq ?? 0);
+  if (!room) return;
+  const marker = tab ? tabMarker(room, tab) : (room.readSeq ?? 0);
+  if (marker >= seq) return;
+  const key = `${boot?.me.id}:${roomId}${tab ? `:${tab}` : ""}`;
+  if (!confirmedReads.has(key)) confirmedReads.set(key, marker);
+  const before = tab ? tabUnreadOf(room)[tab] : (room.unread ?? 0);
   client.setQueryData<Bootstrap>(keys.bootstrap, (current) =>
-    current ? { ...current, rooms: current.rooms.map((row) => (row.id === roomId ? { ...row, readSeq: seq, unread: 0 } : row)) } : current,
+    current ? { ...current, rooms: current.rooms.map((row) => (row.id === roomId ? (tab ? readTab(row, tab, seq, left) : { ...row, readSeq: seq, unread: left }) : row)) } : current,
   );
   clearTimeout(readTimers.get(key));
   readTimers.set(key, setTimeout(() => {
     readTimers.delete(key);
-    void api(`/api/node/rooms/${roomId}/read`, { body: { seq } }).then(() => {
+    void api(`/api/node/rooms/${roomId}/read`, { body: tab ? { tab, upTo: seq } : { seq } }).then(() => {
       confirmedReads.set(key, Math.max(confirmedReads.get(key) ?? 0, seq));
     }).catch(error => {
+      const confirmed = confirmedReads.get(key) ?? 0;
       client.setQueryData<Bootstrap>(keys.bootstrap, current => current ? {
-        ...current, rooms: current.rooms.map(row => row.id === roomId && row.readSeq === seq ? { ...row, readSeq: confirmedReads.get(key) ?? 0, unread: room.unread } : row),
+        ...current,
+        rooms: current.rooms.map(row => {
+          if (row.id !== roomId) return row;
+          if (tab) return tabMarker(row, tab) === seq ? withTab(row, tab, confirmed, before) : row;
+          return row.readSeq === seq ? { ...row, readSeq: confirmed, unread: room.unread } : row;
+        }),
       } : current);
       void client.invalidateQueries({ queryKey: keys.bootstrap });
       toastError(error);
@@ -429,10 +901,38 @@ export function useNodeEvents(enabled: boolean) {
         void client.invalidateQueries({ queryKey: keys.bootstrap });
       }, 600);
     };
+    // A routine run's card changed: its routine's next and last runs, and its history, read again (once per burst).
+    const changedRoutines = new Set<string>();
+    let routineTimer: ReturnType<typeof setTimeout> | null = null;
+    const laterRoutine = (routineId: string) => {
+      changedRoutines.add(routineId);
+      if (routineTimer) return;
+      routineTimer = setTimeout(() => {
+        routineTimer = null;
+        void client.invalidateQueries({ queryKey: keys.routines });
+        for (const id of changedRoutines) void client.invalidateQueries({ queryKey: keys.routineRuns(id) });
+        changedRoutines.clear();
+      }, 800);
+    };
+    // A session's card changed: the session list is read again (once per burst; only while it is shown).
+    let sessionsTimer: ReturnType<typeof setTimeout> | null = null;
+    const laterSessions = () => {
+      if (sessionsTimer) return;
+      sessionsTimer = setTimeout(() => {
+        sessionsTimer = null;
+        void client.invalidateQueries({ queryKey: ["sessions"] });
+      }, 800);
+    };
     const source = new EventSource(eventsUrl(), { withCredentials: true });
     const onMessage = (event: MessageEvent<string>) => {
       const message = JSON.parse(event.data) as Message;
       putMessage(client, message);
+      // A plan read with its run cards follows their changes too.
+      if (message.kind === "plan") client.setQueryData<{ message: Message; runs: Message[] }>(keys.plan(message.id), (current) => (current ? { ...current, message } : current));
+      if (message.planId) client.setQueryData<{ message: Message; runs: Message[] }>(keys.plan(message.planId), (current) => (current ? { ...current, runs: mergeMessage(current.runs, message) } : current));
+      if (message.kind === "plan" && typeof message.data?.routine?.id === "string") laterRoutine(message.data.routine.id);
+      // A plan for a task of a room's board shows on its row (`plan`, mine only): the board reads it again.
+      if (message.kind === "plan" && message.private) void client.invalidateQueries({ queryKey: keys.board(message.roomId) });
       if (message.authorNodeId) live.posted(message.roomId, message.authorNodeId);
       if (message.kind === "approval" || message.kind === "run") void client.invalidateQueries({ queryKey: keys.activity });
       // A run card changed: its open view reads the job (and the work log, when open) again.
@@ -440,25 +940,63 @@ export function useNodeEvents(enabled: boolean) {
         void client.invalidateQueries({ queryKey: keys.job(message.data.jobId) });
         void client.invalidateQueries({ queryKey: keys.runSteps(message.data.jobId) });
       }
+      if (message.kind === "run" && typeof message.data?.session?.id === "string") {
+        void client.invalidateQueries({ queryKey: keys.session(message.data.session.id) });
+        laterSessions();
+      }
       later();
     };
     source.addEventListener("node.message", onMessage as EventListener);
     source.addEventListener("node.message.updated", onMessage as EventListener);
     source.addEventListener("node.status", ((event: MessageEvent<string>) => {
-      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; state: string };
-      live.status(data.roomId, data.nodeId, data.state === "thinking");
+      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; state: string; private?: boolean };
+      // `private`: the reply is for its owner's My crew in a room with other people.
+      live.status(data.roomId, data.nodeId, data.state === "thinking", typeof data.private === "boolean" ? data.private : undefined);
       if (data.state !== "thinking") void client.invalidateQueries({ queryKey: keys.activity });
     }) as EventListener);
     source.addEventListener("node.frame", ((event: MessageEvent<string>) => {
-      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; showIds?: boolean; frame: { type: string; text?: string; refs?: unknown; call?: LiveCall } };
+      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; showIds?: boolean; private?: boolean; frame: { type: string; text?: string; refs?: unknown; call?: LiveCall } };
+      if (typeof data.private === "boolean") live.place(data.roomId, data.nodeId, data.private);
       if (data.frame.type === "delta" && data.frame.text) live.delta(data.roomId, data.nodeId, data.frame.text);
       else if (data.frame.type === "refs") live.refs(data.roomId, data.nodeId, refsOf(data.frame.refs), data.showIds === true);
       else if (data.frame.call) live.tool(data.roomId, data.nodeId, data.frame.call);
     }) as EventListener);
     source.addEventListener("node.room", ((event: MessageEvent<string>) => {
       const data = JSON.parse(event.data || "{}") as { roomId?: string };
-      if (data.roomId) void client.invalidateQueries({ queryKey: keys.pins(data.roomId) });
+      if (data.roomId) {
+        void client.invalidateQueries({ queryKey: keys.pins(data.roomId) });
+        // Its space was linked or unlinked, a page given a role, a steward set: what the room's work shows is read again.
+        refreshRoomWork(client, data.roomId);
+      }
       later();
+    }) as EventListener);
+    // Someone's presence or status card changed in a room with other people: its cards are read again (no content in the event).
+    const cardsChanged = ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { roomId?: string };
+      if (typeof data.roomId === "string") void client.invalidateQueries({ queryKey: keys.roomStatus(data.roomId) });
+    }) as EventListener;
+    source.addEventListener("node.presence", cardsChanged);
+    source.addEventListener("node.cards", cardsChanged);
+    // A routine changed or started a run: its list and history are read again (no content in the event).
+    source.addEventListener("node.routine", ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { id?: string };
+      if (typeof data.id === "string") laterRoutine(data.id);
+      else void client.invalidateQueries({ queryKey: keys.routines });
+    }) as EventListener);
+    // A peer request changed in a room: its list is read again; its card comes as a message update.
+    source.addEventListener("node.request", ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { roomId?: string };
+      if (typeof data.roomId === "string") void client.invalidateQueries({ queryKey: keys.requests(data.roomId) });
+    }) as EventListener);
+    // A run's live view changed (owner only): its picture is read again, or it shows why it paused.
+    source.addEventListener("node.live", ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { jobId?: unknown; at?: unknown; paused?: unknown };
+      if (typeof data.jobId !== "string") return;
+      const paused = typeof data.paused === "string" && data.paused ? data.paused : null;
+      const at = typeof data.at === "string" ? data.at : null;
+      liveHeard.set(data.jobId, { when: Date.now(), at, paused });
+      if (paused) client.setQueryData<LiveFrame | null>(keys.live(data.jobId), (current) => ({ image: null, at, tab: current?.tab ?? null, url: current?.url ?? null, title: current?.title ?? null, width: null, height: null, paused }));
+      else void client.invalidateQueries({ queryKey: keys.live(data.jobId) });
     }) as EventListener);
     // Needs me changed (a run asks, or a card was answered somewhere): re-read it now, not at the next poll.
     source.addEventListener("node.needs", () => {
@@ -474,6 +1012,14 @@ export function useNodeEvents(enabled: boolean) {
     source.onopen = () => {
       if (opened) {
         void client.invalidateQueries({ queryKey: ["messages"] });
+        void client.invalidateQueries({ queryKey: ["plan"] });
+        void client.invalidateQueries({ queryKey: ["requests"] });
+        void client.invalidateQueries({ queryKey: ["sessions"] });
+        void client.invalidateQueries({ queryKey: ["live"] });
+        void client.invalidateQueries({ queryKey: ["room-status"] });
+        void client.invalidateQueries({ queryKey: ["room-space"] });
+        void client.invalidateQueries({ queryKey: ["room-board"] });
+        void client.invalidateQueries({ queryKey: keys.routines });
         void client.invalidateQueries({ queryKey: keys.invites });
         void client.invalidateQueries({ queryKey: keys.approvals });
         void client.invalidateQueries({ queryKey: keys.decisions });
@@ -484,6 +1030,8 @@ export function useNodeEvents(enabled: boolean) {
     return () => {
       source.close();
       if (refresh.current) clearTimeout(refresh.current);
+      if (routineTimer) clearTimeout(routineTimer);
+      if (sessionsTimer) clearTimeout(sessionsTimer);
     };
   }, [client, enabled]);
 }

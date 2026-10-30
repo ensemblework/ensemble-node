@@ -1,4 +1,5 @@
 "use client";
+/** @jsxRuntime automatic */
 
 /**
  * Code blocks in replies (language label, copy, horizontal scroll) and a small copy button.

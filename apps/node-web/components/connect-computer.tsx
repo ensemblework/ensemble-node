@@ -1,7 +1,9 @@
 "use client";
 
-import { Folder, Laptop, Monitor } from "lucide-react";
-import { ENSEMBLE_LINKS } from "@/lib/config";
+import { Camera, Folder, Laptop, Monitor } from "lucide-react";
+import { Fragment } from "react";
+import { captureLine } from "@/lib/captures";
+import { CLI_COMMAND, ENSEMBLE_LINKS } from "@/lib/config";
 import { ago } from "@/lib/text";
 import type { Computer, Device } from "@/lib/types";
 import { External, Pill } from "./ui";
@@ -22,7 +24,30 @@ export function ComputerList({ computers }: { computers: Computer[] }) {
   );
 }
 
-/** Ensemble's paired computers with the folders each shares with Ensemble. */
+const code = (command: string) => <code className="rounded bg-raised px-1">{command}</code>;
+
+/** Whether nodes can browse and capture on a computer, or what to do there first (docs/25 §10.3). */
+function CaptureLine({ device }: { device: Device }) {
+  const line = captureLine(device, CLI_COMMAND);
+  const command = "command" in line ? line.command : undefined;
+  const parts = line.state === "setup" && command ? line.text.split(command) : [line.text];
+  return (
+    <p className={`mt-1 flex items-start gap-1.5 text-xs ${line.state === "ready" ? "text-muted" : "text-warn"}`} data-capture={line.state}>
+      <Camera size={12} className="mt-0.5 shrink-0" aria-hidden />
+      <span>
+        {parts.map((part, at) => (
+          <Fragment key={at}>
+            {at && command ? code(command) : null}
+            {part}
+          </Fragment>
+        ))}
+        {line.state === "ready" && command ? <> {code(command)} there adds more.</> : null}
+      </span>
+    </p>
+  );
+}
+
+/** Ensemble's paired computers with the folders each shares with Ensemble, its secret key and what it can capture. */
 export function DeviceList({ devices }: { devices: Device[] }) {
   if (!devices.length) return <p className="text-sm text-muted">No computer is paired yet.</p>;
   return (
@@ -38,6 +63,18 @@ export function DeviceList({ devices }: { devices: Device[] }) {
           <p className="mt-0.5 text-xs text-muted">
             {[device.platform, device.appVersion ? `Ensemble ${device.appVersion}` : null, device.online ? null : device.lastSeenAt ? `last seen ${ago(device.lastSeenAt)} ago` : "not seen yet"].filter(Boolean).join(" · ")}
           </p>
+          <p className="mt-1 text-xs text-muted" data-seal-key={device.sealKeyMismatch ? "mismatch" : device.sealKey?.kid ?? "none"}>
+            {device.sealKeyMismatch ? (
+              <span className="text-danger">Its secret key changed since it was paired: secrets are not sent to it until you pair it again ({CLI_COMMAND} login).</span>
+            ) : device.sealKey ? (
+              <>
+                Secret key <span className="font-mono">{device.sealKey.fingerprint}</span>: secrets you type here are encrypted for it. It should match <code className="rounded bg-raised px-1">{CLI_COMMAND} secrets fingerprint</code> there.
+              </>
+            ) : (
+              "Secrets go over HTTPS through Ensemble's server: update Ensemble there for end-to-end encryption."
+            )}
+          </p>
+          <CaptureLine device={device} />
           <div className="mt-2 flex flex-wrap gap-1.5">
             {device.folders.length ? (
               device.folders.map((folder) => (

@@ -20,6 +20,9 @@ test("direct chats and groups sort together by latest interaction, without mutat
   assert.deepEqual(recentConversations(list, "groups").map(row => row.id), ["room", "crew"]);
   assert.deepEqual(recentConversations(list, "unread").map(row => row.id), ["crew"]);
   assert.deepEqual(recentConversations(list, "all", "CREW").map(row => row.id), ["crew"]);
+  const withHelper = [...list, room("helper", "task", "2026-10-27T09:00:00Z", 3)];
+  assert.deepEqual(recentConversations(withHelper).map(row => row.id), ["room", "crew", "old", "empty"], "a helper's room shows in its parent's chat, not the list");
+  assert.deepEqual(recentConversations(withHelper, "unread").map(row => row.id), ["crew"]);
 });
 
 test("new messages update the preview and unread once; reactions and earlier edits never reorder or double-count", () => {
@@ -64,4 +67,16 @@ test("a bootstrap refresh cannot restore an unread badge after reading or erase 
   const live = roomWithMessage(read, message("New reply", 11), "me");
   assert.equal(mergeConversationSnapshot([live], [old])[0]?.last?.body, "New reply");
   assert.equal(mergeConversationSnapshot([live], [old])[0]?.unread, 1);
+});
+
+test("a room with other people counts each tab on its own, live and across a bootstrap refresh", () => {
+  const people: Room = { ...room("launch", "room", "2026-10-25"), lastSeq: 10, readSeq: 10, readSeqCrew: 10, unread: 0, unreadRoom: 0, unreadCrew: 0 };
+  const shared = roomWithMessage(people, message("In the room", 11), "me");
+  const mine = roomWithMessage(shared, { ...message("For you", 12), private: true }, "me");
+  assert.deepEqual([mine.unreadRoom, mine.unreadCrew, mine.unread], [1, 1, 2]);
+  const crewRead = { ...mine, readSeqCrew: 12, unreadCrew: 0, unread: 1 };
+  const merged = mergeConversationSnapshot([crewRead], [{ ...people, lastSeq: 12, unreadRoom: 1, unreadCrew: 1, unread: 2 }])[0]!;
+  assert.deepEqual([merged.readSeqCrew, merged.unreadCrew, merged.unreadRoom, merged.unread], [12, 0, 1, 1], "a slower refresh does not bring My crew's badge back");
+  const dm = roomWithMessage(room("dm", "dm", null), message("Hi", 11), "me");
+  assert.equal(dm.unreadRoom, undefined, "a chat has one thread");
 });

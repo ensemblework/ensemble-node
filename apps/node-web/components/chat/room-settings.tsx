@@ -3,20 +3,36 @@
 import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Check, Crown, Download, LogOut, MailPlus, Plus, Trash2, UserMinus, X } from "lucide-react";
+import { Check, Crown, Download, Handshake, LogOut, MailPlus, Plus, ShieldCheck, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { keys, limitsOf, putRoom } from "@/lib/hooks";
+import { ENSEMBLE_LINKS } from "@/lib/config";
+import { keys, limitsOf, putRoom, useRoomRequests, useRoomStatus } from "@/lib/hooks";
+import { awayLine, presenceBadge, requestKind, requestState, requestUndecided } from "@/lib/rooms";
 import { ago } from "@/lib/text";
+import { grantLabel, helperThread } from "@/lib/threads";
 import { toast } from "@/lib/toast";
-import type { Bootstrap, Member, NodeFull, Room, RoomInvite } from "@/lib/types";
+import type { Bootstrap, Member, NodeFull, NodePublic, Room, RoomInvite } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { NodeSettings } from "../node-settings";
-import { Button, Drawer, Field, Input, Notice, Pill } from "../ui";
+import { Button, Drawer, External, Field, Input, Notice, Pill } from "../ui";
+import { useKeepHelper } from "./helper-thread";
+import { PresenceDot } from "./room-cards";
+import { MyStatus } from "./room-people";
+import { SpaceSettings, StewardSettings, WorkPrefs } from "./room-space";
 
 type NodeMember = Extract<Member, { kind: "node" }>;
 type PersonMember = Extract<Member, { kind: "person" }>;
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+function KeepHelperButton({ helper }: { helper: NodePublic }) {
+  const { keep, keeping } = useKeepHelper(helper);
+  return (
+    <Button tone="ghost" busy={keeping} onClick={() => void keep()}>
+      <UserPlus size={15} /> Keep as a node
+    </Button>
+  );
+}
 
 function Section({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -70,9 +86,32 @@ function InviteRow({ invite, onWithdraw, busy }: { invite: RoomInvite; onWithdra
   );
 }
 
-/** Settings for a conversation: a DM's node, a crew's nodes and lead, a room's people, nodes and requests to join. */
-export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Room; boot: Bootstrap; open: boolean; onClose: () => void; onExport: () => void }) {
+/**
+ * Settings for a conversation: a DM's node, a crew's nodes and lead, a room's people (here or away), their
+ * nodes, my status, my lead's rules, open requests and requests to join. `onPanel` opens a room's own
+ * sheets (what my lead may share, a new request) in its place; `onJump` goes to a card.
+ */
+export function RoomSettings({
+  room,
+  boot,
+  open,
+  onClose,
+  onExport,
+  onPanel,
+  onJump,
+}: {
+  room: Room;
+  boot: Bootstrap;
+  open: boolean;
+  onClose: () => void;
+  onExport: () => void;
+  onPanel?: (panel: "trust" | "request") => void;
+  onJump?: (messageId: string) => void;
+}) {
   const client = useQueryClient();
+  const people = room.kind === "room";
+  const status = useRoomStatus(room.id, open && people);
+  const requests = useRoomRequests(room.id, open && people);
   const router = useRouter();
   const me = boot.me.id;
   const limits = limitsOf(boot);
@@ -231,15 +270,19 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
   }
 
   if (room.kind === "task") {
-    const helper = nodeMembers.find((row) => Boolean(row.node.parentNodeId));
+    const thread = helperThread(room);
+    const helper = nodeMembers.find((row) => row.node.id === thread?.helper?.id) ?? nodeMembers.find((row) => Boolean(row.node.parentNodeId));
+    const kept = Boolean(thread?.kept || (helper && boot.nodes.some((node) => node.id === helper.node.id)));
+    const can = thread?.grant === "sessions" ? "It reads (your workspace, the web, connected apps) and may run its own coding-agent session on your computer." : thread?.grant === "computer" ? "It reads (your workspace, the web, connected apps) and may use your computer's tools." : "It only reads (your workspace, the web, connected apps) and changes nothing.";
     return (
       <Drawer open={open} onClose={onClose} title="About this helper">
         <div className="space-y-6">
-          <Section title="A helper's room" hint="A node brought in a temporary helper for one task. It only reads (your workspace, the web, connected apps), changes nothing, and reports to the node, which tells you. You read along here.">
-            <ul className="space-y-1.5">{nodeMembers.map((member) => nodeRow(member, member === helper ? <span className="px-2 text-xs text-muted">helper</span> : null))}</ul>
+          <Section title="A helper's room" hint={kept ? "A node brought in a helper for one task, and you kept it as a lasting node with its own chat. This room stays as its history." : `A node brought in a temporary helper for one task. ${can} It reports to the node, which tells you. You read along here.`}>
+            <ul className="space-y-1.5">{nodeMembers.map((member) => nodeRow(member, member === helper ? <span className="px-2 text-xs text-muted">{kept ? "kept" : `helper · ${grantLabel(thread?.grant ?? "read")}`}</span> : null))}</ul>
           </Section>
-          <p className="text-sm text-muted">The helper and this room go after 3 quiet days, or when you delete them.</p>
+          {kept ? null : <p className="text-sm text-muted">The helper and this room go after 3 quiet days, or when you delete them. Keep it as a node to have it for good.</p>}
           <section className="flex flex-wrap gap-2 border-t border-line pt-4">
+            {!kept && helper ? <KeepHelperButton helper={helper.node} /> : null}
             <Button tone="ghost" onClick={onExport}>
               <Download size={15} /> Export as Markdown
             </Button>
@@ -247,14 +290,15 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
               tone="danger"
               busy={busy === "delete"}
               onClick={() => {
-                if (!confirm(`Delete this helper and its room now?`)) return;
+                // A kept helper is a lasting node now: deleting its old room leaves the node.
+                if (!confirm(kept ? `Delete this room? ${helper ? `@${helper.handle} stays as your node.` : ""}`.trim() : "Delete this helper and its room now?")) return;
                 void act("delete", async () => {
                   await api(`/api/node/rooms/${room.id}`, { method: "DELETE" });
                   router.replace("/chat");
                 });
               }}
             >
-              <Trash2 size={15} /> Delete helper
+              <Trash2 size={15} /> {kept ? "Delete this room" : "Delete helper"}
             </Button>
           </section>
         </div>
@@ -323,11 +367,60 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
         {titleField}
         {error ? <Notice tone="error">{error}</Notice> : null}
 
+        <MyStatus roomId={room.id} meId={me} open={open} />
+
+        <Section title="Your lead here" hint="Only a lead answers in the Room, and only when someone names it. Your other nodes answer you in My crew. A message that names no node wakes nobody.">
+          <div className="flex flex-wrap gap-2">
+            <Button tone="ghost" onClick={() => onPanel?.("trust")}>
+              <ShieldCheck size={15} /> What your lead may share
+            </Button>
+            {peopleMembers.length > 1 ? (
+              <Button tone="ghost" onClick={() => onPanel?.("request")}>
+                <Handshake size={15} /> Ask someone here…
+              </Button>
+            ) : null}
+          </div>
+        </Section>
+
+        <SpaceSettings room={room} meId={me} open={open} />
+        {room.spaceId ? <WorkPrefs roomId={room.id} open={open} /> : null}
+        <StewardSettings room={room} meId={me} open={open} />
+
+        {(requests.data ?? []).some((row) => requestUndecided(row.status) && (row.from.accountId === me || row.to.accountId === me)) ? (
+          <Section title="Open requests" hint="Asked through a lead, waiting for an answer or a yes.">
+            <ul className="space-y-1.5">
+              {(requests.data ?? [])
+                .filter((row) => requestUndecided(row.status) && (row.from.accountId === me || row.to.accountId === me))
+                .map((row) => {
+                  const state = requestState(row.status, row.to.accountId === me ? "you" : row.to.name);
+                  const target = row.to.accountId === me && row.status === "awaiting_owner" && row.ownerCardId ? row.ownerCardId : row.cardId;
+                  return (
+                    <li key={row.id}>
+                      <button type="button" disabled={!target} onClick={() => target && onJump?.(target)} className="flex w-full items-start gap-2 rounded-xl border border-line bg-bg px-2.5 py-2 text-left text-sm hover:border-accent disabled:hover:border-line">
+                        <Handshake size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                            <span className="font-medium text-ink">{requestKind(row.kind)}</span>
+                            {row.from.accountId === me ? `to ${row.to.name}` : `from ${row.from.name}`}
+                            <Pill tone={state.tone}>{state.label}</Pill>
+                          </span>
+                          <span className="mt-0.5 block truncate">{row.text}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+          </Section>
+        ) : null}
+
         <Section title="People and their nodes" hint={`Each person brings 1–${limits.nodesPerPerson} of their own nodes; their lead answers for them. You only see other people's nodes by name and role.`}>
           <ul className="space-y-3">
             {peopleMembers.map((person) => {
               const theirs = nodeMembers.filter((row) => row.accountId === person.accountId);
               const mineNow = person.accountId === me;
+              const card = status.data?.find((row) => row.accountId === person.accountId);
+              const away = card?.away ? awayLine(card.away) : null;
               return (
                 <li key={person.id} className="space-y-1.5">
                   <div className="flex items-center gap-2">
@@ -335,9 +428,16 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5 text-sm font-medium">
                         {person.name}
+                        {card ? (
+                          <span title={presenceBadge(card.presence).label} className="inline-flex">
+                            <PresenceDot presence={card.presence} />
+                            <span className="sr-only">{presenceBadge(card.presence).label}</span>
+                          </span>
+                        ) : null}
                         {mineNow ? <Pill>you</Pill> : null}
                         {person.accountId === room.createdBy ? <Pill>made this room</Pill> : null}
                       </span>
+                      {away ? <span className="block truncate text-xs text-warn">{away}</span> : null}
                       {person.responsibility ? <span className="block truncate text-xs text-muted">Handles: {person.responsibility}</span> : null}
                     </span>
                     {creator && !mineNow ? (
@@ -416,7 +516,7 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
         {creator ? (
           <Section
             title="Requests to join"
-            hint={`Up to ${limits.roomPeople} people, counting open requests (${Math.max(0, seats)} left). Someone who declines can be asked again after ${limits.declineBlockDays} days. Only you see this list.`}
+            hint={`Up to ${limits.roomPeople} people (your own limit), counting open requests (${Math.max(0, seats)} left). Someone who declines can be asked again after ${limits.declineBlockDays} days. Only you see this list.`}
           >
             <div className="flex gap-2">
               <Input
@@ -432,6 +532,14 @@ export function RoomSettings({ room, boot, open, onClose, onExport }: { room: Ro
               </Button>
             </div>
             {inviteNote ? <Notice tone={inviteNote.tone}>{inviteNote.text}</Notice> : null}
+            {seats <= 0 ? (
+              <p className="text-xs text-muted">
+                This room is full for your limit.{" "}
+                <External href={ENSEMBLE_LINKS.sharing} icon className="text-accent hover:underline">
+                  Raise it in Ensemble&apos;s Settings › Sharing
+                </External>
+              </p>
+            ) : null}
             {room.invites.length ? (
               <ul className="space-y-1.5">
                 {room.invites.map((row) => (

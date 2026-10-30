@@ -15,4 +15,5 @@ Ensemble Node is a website for persistent AI teammates ("nodes"). You talk to th
 The backend's own guide is Ensemble's [`docs/35_ENSEMBLE_NODE.md`](https://github.com/ensemblework/ensemble/blob/main/docs/35_ENSEMBLE_NODE.md): routes, tables, routing, node turns, approvals, runs and tests.
 
 - [`research/`](research/): Grok Bot, ChatGPT Dots, the 2026 landscape and Ensemble foundations, as studied on 19 Oct 2026.
+- [`design/`](design/README.md): proposals, including [Reliable work before more agents](design/ensemble-node-runtime-plan.md), an evidence-based runtime plan covering coordination, verification, browser work and delivery.
 - [`design/pre-v0/`](design/pre-v0/): the first plan, written for a separate Node API. Superseded by v0's architecture, but kept for its ideas (autonomy levels, plans, routines, skills, peer requests).

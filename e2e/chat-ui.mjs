@@ -29,6 +29,18 @@ function fixture() {
   const message = (roomId, seq, body, human = false) => ({ id: `${roomId}-${seq}`, roomId, seq, body, kind: "text", authorKind: human ? "human" : "node", authorAccountId: "me", authorNodeId: human ? null : "scout", data: {}, private: false, mentions: [], rootMessageId: null, clientId: null, createdAt: stamp(1) });
   for (const row of rooms) {
     messages[row.id] = Array.from({ length: row.id === "dm" ? 40 : 3 }, (_, index) => message(row.id, index + 1, `Message ${index + 1}. ${"A thoughtful update from the project. ".repeat(7)}`, index % 2 === 0));
+    if (row.id === "dm") messages.dm[39].body = [
+      "## Assigned tasks",
+      "| Task | Owner | Status | Due date | Conversation | Notes |",
+      "| --- | :---: | --- | ---: | --- | --- |",
+      "| [Draft brief](/tasks/brief) | **@writer** | Ready | Tomorrow | [Launch crew](/r/crew) | Keep the project links working |",
+      "| [Review](https://example.com/review) | `team` | In progress | Friday | [Design room](/r/group) | Escaped \\| pipe |",
+      "",
+      "```text",
+      "| Not | a table |",
+      "| --- | --- |",
+      "```",
+    ].join("\n");
     row.lastSeq = messages[row.id].length;
     row.readSeq = row.lastSeq;
     row.last = { ...messages[row.id].at(-1), createdAt: row.lastMessageAt };
@@ -62,6 +74,7 @@ try {
       if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "access-control-allow-origin": WEB, "access-control-allow-credentials": "true", "access-control-allow-methods": "GET, POST, PATCH, DELETE", "access-control-allow-headers": "content-type, accept" } });
       if (path === "/api/auth/me") return json({ user: state.boot.me });
       if (path === "/api/node/bootstrap") return json(state.boot);
+      if (path === "/api/node/evidence") return json({ evidence: [] });
       if (path === "/api/node/activity") return json({ approvals: [], runs: [], turns: [], computers: [], credits: null });
       if (path === "/api/decisions") return json({ decisions: [] });
       if (path === "/api/approvals") return json({ approvals: [] });
@@ -70,6 +83,8 @@ try {
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
       if (path === "/api/agent/jobs/job") return json({ job: { id: "job", taskId: "task", title: "Build the landing page", kind: "code", status: "succeeded", provider: "copilot-cli", model: "gpt-6.1-sol", modelUsed: null, reasoningEffort: "high", progress: null, summary: "Updated the landing page.", error: null, turns: 1, toolCalls: 2, runId: null, deviceName: "Development laptop", yours: true, folder: "website", branch: "feature/landing", files: [], createdAt: stamp(1), startedAt: stamp(1), finishedAt: stamp(2) }, events: [] });
       if (path.endsWith("/memory")) return json({ memories: [] });
+      if (path === "/api/node/routines") return json({ routines: [] });
+      if (/^\/api\/node\/rooms\/[^/]+\/requests$/.test(path)) return json({ requests: [] });
       const node = /^\/api\/node\/nodes\/([^/]+)$/.exec(path);
       if (node && request.method() === "PATCH") {
         const saved = state.boot.nodes.find(row => row.id === node[1]);
@@ -107,6 +122,27 @@ try {
 
     await page.goto(`${WEB}/r/dm`);
     await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
+    const table = page.locator("#m-dm-40").getByRole("table");
+    await table.waitFor();
+    assert.deepEqual(await table.getByRole("columnheader").allTextContents(), ["Task", "Owner", "Status", "Due date", "Conversation", "Notes"]);
+    assert.equal(await table.getByRole("row").count(), 3);
+    assert.equal(await table.getByRole("cell").count(), 12);
+    assert.ok((await table.getByRole("link", { name: "Draft brief", exact: true }).getAttribute("href")).endsWith("/tasks/brief"));
+    assert.equal(await table.getByRole("link", { name: "Review", exact: true }).getAttribute("rel"), "noopener noreferrer");
+    assert.equal(await table.getByRole("link", { name: "Launch crew", exact: true }).getAttribute("href"), "/r/crew");
+    assert.equal(await table.getByRole("cell", { name: "Escaped | pipe", exact: true }).count(), 1);
+    assert.equal(await table.locator("strong").textContent(), "@writer");
+    assert.equal(await table.locator("code").textContent(), "team");
+    assert.equal(await table.getByRole("columnheader", { name: "Owner", exact: true }).evaluate(el => getComputedStyle(el).textAlign), "center");
+    assert.equal(await table.getByRole("cell", { name: "Tomorrow", exact: true }).evaluate(el => getComputedStyle(el).textAlign), "right");
+    assert.equal(await page.locator("#m-dm-40 pre code").textContent(), "| Not | a table |\n| --- | --- |");
+    const tableRegion = page.locator("#m-dm-40").getByRole("region", { name: "Table", exact: true });
+    assert.ok(await tableRegion.evaluate(el => el.scrollWidth > el.clientWidth + 2), "wide tables scroll inside their message");
+    await tableRegion.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.waitForFunction(() => document.querySelector('#m-dm-40 [role="region"]').scrollLeft > 0);
+    await fits();
+    if (shots) await page.screenshot({ path: `${shots}/markdown-${width}.png` });
     await openChats();
     assert.deepEqual(await chats().locator("[data-conversation]").evaluateAll(els => els.map(el => el.dataset.conversation)), ["crew", "group", "dm", "writer-dm"]);
     await chats().getByRole("button", { name: "Groups", exact: true }).click();
@@ -156,8 +192,10 @@ try {
     await chats().locator('[data-conversation="group"]').click();
     const groupText = page.getByRole("textbox", { name: "Message Design room", exact: true });
     await groupText.waitFor();
-    await page.getByRole("button", { name: "Only me", exact: true }).click();
-    await groupText.fill("A private unsent draft");
+    // A room with other people: Ask my nodes keeps it to me and my nodes.
+    await page.getByRole("radio", { name: "Ask my nodes", exact: true }).click();
+    const privateText = page.getByRole("textbox", { name: "Ask your nodes privately", exact: true });
+    await privateText.fill("A private unsent draft");
     await openChats();
     await chats().locator('[data-conversation="dm"]').click();
     await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
@@ -175,8 +213,8 @@ try {
     await openChats();
     await chats().locator('[data-conversation="group"]').click();
     await page.locator("header").getByRole("button", { name: "1 person · 1 node", exact: true }).waitFor();
-    assert.equal(await groupText.inputValue(), "A private unsent draft");
-    assert.equal(await page.getByRole("button", { name: "Only me", exact: true }).getAttribute("aria-pressed"), "true", "restored draft cannot become public");
+    assert.equal(await privateText.inputValue(), "A private unsent draft");
+    assert.equal(await page.getByRole("radio", { name: "Ask my nodes", exact: true }).getAttribute("aria-checked"), "true", "restored draft cannot become public");
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/chat-${width}.png` });
 
@@ -187,8 +225,8 @@ try {
       await page.getByRole("button", { name: "Expand conversations", exact: true }).click();
     } else {
       await page.setViewportSize({ width, height: 420 });
-      await page.waitForFunction(() => document.querySelector('textarea[aria-label="Message Design room"]').getBoundingClientRect().bottom <= innerHeight);
-      assert.ok((await groupText.boundingBox()).y + (await groupText.boundingBox()).height <= 420, "composer remains above keyboard-sized viewport");
+      await page.waitForFunction(() => document.querySelector('textarea[aria-label="Ask your nodes privately"]').getBoundingClientRect().bottom <= innerHeight);
+      assert.ok((await privateText.boundingBox()).y + (await privateText.boundingBox()).height <= 420, "composer remains above keyboard-sized viewport");
       await openChats();
       assert.ok(await chats().locator(".chat-drawer").evaluate(el => el.scrollWidth <= el.clientWidth + 2), "short phone chat sheet stays in bounds");
       await page.setViewportSize({ width: 768, height: 844 });

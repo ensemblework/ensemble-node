@@ -1,23 +1,33 @@
 "use client";
 
-import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Lock, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Handshake, Lock, MessageSquareShare, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { cardWords } from "@/lib/cards";
 import { canDelete, canPin, canReact, isDeleted, messagePreview, reactionRows, reactionsOf } from "@/lib/chat";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, TOOL_LABEL } from "@/lib/text";
 import { formatEntityText, messageRefs, readableBody } from "@/lib/entity-text";
+import { mediaItems } from "@/lib/evidence";
+import { canShare, sharedLabel, type RoomTab } from "@/lib/rooms";
+import type { HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
-import type { HeldCall, Member, Message, NodePublic, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
+import type { HeldCall, Member, Message, NodePublic, PeerRequest, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { SecretBox } from "../secret-box";
+import { LoginBox } from "../login-box";
 import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
+import { EvidenceGallery } from "./evidence";
 import { MessageFiles } from "./file-chips";
+import { HeldCapturesCard } from "./held-captures";
+import { HelperThreadChip } from "./helper-thread";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 import { PlanCard } from "./plan-card";
+import { DisclosureCard, NodeProposalCard, RequestCard, RequestDraftCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
+import { DecisionLine, DeclinedLine, DigestCard, PageRoleLine, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
 
 export type MessageContext = {
   meId: string;
@@ -37,6 +47,26 @@ export type MessageContext = {
   onEdit: (message: Message) => void;
   /** Cards of plan steps, by plan: shown inside the plan card. */
   inPlan: Map<string, Message[]>;
+  /** Helpers' threads a message brought in, shown under it (lib/threads.ts). */
+  threadsOf?: (message: Message) => HelperThread[];
+  /** A helper's thread by the helper's node id: a plan's helper step links to it. */
+  helperOf?: (nodeId: string) => HelperThread | undefined;
+  onHelper?: (thread: HelperThread) => void;
+  /** In a room with other people: the tab shown (Room, or my My crew). */
+  tab?: RoomTab;
+  /** A peer request as the room's list has it (my own card's id, its plan). */
+  requestOf?: (requestId: string) => PeerRequest | undefined;
+  /** Share to room, as me or through my lead (`lead`: whether I have one here). */
+  onShare?: (message: Message, as: "me" | "lead") => void;
+  myLead?: NodePublic | null;
+  /** The Room's copy of a message of mine shared from My crew. */
+  sharedCopyOf?: (messageId: string) => Message | undefined;
+  /** A session's newest card in this conversation: it keeps the session's line (who manages it, Hand to…) once its run ended. */
+  sessionCardOf?: (sessionId: string) => string | undefined;
+  /** In a room with other people: shows another view of the room (its Board). */
+  onView?: (view: "board") => void;
+  /** The space that holds the room's work, when it has one: tasks and pages there open in it. */
+  spaceId?: string | null;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -115,29 +145,39 @@ const STATUS_PILL: Record<string, { label: string; tone: "warn" | "ok" | "muted"
   partial: { label: "Partly applied", tone: "warn" },
   posted: { label: "Posted", tone: "ok" },
   discarded: { label: "Discarded", tone: "muted" },
+  working: { label: "Working…", tone: "accent" },
+  signed_in: { label: "Signed in", tone: "ok" },
+  declined: { label: "Not now", tone: "muted" },
+  expired: { label: "Expired", tone: "muted" },
+  ended: { label: "Ended", tone: "muted" },
 };
 
 function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
+  if (message.data.type === "peer_request") return <RequestOwnerCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "post" && message.data.request) return <RequestDraftCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "disclosure") return <DisclosureCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "node_proposal") return <NodeProposalCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "media_preview") return <HeldCapturesCard message={message} ctx={ctx} node={node} />;
+  return <HeldCard message={message} ctx={ctx} node={node} />;
+}
+
+function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
   const settle = useSettle();
   const data = message.data;
+  const words = cardWords(data, node?.slug ?? "node", ctx.roomTitle);
   const calls: HeldCall[] = Array.isArray(data.calls) ? data.calls : [];
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(calls.map((call) => call.callId)));
   const [body, setBody] = useState(message.body);
   const pending = data.status === "pending";
-  const pill = STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const };
+  // Handing a session to another node: the card has no prompt or title, only who it goes to and a note.
+  const handOver = data.type === "session" && data.action === "hand_over";
+  const handedTo = handOver && typeof data.input?.to === "string" ? `@${data.input.to.replace(/^@/, "")}` : "The node";
+  const pill = handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
   const error = settle.error?.message ?? (typeof data.error === "string" ? data.error : null);
   return (
     <div className="mt-1 rounded-2xl border border-warn/40 bg-warn/5 p-3">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium">
-          {data.type === "post"
-            ? `Post this in “${ctx.roomTitle}” for you?`
-            : data.type === "session"
-              ? `@${node?.slug ?? "node"} wants to start work on your computer`
-              : data.type === "secret"
-                ? `@${node?.slug ?? "node"} needs a secret: ${data.name}`
-                : `@${node?.slug ?? "node"} wants to do this for you`}
-        </span>
+        <span className="text-sm font-medium">{words.title}</span>
         <span className="flex items-center gap-2">
           <Pill tone="private">
             <Lock size={10} /> only you
@@ -150,14 +190,20 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
           <p className="text-sm">{message.body}</p>
           <SecretBox message={message} nodeName={node?.name ?? "The node"} />
         </div>
+      ) : data.type === "login" ? (
+        <LoginBox message={message} nodeName={node?.name ?? "The node"} />
       ) : data.type === "session" ? (
         <p className="whitespace-pre-wrap rounded-lg bg-bg/70 p-2 text-sm">{message.body.replace(/^@\S+ wants to /, "")}</p>
       ) : data.type === "post" && data.status === "posted" ? null : data.type === "post" ? (
-        pending ? (
-          <Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={Math.min(10, Math.max(3, body.split("\n").length + 1))} />
-        ) : (
-          <RichText text={message.body} handles={ctx.handles} refs={messageRefs(data)} showIds={data.showIds === true} />
-        )
+        <>
+          {pending ? (
+            <Textarea aria-label="The words to post" value={body} onChange={(event) => setBody(event.target.value)} rows={Math.min(10, Math.max(3, body.split("\n").length + 1))} />
+          ) : (
+            <RichText text={message.body} handles={ctx.handles} refs={messageRefs(data)} showIds={data.showIds === true} />
+          )}
+          {/* A result's draft: what goes with it, from the work's own ledger and checked evidence. */}
+          {data.result ? <ResultFacts data={{ ...data.result, media: data.media, refs: data.refs }} messageId={null} /> : null}
+        </>
       ) : (
         <ul className="space-y-1.5">
           {calls.map((call) => (
@@ -190,20 +236,20 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
           ))}
         </ul>
       )}
-      {data.result?.summary ? <p className="mt-2 text-sm text-ok">{formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
+      {data.result?.summary ? <p className="mt-2 text-sm text-ok">{handOver ? `${handedTo} manages this session now.` : formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
       {data.result?.failed?.length ? <p className="mt-1 text-sm text-danger">{data.result.failed.map((row: { name: string; error: string }) => `${TOOL_LABEL(row.name)}: ${row.error}`).join(" · ")}</p> : null}
-      {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
-      {pending && data.type !== "secret" ? (
+      {error && data.type !== "login" ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
+      {pending && data.type !== "secret" && data.type !== "login" ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             busy={settle.isPending && settle.variables?.decision === "approve"}
             disabled={settle.isPending || (data.type === "tools" && !chosen.size) || (data.type === "post" && !body.trim())}
             onClick={() => settle.mutate({ messageId: message.id, decision: "approve", ...(data.type === "post" ? { body } : data.type === "tools" ? { callIds: [...chosen] } : {}) })}
           >
-            <Check size={16} /> {data.type === "post" ? "Post" : data.type === "session" ? "Start it" : chosen.size < calls.length ? `Approve ${chosen.size}` : "Approve"}
+            <Check size={16} /> {data.type !== "post" && data.type !== "session" && chosen.size < calls.length ? `Approve ${chosen.size}` : words.approve}
           </Button>
           <Button tone="ghost" disabled={settle.isPending} busy={settle.isPending && settle.variables?.decision === "discard"} onClick={() => settle.mutate({ messageId: message.id, decision: "discard" })}>
-            <CircleSlash size={16} /> Discard
+            <CircleSlash size={16} /> {words.discard}
           </Button>
         </div>
       ) : null}
@@ -279,25 +325,45 @@ function ActionButton({ label, onClick, children, tone }: { label: string; onCli
   );
 }
 
-/** Reply, react, copy, pin and delete: on hover or focus on a computer, after a long press on a phone. */
+/** Reply, react, copy, share to room, pin and delete: on hover or focus on a computer, after a long press on a phone. */
 function MessageActions({ message, ctx, mine, open, setOpen }: { message: Message; ctx: MessageContext; mine: boolean; open: boolean; setOpen: (open: boolean) => void }) {
   const react = useReact();
   const pin = usePin(ctx.roomId);
   const remove = useDeleteMessage();
   const [emoji, setEmoji] = useState(false);
+  const [sharing, setSharing] = useState(false);
   const pinned = ctx.pinned.has(message.id);
+  const shareable = Boolean(ctx.onShare) && canShare(message, ctx.meId) && !ctx.sharedCopyOf?.(message.id);
   const close = () => {
     setEmoji(false);
+    setSharing(false);
     setOpen(false);
   };
   if (!canReact(message)) return null;
+  const share = (as: "me" | "lead") => {
+    ctx.onShare?.(message, as);
+    close();
+  };
+  const textButton = "inline-flex h-7 items-center rounded-lg px-2 text-xs font-medium text-ink transition hover:bg-raised";
   return (
     <div
-      className={`absolute -top-4 z-20 flex items-center gap-0.5 rounded-xl border border-line bg-panel p-0.5 shadow-lg transition ${mine ? "right-1" : "right-1 md:right-4"} ${open || emoji ? "opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"}`}
+      className={`absolute -top-4 z-20 flex items-center gap-0.5 rounded-xl border border-line bg-panel p-0.5 shadow-lg transition ${mine ? "right-1" : "right-1 md:right-4"} ${open || emoji || sharing ? "opacity-100" : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"}`}
       role="toolbar"
       aria-label="Message actions"
     >
-      {emoji ? (
+      {sharing ? (
+        <>
+          <span className="px-1.5 text-[11px] text-muted">Share to room</span>
+          <button type="button" className={textButton} onClick={() => share("me")} title="Posted in the Room as you">
+            As me
+          </button>
+          {ctx.myLead ? (
+            <button type="button" className={textButton} onClick={() => share("lead")} title={`Posted in the Room by @${ctx.myLead.slug}, for you`}>
+              Through @{ctx.myLead.slug}
+            </button>
+          ) : null}
+        </>
+      ) : emoji ? (
         ctx.reactions.map((value) => (
           <button
             key={value}
@@ -325,6 +391,11 @@ function MessageActions({ message, ctx, mine, open, setOpen }: { message: Messag
               <Copy size={14} />
             </ActionButton>
           ) : null}
+          {shareable ? (
+            <ActionButton label="Share to room" onClick={() => setSharing(true)}>
+              <MessageSquareShare size={14} />
+            </ActionButton>
+          ) : null}
           {pinned || canPin(message) ? (
             <ActionButton label={pinned ? "Unpin" : "Pin for everyone here"} onClick={() => (pin.mutate({ messageId: message.id, pinned: !pinned }, { onSuccess: () => toast(pinned ? "Unpinned." : "Pinned.", "ok") }), close())}>
               {pinned ? <PinOff size={14} /> : <Pin size={14} />}
@@ -344,8 +415,8 @@ function MessageActions({ message, ctx, mine, open, setOpen }: { message: Messag
           ) : null}
         </>
       )}
-      {emoji ? (
-        <ActionButton label="Close reactions" onClick={() => setEmoji(false)}>
+      {emoji || sharing ? (
+        <ActionButton label={sharing ? "Do not share" : "Close reactions"} onClick={() => (setEmoji(false), setSharing(false))}>
           <X size={14} />
         </ActionButton>
       ) : null}
@@ -393,9 +464,72 @@ function Deleted() {
   return <span className="text-sm italic text-muted">Message deleted</span>;
 }
 
+/** "Shared from Mira's crew" over a message shared to the Room; on mine it goes back to where it came from. */
+function SharedLine({ message, ctx, mine }: { message: Message; ctx: MessageContext; mine: boolean }) {
+  const label = sharedLabel(
+    message.data,
+    { accountId: message.authorAccountId, nodeId: message.authorNodeId },
+    ctx.meId,
+    (id) => ctx.people.get(id)?.name ?? "Someone",
+    (id) => ctx.nodes.get(id)?.slug ?? null,
+  );
+  if (!label) return null;
+  const origin: unknown = message.data.sharedFrom?.id;
+  const owner = typeof message.data.sharedBy === "string" ? message.data.sharedBy : message.authorAccountId;
+  const content = (
+    <>
+      <MessageSquareShare size={11} aria-hidden /> {label}
+    </>
+  );
+  return (
+    <div className={`mb-1 flex ${mine ? "justify-end" : ""}`}>
+      {owner === ctx.meId && typeof origin === "string" ? (
+        <button type="button" onClick={() => ctx.onJump(origin)} className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-ink" title="Go to where it came from">
+          {content}
+        </button>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-[11px] text-muted">{content}</span>
+      )}
+    </div>
+  );
+}
+
+/** Under a private message of mine that was shared: where its copy is. */
+function SharedTo({ message, ctx }: { message: Message; ctx: MessageContext }) {
+  const copy = message.private ? ctx.sharedCopyOf?.(message.id) : undefined;
+  if (!copy) return null;
+  return (
+    <button type="button" onClick={() => ctx.onJump(copy.id)} className="inline-flex items-center gap-1 text-[11px] text-ok hover:underline" title="Go to it in the Room">
+      <Check size={11} aria-hidden /> Shared to room
+    </button>
+  );
+}
+
 export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { message: Message; ctx: MessageContext; grouped: boolean; highlighted?: boolean; fresh?: boolean }) {
   const press = useLongPress();
   if (message.kind === "status") {
+    const type = message.data?.type;
+    if (type === "status_cards" || type === "space_offer" || type === "digest" || type === "room_events") {
+      return (
+        <div id={`m-${message.id}`} data-new-message={fresh || undefined} className={`chat-message mt-6 rounded-2xl transition ${highlighted ? "ring-2 ring-accent/70 ring-offset-2 ring-offset-bg" : ""}`}>
+          {type === "status_cards" ? (
+            <StatusCardsMessage message={message} ctx={ctx} />
+          ) : type === "space_offer" ? (
+            <SpaceOfferCard message={message} ctx={ctx} />
+          ) : type === "digest" ? (
+            <DigestCard message={message} ctx={ctx} />
+          ) : (
+            <div className="rounded-2xl border border-private/30 bg-private/5 px-3 py-2">
+              <RichText text={message.body} handles={ctx.handles} />
+              <RoomEventsExtras message={message} ctx={ctx} />
+            </div>
+          )}
+        </div>
+      );
+    }
+    if (type === "decision_logged") return <DecisionLine message={message} ctx={ctx} highlighted={highlighted} />;
+    if (message.data?.pageRole) return <PageRoleLine message={message} highlighted={highlighted} />;
+    if (message.data?.declineNote === true || message.data?.declined === true) return <DeclinedLine message={message} ctx={ctx} highlighted={highlighted} />;
     return (
       <div id={`m-${message.id}`} className={`py-2 text-center text-xs text-muted ${highlighted ? "rounded-lg bg-accent/10" : ""}`}>
         {message.body}
@@ -406,6 +540,11 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
   const node = message.authorNodeId ? ctx.nodes.get(message.authorNodeId) : undefined;
   const person = message.authorKind === "human" ? ctx.people.get(message.authorAccountId) : undefined;
   const ownerName = node && node.ownerId !== ctx.meId ? ctx.people.get(node.ownerId)?.name : null;
+  // A peer request's card is the system's, on behalf of the person who asked.
+  const asker = message.kind === "request" && typeof message.data?.from?.name === "string" ? (message.data.from.name as string) : null;
+  // In My crew everything is private: the tab says so once.
+  const privateLabel = message.private && ctx.tab !== "crew";
+  const media = mediaItems(message.data?.media);
   const deleted = isDeleted(message);
   const reply = message.data?.replyTo as ReplyTo | undefined;
   const pinned = ctx.pinned.has(message.id);
@@ -417,6 +556,7 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
         <MessageActions message={message} ctx={ctx} mine open={press.open} setOpen={press.setOpen} />
         <div className="min-w-0 max-w-[88%] md:max-w-[78%]">
           {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine /> : null}
+          {deleted ? null : <SharedLine message={message} ctx={ctx} mine />}
           {deleted || message.body ? (
             <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
               {deleted ? <Deleted /> : <RichText text={message.body} handles={ctx.handles} />}
@@ -424,9 +564,15 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
           ) : null}
           {deleted ? null : (
             <div className={`rounded-2xl transition ${message.body ? "" : ring}`}>
+              <EvidenceGallery items={media} messageId={message.id} label="Media" className={message.body ? "mt-1.5" : ""} />
               <MessageFiles message={message} meId={ctx.meId} align="end" />
             </div>
           )}
+          {deleted ? null : (ctx.threadsOf?.(message) ?? []).map((thread) => (
+            <div key={thread.roomId} className="flex flex-col items-end">
+              <HelperThreadChip thread={thread} />
+            </div>
+          ))}
           <Reactions message={message} ctx={ctx} mine />
           <div className="mt-1 flex justify-end gap-2 text-[11px] text-muted">
             {pinned ? (
@@ -434,7 +580,8 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
                 <Pin size={10} /> pinned
               </span>
             ) : null}
-            {message.private ? (
+            {deleted ? null : <SharedTo message={message} ctx={ctx} />}
+            {privateLabel ? (
               <span className="inline-flex items-center gap-1 text-private">
                 <Lock size={10} /> only you and your nodes
               </span>
@@ -464,12 +611,20 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
     <div id={`m-${message.id}`} ref={press.ref} {...press.bind} data-new-message={fresh || undefined} className={`chat-message group relative flex gap-2.5 md:gap-3 ${grouped ? "mt-1.5" : "mt-7"}`}>
       <MessageActions message={message} ctx={ctx} mine={false} open={press.open} setOpen={press.setOpen} />
       <div className="w-9 shrink-0">
-        {grouped ? null : node ? <NodeAvatar node={node} size={32} title={node.name} /> : <PersonAvatar name={person?.name ?? "?"} size={32} />}
+        {grouped ? null : node ? (
+          <NodeAvatar node={node} size={32} title={node.name} />
+        ) : asker ? (
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-raised text-accent" title={`${asker}'s request`}>
+            <Handshake size={16} aria-hidden />
+          </span>
+        ) : (
+          <PersonAvatar name={person?.name ?? "?"} size={32} />
+        )}
       </div>
       <div className="min-w-0 max-w-[92%] flex-1 md:max-w-[80%]">
         {grouped ? null : (
           <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2 text-sm">
-            <span className="font-semibold">{node ? node.name : (person?.name ?? "Someone")}</span>
+            <span className="font-semibold">{node ? node.name : (asker ?? person?.name ?? (message.authorKind === "system" ? "Ensemble" : "Someone"))}</span>
             {ownerName ? <span className="text-xs text-muted">{ownerName}&apos;s node</span> : null}
             <span className="text-[10px] text-muted opacity-70">{clock(message.createdAt)}</span>
             {pinned ? (
@@ -477,7 +632,7 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
                 <Pin size={10} /> pinned
               </span>
             ) : null}
-            {message.private && message.kind === "text" ? (
+            {privateLabel && message.kind === "text" ? (
               <span className="inline-flex items-center gap-1 text-[11px] text-private">
                 <Lock size={10} /> only you
               </span>
@@ -492,6 +647,8 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
             <RunCard message={message} ctx={ctx} node={node} />
           ) : message.kind === "plan" ? (
             <PlanCard message={message} ctx={ctx} />
+          ) : message.kind === "request" ? (
+            <RequestCard message={message} ctx={ctx} />
           ) : message.kind === "error" ? (
             <div className="flex items-start gap-2 rounded-2xl border border-danger/30 bg-danger/5 px-3 py-2 text-sm">
               <AlertTriangle size={16} className="mt-0.5 shrink-0 text-danger" />
@@ -504,14 +661,31 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
             </div>
           ) : deleted ? (
             <Deleted />
+          ) : message.data.type === "digest" ? (
+            <DigestCard message={message} ctx={ctx} />
+          ) : message.data.type === "room_result" ? (
+            <ResultCard message={message} ctx={ctx} />
           ) : (
             <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
+              <SharedLine message={message} ctx={ctx} mine={false} />
               {message.body ? <RichText text={message.body} handles={ctx.handles} {...(message.authorKind === "node" ? { refs: messageRefs(message.data), showIds: message.data.showIds === true } : {})} /> : null}
+              <EvidenceGallery items={media} messageId={message.id} label="Media" className={message.body ? "mt-2" : ""} />
               <MessageFiles message={message} meId={ctx.meId} sender={person?.name} />
               <ToolChips tools={Array.isArray(message.data.tools) ? message.data.tools : []} />
+              {(ctx.threadsOf?.(message) ?? []).map((thread) => (
+                <HelperThreadChip key={thread.roomId} thread={thread} />
+              ))}
+              {message.data.type === "room_events" ? <RoomEventsExtras message={message} ctx={ctx} /> : null}
+              <SharedTo message={message} ctx={ctx} />
             </div>
           )}
         </div>
+        {/* A helper's thread whose asking message is not loaded goes under the plan card its step is in. */}
+        {message.kind === "plan"
+          ? (ctx.threadsOf?.(message) ?? []).map((thread) => (
+              <HelperThreadChip key={thread.roomId} thread={thread} />
+            ))
+          : null}
         <Reactions message={message} ctx={ctx} mine={false} />
       </div>
     </div>

@@ -2,18 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, FolderOpen, Pause, Play, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { CLI_COMMAND } from "@/lib/config";
 import { liveDevices } from "@/lib/ensemble";
-import { keys, useDevices } from "@/lib/hooks";
+import { evidenceItems } from "@/lib/evidence";
+import { keys, useDevices, useNodeCaptures } from "@/lib/hooks";
 import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { ModelPicker } from "./model-picker";
 import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "./node-avatar";
-import { Button, Field, Input, Notice, Segmented, Switch, Textarea } from "./ui";
+import { EvidenceGallery } from "./chat/evidence";
+import { NodeRoutines } from "./routines";
+import { Button, Field, Input, Notice, Segmented, Spinner, Switch, Textarea } from "./ui";
 
 type Memory = { id: string; content: string; createdAt: string };
 
@@ -40,11 +43,36 @@ function Choice({ name, checked, onChange, title, hint }: { name: string; checke
   );
 }
 
+/** The node's own screenshots and videos on my computers, newest first; held ones wait on their card. */
+function NodeCaptures({ node }: { node: NodeFull }) {
+  const captures = useNodeCaptures(node.id);
+  const [all, setAll] = useState(false);
+  const items = useMemo(() => evidenceItems(captures.data), [captures.data]);
+  if (captures.isLoading) return <Spinner className="h-4 w-4 text-muted" />;
+  if (captures.error) return <p className="text-sm text-danger">{captures.error.message}</p>;
+  if (!items.length) return <p className="text-sm text-muted">Nothing yet.</p>;
+  const shown = all ? items : items.slice(0, 9);
+  return (
+    <div className="space-y-2">
+      <EvidenceGallery items={shown} label={`${node.name}'s captures`} />
+      {items.length > shown.length ? (
+        <button type="button" onClick={() => setAll(true)} className="text-xs text-accent hover:underline">
+          Show all {items.length}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 const HANDLE = /^[a-z0-9][a-z0-9-]{0,23}$/;
+
+/** Helpers a node may have working at once: 4 unless its owner changes it; 0 is no limit. */
+const HELPER_COUNTS = [1, 2, 4, 6, 8, 12, 16];
 
 /**
  * Everything about one node, in one place: name and handle, look, role, the chat model it thinks
- * with, its instructions, what it may do, its memory, pausing it, exporting its chat and deleting it.
+ * with, its instructions, what it may do, its routines, what it captured on my computers, its memory,
+ * pausing it, exporting its chat and deleting it.
  */
 export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: () => void }) {
   const client = useQueryClient();
@@ -63,6 +91,9 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
   const sharedRooms = node.autonomy?.sharedRooms ?? "ask";
   const computerFiles = node.autonomy?.computerFiles === true;
   const computerWork = node.autonomy?.computerWork ?? "auto";
+  const createNodes = node.autonomy?.createNodes ?? "ask";
+  const helpers = typeof node.autonomy?.helpers === "number" ? node.autonomy.helpers : 4;
+  const helperCounts = [...new Set([...HELPER_COUNTS, ...(helpers > 0 ? [helpers] : [])])].sort((a, b) => a - b);
   const paused = node.status === "paused";
   const folders = liveDevices(devices.data ?? []).flatMap((device) => device.folders.map((folder) => `${folder} (${device.name})`));
   const handle = slug.trim().replace(/^@/, "").toLowerCase();
@@ -216,6 +247,37 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
             <Choice name={`rooms-${node.id}`} checked={sharedRooms === "auto"} onChange={() => void change({ autonomy: { sharedRooms: "auto" } }, "Saved: it posts on its own.")} title="Post on its own" hint="changes to your workspace and computer still wait for you." />
           </div>
         </Field>
+        <Field label="New nodes and crews" group>
+          <div className="flex flex-col gap-2">
+            <Choice name={`create-${node.id}`} checked={createNodes === "ask"} onChange={() => void change({ autonomy: { createNodes: "ask" } }, "Saved: it proposes new nodes and crews on a card.")} title="Ask me first" hint="it proposes a node or a crew on a card, and you make it or discard it." />
+            <Choice name={`create-${node.id}`} checked={createNodes === "auto"} onChange={() => void change({ autonomy: { createNodes: "auto" } }, "Saved: it makes nodes and crews on its own.")} title="Make them on its own" hint="it makes the nodes and crews it needs, and tells you." />
+          </div>
+        </Field>
+        <Field label="Helpers at once" hint="Temporary helpers it may have working at the same time. Your account allows twice this in all.">
+          <select
+            value={helpers}
+            onChange={(event) => {
+              const next = Number(event.target.value);
+              void change({ autonomy: { helpers: next } }, next ? `Saved: up to ${next} helper${next === 1 ? "" : "s"} at once.` : "Saved: no limit on helpers.");
+            }}
+            className="w-full rounded-xl border border-line bg-bg px-2.5 py-2 text-sm text-ink outline-none transition focus:border-accent sm:w-48"
+          >
+            {helperCounts.map((count) => (
+              <option key={count} value={count}>
+                {count === 4 ? "4 (the default)" : String(count)}
+              </option>
+            ))}
+            <option value={0}>No limit</option>
+          </select>
+        </Field>
+      </Section>
+
+      <Section title="Routines" hint={`Work ${node.name} does on its own: on a schedule, when something changes in Ensemble, or when a webhook calls.`}>
+        <NodeRoutines node={node} />
+      </Section>
+
+      <Section title="Captures" hint={`Screenshots and videos ${node.name} took on your computers. One that may show something private waits on a card in its chat until you check it.`}>
+        <NodeCaptures node={node} />
       </Section>
 
       <Section title="Memory" hint={`What ${node.name} remembers between chats.`}>

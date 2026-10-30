@@ -1,0 +1,89 @@
+/**
+ * A node's owner-only cards (approval messages) in words: what the card asks and what its two answers
+ * are called, the same in a conversation and in Needs me. Held writes, drafts, work on the computer
+ * (starting or sending to a session, or handing one to another node), secrets and sign-ins; a proposed
+ * node or crew; captures held for the owner to check before they are sent; and in rooms with other
+ * people, a request for work or a review, a request the lead drafted for the owner to send, and a
+ * question about sharing something private (Ensemble docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
+ */
+
+type CardData = {
+  type?: unknown;
+  action?: unknown;
+  mode?: unknown;
+  kind?: unknown;
+  name?: unknown;
+  from?: { name?: unknown } | null;
+  asker?: { name?: unknown } | null;
+  input?: { to?: unknown; [key: string]: unknown } | null;
+  disclosure?: unknown;
+  peerRequest?: unknown;
+  request?: { to?: { name?: unknown; handle?: unknown; [key: string]: unknown } | null; [key: string]: unknown } | null;
+  [key: string]: unknown;
+} | null | undefined;
+
+export type CardWords = {
+  /** The card's title in the conversation. */
+  title: string;
+  /** What the node wants, after its handle, in Needs me. */
+  wants: string;
+  approve: string;
+  discard: string;
+};
+
+const text = (value: unknown, fallback: string) => (typeof value === "string" && value.trim() ? value.trim() : fallback);
+
+/** A card's title, Needs me line and answers. `handle` is the node's, `roomTitle` the conversation's. */
+export function cardWords(data: CardData, handle: string, roomTitle: string): CardWords {
+  const type = text(data?.type, "tools");
+  switch (type) {
+    case "post": {
+      // A request the lead drafted in My crew: it reaches the room only when its owner sends it.
+      if (data?.request) {
+        const handle = text(data.request.to?.handle, "");
+        const who = handle ? `@${handle.replace(/^@/, "")}` : text(data.request.to?.name, "someone");
+        return { title: `Send this request to ${who}?`, wants: `drafted a request to ${who} for you to send`, approve: "Send request", discard: "Discard" };
+      }
+      // A result its work delivers to the room: built from the work's ledger, posted only when its owner says.
+      if (data?.result) return { title: `Post this result in “${roomTitle}” for you?`, wants: "drafted a result for you to post", approve: "Post", discard: "Discard" };
+      return data?.disclosure || data?.peerRequest
+        ? { title: `Post this answer in “${roomTitle}” for you?`, wants: "drafted an answer for you to post", approve: "Post", discard: "Discard" }
+        : { title: `Post this in “${roomTitle}” for you?`, wants: "wants to post for you", approve: "Post", discard: "Discard" };
+    }
+    case "session": {
+      if (data?.action !== "hand_over") return { title: `@${handle} wants to start work on your computer`, wants: "wants to start work on your computer", approve: "Start it", discard: "Discard" };
+      // Hand-over cards have no prompt or title: only the session, the node it goes to and a note.
+      const to = text(data.input?.to, "");
+      const who = to ? `@${to.replace(/^@/, "")}` : "another of your nodes";
+      return { title: `@${handle} wants to hand a session to ${who}`, wants: `wants to hand a session to ${who}`, approve: "Hand it over", discard: "Discard" };
+    }
+    case "secret":
+      return { title: `@${handle} needs a secret: ${text(data?.name, "a value")}`, wants: "needs a secret", approve: "Save", discard: "Decline" };
+    case "login": {
+      const where = `${text(data?.origin, "a site")}${typeof data?.computer === "string" && data.computer ? ` on ${data.computer}` : ""}`;
+      return { title: `@${handle} needs you to sign in to ${where}`, wants: `needs you to sign in to ${where}`, approve: "Sign in", discard: "Not now" };
+    }
+    case "node_proposal":
+      return data?.action === "crew"
+        ? { title: `@${handle} proposes a crew`, wants: "proposes a crew", approve: "Make it", discard: "Discard" }
+        : { title: `@${handle} proposes a new node`, wants: "proposes a new node", approve: "Make it", discard: "Discard" };
+    case "media_preview": {
+      const files = Array.isArray(data?.evidence) ? data.evidence.length : 0;
+      const what = files > 1 ? `${files} captures` : "a capture";
+      return { title: `@${handle} has ${what} for you to check first`, wants: `has ${what} for you to check first`, approve: "Send", discard: "Discard" };
+    }
+    case "peer_request": {
+      const from = text(data?.from?.name, "Someone");
+      const what = data?.kind === "review" ? "a review" : "work";
+      return { title: `${from} asks you for ${what}`, wants: `brings you ${from}'s request for ${what}`, approve: "Accept", discard: "Decline" };
+    }
+    case "disclosure": {
+      const asker = text(data?.asker?.name, "Someone");
+      return data?.mode === "answer"
+        ? { title: `${asker} asked @${handle} something`, wants: `asks before answering ${asker}`, approve: "Answer", discard: "Don't answer" }
+        : { title: `May @${handle} share this with the room?`, wants: `asks before sharing with ${asker}`, approve: "Allow", discard: "Don't share" };
+    }
+    default:
+      return { title: `@${handle} wants to do this for you`, wants: "wants to act for you", approve: "Approve", discard: "Discard" };
+  }
+}

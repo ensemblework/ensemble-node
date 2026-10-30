@@ -2,10 +2,14 @@ import type { Message, Room, RoomKind } from "./types";
 
 export type ConversationFilter = "all" | "unread" | "groups";
 
-/** One recent list across direct chats, crews and rooms; untouched chats follow active ones. */
+/**
+ * One recent list across direct chats, crews and rooms; untouched chats follow active ones. Helpers'
+ * task rooms are not in it: they show as threads in their parent's chat (lib/threads.ts).
+ */
 export function recentConversations(rooms: readonly Room[], filter: ConversationFilter = "all", query = ""): Room[] {
   const search = query.trim().toLowerCase();
-  return rooms.filter(room => (filter !== "unread" || (room.unread ?? 0) > 0)
+  return rooms.filter(room => room.kind !== "task"
+    && (filter !== "unread" || (room.unread ?? 0) > 0)
     && (filter !== "groups" || room.kind !== "dm")
     && (!search || room.title.toLowerCase().includes(search)))
     .sort((a, b) => {
@@ -23,11 +27,15 @@ export function roomWithMessage(room: Room, message: Message, meId: string): Roo
   const newer = !pending && message.seq > room.lastSeq;
   if (!same && !pending && !newer) return room;
   const last = newer && !same && room.last?.sending && Date.parse(room.last.createdAt) > Date.parse(message.createdAt) ? room.last : message;
+  const counts = newer && !same && !(message.authorKind === "human" && message.authorAccountId === meId) ? 1 : 0;
+  // A room with other people counts each tab on its own: My crew's private messages, the Room's public ones.
+  const tabs = room.kind === "room" && (typeof room.unreadRoom === "number" || typeof room.unreadCrew === "number") ? (message.private ? { unreadCrew: (room.unreadCrew ?? 0) + counts } : { unreadRoom: (room.unreadRoom ?? 0) + counts }) : {};
   return {
     ...room, last,
     lastSeq: newer ? message.seq : room.lastSeq,
     lastMessageAt: last.createdAt,
-    unread: (room.unread ?? 0) + (newer && !same && !(message.authorKind === "human" && message.authorAccountId === meId) ? 1 : 0),
+    unread: (room.unread ?? 0) + counts,
+    ...tabs,
   };
 }
 
@@ -42,9 +50,20 @@ export function mergeConversationSnapshot(current: readonly Room[], fresh: reado
       || (pending && previous.last.clientId !== room.last?.clientId && Date.parse(previous.last.createdAt) > (Date.parse(room.lastMessageAt ?? "") || 0)));
     const lastSeq = Math.max(previous.lastSeq, room.lastSeq);
     const readSeq = Math.max(previous.readSeq ?? 0, room.readSeq ?? 0);
+    const newer = previous.lastSeq > room.lastSeq;
+    const unread = Math.min(newer ? previous.unread ?? 0 : room.unread ?? 0, Math.max(0, lastSeq - readSeq));
+    // Each tab of a room with other people keeps its own marker and count the same way.
+    const tabs = room.kind === "room" && (typeof room.unreadRoom === "number" || typeof previous.unreadRoom === "number")
+      ? (() => {
+          const readSeqCrew = Math.max(previous.readSeqCrew ?? 0, room.readSeqCrew ?? 0);
+          const unreadRoom = Math.min(newer ? previous.unreadRoom ?? 0 : room.unreadRoom ?? 0, Math.max(0, lastSeq - readSeq));
+          const unreadCrew = Math.min(newer ? previous.unreadCrew ?? 0 : room.unreadCrew ?? 0, Math.max(0, lastSeq - readSeqCrew));
+          return { readSeqCrew, unreadRoom, unreadCrew, unread: unreadRoom + unreadCrew };
+        })()
+      : {};
     return {
-      ...room, lastSeq, readSeq,
-      unread: Math.min(previous.lastSeq > room.lastSeq ? previous.unread ?? 0 : room.unread ?? 0, Math.max(0, lastSeq - readSeq)),
+      ...room, lastSeq, readSeq, unread,
+      ...tabs,
       ...(localLast ? { last: previous.last, lastMessageAt: previous.lastMessageAt } : {}),
     };
   });

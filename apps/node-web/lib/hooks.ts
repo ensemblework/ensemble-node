@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, eventsUrl, messageById, peerRequests, peopleRooms, planById, routines, sessions, shareToRoom } from "./api";
+import { api, ApiError, eventsUrl, evidence, liveFrame, messageById, peerRequests, peopleRooms, planById, routines, sessions, shareToRoom } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
 import { live, type LiveCall } from "./live";
 import { refsOf } from "./entity-text";
@@ -24,6 +24,7 @@ import type {
   FileUsage,
   JobDetail,
   IncomingInvite,
+  LiveFrame,
   Limits,
   McpConnection,
   Me,
@@ -81,6 +82,10 @@ export const keys = {
   trust: (roomId: string) => ["trust", roomId] as const,
   shareable: (roomId: string) => ["shareable", roomId] as const,
   requests: (roomId: string) => ["requests", roomId] as const,
+  /** The latest picture of a run's browser tab (owner only). */
+  live: (jobId: string) => ["live", jobId] as const,
+  /** A node's own captures on my computers. */
+  nodeCaptures: (nodeId: string) => ["node-captures", nodeId] as const,
 };
 
 /** How often an active run on screen is read again. */
@@ -346,6 +351,50 @@ export function useJob(jobId: string, options: { enabled: boolean; poll: boolean
     staleTime: (query) => (runEnded(query.state.data?.job.status) ? Number.POSITIVE_INFINITY : 0),
     refetchInterval: (query) => (options.poll && !runEnded(query.state.data?.job.status) ? RUN_POLL_MS : false),
     retry: (count, error) => !(error instanceof ApiError && (error.status === 404 || error.status === 403)) && count < 2,
+  });
+}
+
+/** What the stream last said about each run's live view (`node.live`): when, and why it is paused. */
+const liveHeard = new Map<string, { when: number; at: string | null; paused: string | null }>();
+
+/**
+ * A working run's live view, while its card is on screen: read again when the stream says it changed,
+ * with a gentle poll as the fallback (every 3 s once the computer sends pictures; rarely before, or
+ * while the stream keeps up). Paused, the stream's reason shows when the API's headers cannot be read.
+ */
+export function useLiveView(jobId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: keys.live(jobId),
+    queryFn: async ({ signal }): Promise<LiveFrame | null> => {
+      const frame = await liveFrame(jobId, signal);
+      const heard = liveHeard.get(jobId);
+      // Where the API's headers cannot be read, the stream's reason keeps a paused view paused.
+      if (!frame && heard?.paused && Date.now() - heard.when < 15_000) return { image: null, at: heard.at, url: null, title: null, width: null, height: null, paused: heard.paused };
+      return frame;
+    },
+    enabled: Boolean(jobId) && enabled,
+    staleTime: 0,
+    gcTime: 60_000,
+    retry: false,
+    refetchInterval: (query) => {
+      const heard = liveHeard.get(jobId);
+      if (heard && Date.now() - heard.when < 10_000) return 12_000;
+      return query.state.data ? 3_000 : 15_000;
+    },
+  });
+}
+
+/** A node's own captures on my computers, newest first. */
+export function useNodeCaptures(nodeId: string, enabled = true) {
+  return useQuery({ queryKey: keys.nodeCaptures(nodeId), queryFn: () => evidence.ofNode(nodeId).then((rows) => [...rows].reverse()), enabled: Boolean(nodeId) && enabled, staleTime: 30_000 });
+}
+
+/** Sends or discards one held capture; its card settles when all of its files are answered. */
+export function useReleaseHeld() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; decision: "approve" | "discard" }) => evidence.release(input.id, input.decision),
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["node-captures"] }),
   });
 }
 
@@ -789,6 +838,16 @@ export function useNodeEvents(enabled: boolean) {
       const data = JSON.parse(event.data || "{}") as { roomId?: string };
       if (typeof data.roomId === "string") void client.invalidateQueries({ queryKey: keys.requests(data.roomId) });
     }) as EventListener);
+    // A run's live view changed (owner only): its picture is read again, or it shows why it paused.
+    source.addEventListener("node.live", ((event: MessageEvent<string>) => {
+      const data = JSON.parse(event.data || "{}") as { jobId?: unknown; at?: unknown; paused?: unknown };
+      if (typeof data.jobId !== "string") return;
+      const paused = typeof data.paused === "string" && data.paused ? data.paused : null;
+      const at = typeof data.at === "string" ? data.at : null;
+      liveHeard.set(data.jobId, { when: Date.now(), at, paused });
+      if (paused) client.setQueryData<LiveFrame | null>(keys.live(data.jobId), (current) => ({ image: null, at, url: current?.url ?? null, title: current?.title ?? null, width: null, height: null, paused }));
+      else void client.invalidateQueries({ queryKey: keys.live(data.jobId) });
+    }) as EventListener);
     // Needs me changed (a run asks, or a card was answered somewhere): re-read it now, not at the next poll.
     source.addEventListener("node.needs", () => {
       void client.invalidateQueries({ queryKey: keys.approvals });
@@ -806,6 +865,7 @@ export function useNodeEvents(enabled: boolean) {
         void client.invalidateQueries({ queryKey: ["plan"] });
         void client.invalidateQueries({ queryKey: ["requests"] });
         void client.invalidateQueries({ queryKey: ["sessions"] });
+        void client.invalidateQueries({ queryKey: ["live"] });
         void client.invalidateQueries({ queryKey: keys.routines });
         void client.invalidateQueries({ queryKey: keys.invites });
         void client.invalidateQueries({ queryKey: keys.approvals });

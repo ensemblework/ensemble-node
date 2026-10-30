@@ -2,19 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, FolderOpen, Pause, Play, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { CLI_COMMAND } from "@/lib/config";
 import { liveDevices } from "@/lib/ensemble";
-import { keys, useDevices } from "@/lib/hooks";
+import { evidenceItems } from "@/lib/evidence";
+import { keys, useDevices, useNodeCaptures } from "@/lib/hooks";
 import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { ModelPicker } from "./model-picker";
 import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "./node-avatar";
+import { EvidenceGallery } from "./chat/evidence";
 import { NodeRoutines } from "./routines";
-import { Button, Field, Input, Notice, Segmented, Switch, Textarea } from "./ui";
+import { Button, Field, Input, Notice, Segmented, Spinner, Switch, Textarea } from "./ui";
 
 type Memory = { id: string; content: string; createdAt: string };
 
@@ -41,6 +43,27 @@ function Choice({ name, checked, onChange, title, hint }: { name: string; checke
   );
 }
 
+/** The node's own screenshots and videos on my computers, newest first; held ones wait on their card. */
+function NodeCaptures({ node }: { node: NodeFull }) {
+  const captures = useNodeCaptures(node.id);
+  const [all, setAll] = useState(false);
+  const items = useMemo(() => evidenceItems(captures.data), [captures.data]);
+  if (captures.isLoading) return <Spinner className="h-4 w-4 text-muted" />;
+  if (captures.error) return <p className="text-sm text-danger">{captures.error.message}</p>;
+  if (!items.length) return <p className="text-sm text-muted">Nothing yet.</p>;
+  const shown = all ? items : items.slice(0, 9);
+  return (
+    <div className="space-y-2">
+      <EvidenceGallery items={shown} label={`${node.name}'s captures`} />
+      {items.length > shown.length ? (
+        <button type="button" onClick={() => setAll(true)} className="text-xs text-accent hover:underline">
+          Show all {items.length}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 const HANDLE = /^[a-z0-9][a-z0-9-]{0,23}$/;
 
 /** Helpers a node may have working at once: 4 unless its owner changes it; 0 is no limit. */
@@ -48,7 +71,8 @@ const HELPER_COUNTS = [1, 2, 4, 6, 8, 12, 16];
 
 /**
  * Everything about one node, in one place: name and handle, look, role, the chat model it thinks
- * with, its instructions, what it may do, its memory, pausing it, exporting its chat and deleting it.
+ * with, its instructions, what it may do, its routines, what it captured on my computers, its memory,
+ * pausing it, exporting its chat and deleting it.
  */
 export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: () => void }) {
   const client = useQueryClient();
@@ -250,6 +274,10 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
 
       <Section title="Routines" hint={`Work ${node.name} does on its own: on a schedule, when something changes in Ensemble, or when a webhook calls.`}>
         <NodeRoutines node={node} />
+      </Section>
+
+      <Section title="Captures" hint={`Screenshots and videos ${node.name} took on your computers. One that may show something private waits on a card in its chat until you check it.`}>
+        <NodeCaptures node={node} />
       </Section>
 
       <Section title="Memory" hint={`What ${node.name} remembers between chats.`}>

@@ -1109,7 +1109,7 @@ The plan's W11 covers the rest: channels (Slack, Teams, text messages), voice, f
 
 ## Build status
 
-Every block of this plan is built. The backend is Ensemble's `node` module (`ensemblework/ensemble`, `apps/hub-api/src/node`), described in Ensemble's docs/35. The website is this repository. Ensemble 0.5.0 ships the computer's side (the CLI and the desktop app).
+Every block of this plan is built. The backend is Ensemble's `node` module (`ensemblework/ensemble`, `apps/hub-api/src/node`), described in Ensemble's docs/35. The website is this repository. Ensemble 0.6.0 ships the computer's side (the CLI and the desktop app).
 
 | Block | Built | What is not done |
 | --- | --- | --- |
@@ -1125,3 +1125,21 @@ Every block of this plan is built. The backend is Ensemble's `node` module (`ens
 | C4–C7 | The room's space and proposed tasks, room events and the catch-up digest, results onto the board, contracts, the decisions log and the steward | Contract changes are seen from page edits only, not commits. The steward is the sponsor's own node, acting only on request. |
 
 Everything above was reviewed for security. Each finding was fixed with a regression test.
+
+### Polish (Ensemble 0.6.0)
+
+Read from the owner's own conversations, the polish fixed what made nodes feel broken. Ensemble's docs/35 describes the result.
+
+| Problem | Now |
+| --- | --- |
+| A node asked in Needs me, then said "please allow and retry" and stopped | Every question is a card in the chat; the node's call waits and goes on by itself; a parked turn posts nothing and is woken by the answer. Answered cards fold into checkpoints. Node has no Needs me page |
+| Every new website needed an approval | Public pages open without asking; the computer's own and its network's addresses ask once |
+| Screenshots, `htop` and a `.md` report all went to a coding agent | A short routing table: the node does simple work itself (`computer_run`, `computer_terminal_screenshot`, `computer_sudo`, `node_share_file`, the browser); agents only write or change code |
+| "Screenshot attached" with no picture | What a turn captures shows with its reply by itself; a tool that brought nothing back says so; a model that ran tools and said nothing is asked once for its reply |
+| No terminal screenshots, no `sudo` | A real pseudo-terminal screen as a PNG; administrator commands approved on a card, the password sealed in the browser for the computer |
+| Dangerous commands | A documented hard floor (`device-tools/dangerous.ts`) for nodes, agents and `sudo` |
+| Web search returned nothing; shops blocked the browser | Included models search with Azure Foundry's `web_search` (sources and an answer); a Bing fallback; the browser presents itself as the computer's Chrome and reports human checks |
+| A crew's lead pulled another node in | Crews stay crews; another node joins only on the owner's card |
+| The watchdog cancelled a healthy run | Only five identical failures, four in a row, count; looking around is not failing; advice is to leave a run alone |
+
+Routing evaluation with real models (`node-route-eval.mjs`, 11 of the owner's everyday requests, a simulated computer): GPT-6 Luna low 11/11, GPT-6 Luna medium 10/11, GPT-6.1 Sol low 11/11.

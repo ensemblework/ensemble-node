@@ -12,6 +12,7 @@ import type { AgentDecision, ApprovalRecord, Message, NodePublic, Room } from "@
 import { ApprovalActions, DecisionActions } from "./decision-answer";
 import { NodeAvatar } from "./node-avatar";
 import { SecretBox } from "./secret-box";
+import { LoginBox } from "./login-box";
 import { Button, External, Notice, Pill, Spinner } from "./ui";
 
 function Card({ children, tone = "warn" }: { children: React.ReactNode; tone?: "warn" | "line" }) {
@@ -80,20 +81,25 @@ function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: 
             </span>
             <span className="mt-0.5 shrink-0 text-xs text-muted">{ago(card.createdAt)}</span>
           </div>
-          <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{type === "secret" ? `${String(card.data.name ?? "")}: ${card.body}` : card.body}</p>
+          {type === "login" ? null : <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{type === "secret" ? `${String(card.data.name ?? "")}: ${card.body}` : card.body}</p>}
           {type === "secret" ? (
             <div className="mt-3">
               <SecretBox message={card} nodeName={node?.name ?? "The node"} />
             </div>
           ) : null}
-          {error && type !== "secret" ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
+          {type === "login" ? (
+            <div className="mt-3">
+              <LoginBox message={card} nodeName={node?.name ?? "The node"} />
+            </div>
+          ) : null}
+          {error && type !== "secret" && type !== "login" ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
           <div className={`mt-3 flex flex-wrap items-center gap-2 ${type === "secret" ? "hidden" : ""}`}>
-            {type === "post" ? null : (
+            {type === "post" || type === "login" ? null : (
               <Button size="sm" busy={settle.isPending && settle.variables?.decision === "approve"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "approve" })}>
                 <Check size={14} /> {words.approve}
               </Button>
             )}
-            {type === "post" ? null : (
+            {type === "post" || type === "login" ? null : (
               <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "discard" })}>
                 <CircleSlash size={14} /> {words.discard}
               </Button>

@@ -16,6 +16,7 @@ import type { HeldCall, Member, Message, NodePublic, PeerRequest, ReplyTo, RoomK
 import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { SecretBox } from "../secret-box";
+import { LoginBox } from "../login-box";
 import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
 import { EvidenceGallery } from "./evidence";
@@ -138,6 +139,11 @@ const STATUS_PILL: Record<string, { label: string; tone: "warn" | "ok" | "muted"
   partial: { label: "Partly applied", tone: "warn" },
   posted: { label: "Posted", tone: "ok" },
   discarded: { label: "Discarded", tone: "muted" },
+  working: { label: "Working…", tone: "accent" },
+  signed_in: { label: "Signed in", tone: "ok" },
+  declined: { label: "Not now", tone: "muted" },
+  expired: { label: "Expired", tone: "muted" },
+  ended: { label: "Ended", tone: "muted" },
 };
 
 function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
@@ -176,6 +182,8 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
           <p className="text-sm">{message.body}</p>
           <SecretBox message={message} nodeName={node?.name ?? "The node"} />
         </div>
+      ) : data.type === "login" ? (
+        <LoginBox message={message} nodeName={node?.name ?? "The node"} />
       ) : data.type === "session" ? (
         <p className="whitespace-pre-wrap rounded-lg bg-bg/70 p-2 text-sm">{message.body.replace(/^@\S+ wants to /, "")}</p>
       ) : data.type === "post" && data.status === "posted" ? null : data.type === "post" ? (
@@ -218,8 +226,8 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
       )}
       {data.result?.summary ? <p className="mt-2 text-sm text-ok">{handOver ? `${handedTo} manages this session now.` : formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
       {data.result?.failed?.length ? <p className="mt-1 text-sm text-danger">{data.result.failed.map((row: { name: string; error: string }) => `${TOOL_LABEL(row.name)}: ${row.error}`).join(" · ")}</p> : null}
-      {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
-      {pending && data.type !== "secret" ? (
+      {error && data.type !== "login" ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
+      {pending && data.type !== "secret" && data.type !== "login" ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             busy={settle.isPending && settle.variables?.decision === "approve"}

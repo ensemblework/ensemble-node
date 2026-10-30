@@ -43,6 +43,8 @@ ensemble-node/
 │   │   ├── invites.tsx          the requests-to-join inbox
 │   │   ├── needs-me.tsx         Ensemble's Needs me: run approvals and agents' questions
 │   │   ├── secret-box.tsx       a node's request for a secret: password box encrypted for the computer, its route and key
+│   │   ├── login-box.tsx        a sign-in card: the saved login, signing in on the computer, a login typed and
+│   │   │                        encrypted for the computer, Not now
 │   │   ├── decision-answer.tsx  answering a Needs me card (shared by Needs me and run cards)
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      Node signature faces, shape/colour/eyes and thinking state
@@ -63,6 +65,7 @@ ensemble-node/
 │   │   ├── entity-text.ts       node replies name records by title, not id (tested)
 │   │   ├── seal.ts, secret.ts   the sealed box (WebCrypto; identical to Ensemble's shared-types seal.ts, checked
 │   │   │                        against the same seal-vectors.json) and the secret card's route, words and answer
+│   │   ├── login.ts             the sign-in card: how a typed login travels, sealed for the computer, and its words
 │   │   ├── plan.ts, session.ts, evidence.ts, threads.ts, work.ts, routines.ts, rooms.ts, trust.ts, cards.ts
 │   │   │                        pure helpers (tested): a plan card's statuses, outcomes, held steps, attempts and
 │   │   │                        ledger; a session's settings, actions, queue edits and its agent's name and id;

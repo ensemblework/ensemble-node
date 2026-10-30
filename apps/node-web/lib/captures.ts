@@ -38,6 +38,7 @@ export function heldState(status: unknown): HeldState {
 
 const PAUSED: Record<string, string> = {
   sensitive: "Paused: signing in",
+  controlled: "Paused: you're controlling it",
   private_site: "Paused: a private site",
   secret_on_screen: "Paused: a secret on screen",
 };

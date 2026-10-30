@@ -27,6 +27,7 @@ test("a held card's state", () => {
 
 test("a paused live view says why; its picture's details come from the headers", () => {
   assert.equal(livePausedWords("sensitive"), "Paused: signing in");
+  assert.equal(livePausedWords("controlled"), "Paused: you're controlling it");
   assert.equal(livePausedWords("private_site"), "Paused: a private site");
   assert.equal(livePausedWords("secret_on_screen"), "Paused: a secret on screen");
   assert.equal(livePausedWords("something_new"), "Paused");

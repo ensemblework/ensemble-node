@@ -277,7 +277,7 @@ export type LiveFrame = {
   title: string | null;
   width: number | null;
   height: number | null;
-  /** `sensitive`, `private_site` or `secret_on_screen`. */
+  /** `sensitive` (a sign-in), `controlled` (you are taking it over), `private_site` or `secret_on_screen`. */
   paused: string | null;
 };
 

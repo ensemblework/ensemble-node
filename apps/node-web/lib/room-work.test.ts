@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { boardGroups, canStartTask, contractChanges, decisionMeta, digestSections, digestTitle, dueWords, eventSubjects, modeWords, offerOpen, offerState, pageRole, priorityWord, resultState, spaceLine, startable, taskPeople, taskStatus, waitsForMe } from "./room-work";
+import { askedBy, boardGroups, canDeclineTask, canStartTask, contractChanges, decisionMeta, digestSections, digestTitle, dueWords, eventSubjects, modeWords, offerOpen, offerState, pageRole, pageRoleChange, priorityWord, resultState, spaceLine, startable, taskPeople, taskStatus, waitsForMe } from "./room-work";
 import type { BoardTask } from "./types";
 
 const task = (id: string, status: string, extra: Partial<BoardTask> = {}): BoardTask => ({ id, title: id, status, priority: null, due: null, assignee: null, requestedBy: null, peerRequestId: null, madeBy: null, updatedAt: "2026-10-30T10:00:00Z", ...extra });
@@ -30,15 +30,23 @@ test("the board shows proposed tasks first, then by status; empty groups go", ()
 });
 
 test("a task says who it is with, who asked for it and which node made it for whom", () => {
-  const handleOf = (id: string) => (id === "n-lead" ? "ben-lead" : null);
-  assert.deepEqual(taskPeople({ assignee: { accountId: "me", name: "Mira" }, requestedBy: { accountId: "ben", name: "Ben", node: { id: "n-lead", name: "Lead" } }, madeBy: null }, "me", handleOf), ["with you", "asked by Ben through @ben-lead"]);
-  assert.deepEqual(taskPeople({ assignee: { accountId: "ana", name: "Ana" }, requestedBy: { accountId: "me", name: "Mira", node: null }, madeBy: { node: { id: "n-steward", name: "Steward" }, for: { accountId: "me", name: "Mira" } } }, "me", handleOf), ["with Ana", "asked by you", "Steward for you"]);
+  assert.deepEqual(taskPeople({ assignee: { accountId: "me", name: "Mira" }, requestedBy: { accountId: "ben", name: "Ben", node: { id: "n-lead", name: "Lead", handle: "ben-lead" } }, madeBy: null }, "me"), ["with you", "asked by Ben through @ben-lead"]);
+  assert.deepEqual(
+    taskPeople({ assignee: { accountId: "ana", name: "Ana" }, requestedBy: { accountId: "me", name: "Mira", node: null }, madeBy: { node: { id: "n-steward", name: "Steward", handle: "steward" }, for: { accountId: "me", name: "Mira" } } }, "me"),
+    ["with Ana", "asked by you", "@steward for you"],
+  );
+  assert.deepEqual(taskPeople({ assignee: null, requestedBy: { accountId: "ben", name: "Ben", node: { id: "n-gone", name: "Scout", handle: null } }, madeBy: null }, "me"), ["nobody's yet", "asked by Ben through Scout"], "a node that left keeps its name");
   assert.deepEqual(taskPeople({ assignee: null, requestedBy: null, madeBy: null }, "me"), ["nobody's yet"]);
+  assert.equal(askedBy("Ana"), "Ana", "an older digest named only the person");
+  assert.equal(askedBy(null), null);
   assert.equal(waitsForMe(task("p", "proposed", { assignee: { accountId: "me", name: "Mira" }, peerRequestId: "r1" }), "me"), true, "decided on my lead's card");
   assert.equal(canStartTask(task("p", "proposed", { assignee: { accountId: "me", name: "Mira" }, peerRequestId: "r1" }), "me"), false, "a request is accepted, not started");
   assert.equal(canStartTask(task("s", "proposed", { assignee: { accountId: "me", name: "Mira" } }), "me"), true, "a steward's proposal is started");
   assert.equal(canStartTask(task("t", "in_progress", { assignee: { accountId: "me", name: "Mira" } }), "me"), false);
   assert.equal(canStartTask(task("u", "todo", { assignee: { accountId: "ben", name: "Ben" } }), "me"), false, "only the person it is with");
+  assert.equal(canDeclineTask(task("s", "proposed", { assignee: { accountId: "me", name: "Mira" } }), "me"), true, "a steward's proposal can be declined here");
+  assert.equal(canDeclineTask(task("p", "proposed", { assignee: { accountId: "me", name: "Mira" }, peerRequestId: "r1" }), "me"), false, "a request is declined on its card");
+  assert.equal(canDeclineTask(task("t", "todo", { assignee: { accountId: "me", name: "Mira" } }), "me"), false, "only while proposed");
 });
 
 test("a due date reads as today, a day, or overdue", () => {
@@ -55,6 +63,8 @@ test("work starts privately with a shared result, or as a shared run; pages have
   assert.equal(modeWords(null), null);
   assert.equal(pageRole("contract"), "Contract");
   assert.equal(pageRole("decisions"), "Decisions log");
+  assert.equal(pageRoleChange({ pageId: "p1", role: "watched", was: "contract" }), "Contract → Watched", "a page that lost its role says which");
+  assert.equal(pageRoleChange({ pageId: "p1", role: "contract" }), null, "a new role is in the line's words");
   assert.deepEqual(resultState("succeeded"), { label: "Done", tone: "ok" });
   assert.deepEqual(resultState("succeeded", "fail"), { label: "Fail", tone: "danger" }, "a review's verdict first");
   assert.equal(resultState("partially_completed").label, "Partly done");
@@ -76,14 +86,22 @@ test("the lead's note links what it is about, shows a contract's change and offe
     { kind: "page", id: "p2", title: "API contract", spaceId: "s1" },
   ]);
   assert.deepEqual(contractChanges(items), [{ title: "API contract", added: ["GET /v2/export"], removed: ["GET /export"], tasks: [{ taskId: "t1", title: "CSV export" }] }]);
-  assert.deepEqual(startable({ start: { taskIds: ["t1", "t1", "t7"] }, items }), [{ taskId: "t1", title: "CSV export" }, { taskId: "t7", title: "This task" }]);
+  assert.deepEqual(startable({ start: { taskIds: ["t1", "t1", "t7"] }, items }), [
+    { taskId: "t1", title: "CSV export", proposed: false, asker: null },
+    { taskId: "t7", title: "This task", proposed: false, asker: null },
+  ]);
+  const notes = [{ kind: "assigned", subjectKind: "task", subjectId: "t8", title: "Release checklist", spaceId: "s1", status: "proposed", actor: { accountId: "ben", name: "Ben", nodeId: "n-steward" } }];
+  assert.deepEqual(startable({ start: { taskIds: ["t8"] }, items: notes }), [{ taskId: "t8", title: "Release checklist", proposed: true, asker: "Ben" }], "a proposed task can also be declined, and says who hears it");
   assert.deepEqual(startable(null), []);
 });
 
 test("a catch-up digest lists what needs me first, and says why it came", () => {
   const sections = digestSections({
     asked: [{ requestId: "r1", kind: "work", from: { name: "Ben" }, text: "Add the CSV export", status: "awaiting_owner" }],
-    proposed: [{ taskId: "t2", title: "Fix the date filter", requestedBy: "Ana" }],
+    proposed: [
+      { taskId: "t2", title: "Fix the date filter", requestedBy: { accountId: "ana", name: "Ana", node: { id: "n-steward", name: "Steward", handle: "steward" } } },
+      { taskId: "t6", title: "Old digest", requestedBy: "Ben" },
+    ],
     events: [{}, {}],
     board: [{ taskId: "t3", title: "Landing copy", status: "done" }],
     results: [{ messageId: "m4", text: "Invoice download is ready." }],
@@ -92,7 +110,7 @@ test("a catch-up digest lists what needs me first, and says why it came", () => 
   });
   assert.deepEqual(sections.map((section) => section.id), ["asked", "proposed", "events", "board", "results", "decisions", "room"]);
   assert.deepEqual(sections[0]!.rows, [{ text: "Ben asked for work: “Add the CSV export” (waiting for you)", requestId: "r1" }]);
-  assert.equal(sections[1]!.rows[0]!.text, "“Fix the date filter”, asked by Ana");
+  assert.deepEqual(sections[1]!.rows.map((row) => row.text), ["“Fix the date filter”, asked by Ana through @steward", "“Old digest”, asked by Ben"]);
   assert.equal(sections[2]!.rows[0]!.text, "2 changes on the room's board and pages");
   assert.equal(sections[3]!.rows[0]!.text, "“Landing copy” is done");
   assert.equal(sections[6]!.rows[0]!.text, "3 messages from Ben and Ana");

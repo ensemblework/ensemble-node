@@ -5,8 +5,9 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { api, ApiError, eventsUrl, evidence, liveFrame, messageById, ownSpaces, peerRequests, peopleRooms, planById, roomWork, routines, sessions, shareToRoom } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
 import { live, type LiveCall } from "./live";
+import { waitingLoginCard } from "./login";
 import { refsOf } from "./entity-text";
-import { readTab, tabMarker, tabUnreadOf, withTab, type RoomTab } from "./rooms";
+import { joinedRefusal, readTab, tabMarker, tabUnreadOf, withTab, type RoomTab } from "./rooms";
 import { moveQueued, withoutQueued } from "./session";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
@@ -138,6 +139,12 @@ export function useBootstrap(enabled = true) {
 
 export function useActivity() {
   return useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), refetchInterval: 30_000 });
+}
+
+/** A run's open sign-in card, from the Needs me list the shell keeps fresh: no request of its own. */
+export function useRunLoginCard(jobId: string | null): Message | undefined {
+  const activity = useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), enabled: false });
+  return jobId ? waitingLoginCard(activity.data?.approvals ?? [], jobId) : undefined;
 }
 
 const messagesPath = (roomId: string, author: Author, extra = "") => `/api/node/rooms/${roomId}/messages?limit=${PAGE}${author === "all" ? "" : `&author=${author}`}${extra}`;
@@ -282,7 +289,8 @@ export function useReact() {
     onSuccess: (message) => putMessage(client, message),
     onError: (error, { message }) => {
       putMessage(client, message);
-      toastError(error);
+      const kind = client.getQueryData<Bootstrap>(keys.bootstrap)?.rooms.find((room) => room.id === message.roomId)?.kind;
+      toastError(joinedRefusal("react", error instanceof ApiError ? error.status : undefined, kind) ?? error);
     },
   });
 }
@@ -307,7 +315,10 @@ export function usePin(roomId: string) {
       putRoom(client, room);
       void client.invalidateQueries({ queryKey: keys.pins(roomId) });
     },
-    onError: toastError,
+    onError: (error) => {
+      const kind = client.getQueryData<Bootstrap>(keys.bootstrap)?.rooms.find((room) => room.id === roomId)?.kind;
+      toastError(joinedRefusal("pin", error instanceof ApiError ? error.status : undefined, kind) ?? error);
+    },
   });
 }
 
@@ -340,8 +351,8 @@ export function useSearch(q: string, roomId: string | null, author: Author) {
 }
 
 /** Ensemble's paired computers, with the folders each shares. */
-export function useDevices() {
-  return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), refetchInterval: 30_000 });
+export function useDevices(enabled = true) {
+  return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), enabled, refetchInterval: enabled ? 30_000 : false });
 }
 
 /** Ensemble's Needs me: run approvals and questions from agents. The stream's `node.needs` re-reads it at once; the poll is the fallback. */
@@ -380,7 +391,7 @@ export function useLiveView(jobId: string, enabled: boolean) {
       const frame = await liveFrame(jobId, signal);
       const heard = liveHeard.get(jobId);
       // Where the API's headers cannot be read, the stream's reason keeps a paused view paused.
-      if (!frame && heard?.paused && Date.now() - heard.when < 15_000) return { image: null, at: heard.at, url: null, title: null, width: null, height: null, paused: heard.paused };
+      if (!frame && heard?.paused && Date.now() - heard.when < 15_000) return { image: null, at: heard.at, tab: null, url: null, title: null, width: null, height: null, paused: heard.paused };
       return frame;
     },
     enabled: Boolean(jobId) && enabled,
@@ -677,11 +688,20 @@ export function useSetRoomPrefs(roomId: string) {
   return useMutation({ mutationFn: (body: Parameters<typeof roomWork.setPrefs>[1]) => roomWork.setPrefs(roomId, body), onSuccess: (prefs) => client.setQueryData(keys.roomPrefs(roomId), prefs) });
 }
 
-/** Starts one of my tasks on the room's board; my lead plans it in My crew. */
+/** Starts one of my tasks on the room's board; my lead plans it in My crew (409 while my lead here is paused). */
 export function useStartTask(roomId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: { taskId: string; mode: Parameters<typeof roomWork.startTask>[2] }) => roomWork.startTask(roomId, input.taskId, input.mode),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.board(roomId) }),
+  });
+}
+
+/** Says no to a task proposed to me on the room's board; whoever asked hears so privately, with my note. */
+export function useDeclineTask(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { taskId: string; note?: string }) => roomWork.declineTask(roomId, input.taskId, input.note),
     onSuccess: () => void client.invalidateQueries({ queryKey: keys.board(roomId) }),
   });
 }
@@ -911,6 +931,8 @@ export function useNodeEvents(enabled: boolean) {
       if (message.kind === "plan") client.setQueryData<{ message: Message; runs: Message[] }>(keys.plan(message.id), (current) => (current ? { ...current, message } : current));
       if (message.planId) client.setQueryData<{ message: Message; runs: Message[] }>(keys.plan(message.planId), (current) => (current ? { ...current, runs: mergeMessage(current.runs, message) } : current));
       if (message.kind === "plan" && typeof message.data?.routine?.id === "string") laterRoutine(message.data.routine.id);
+      // A plan for a task of a room's board shows on its row (`plan`, mine only): the board reads it again.
+      if (message.kind === "plan" && message.private) void client.invalidateQueries({ queryKey: keys.board(message.roomId) });
       if (message.authorNodeId) live.posted(message.roomId, message.authorNodeId);
       if (message.kind === "approval" || message.kind === "run") void client.invalidateQueries({ queryKey: keys.activity });
       // A run card changed: its open view reads the job (and the work log, when open) again.
@@ -973,7 +995,7 @@ export function useNodeEvents(enabled: boolean) {
       const paused = typeof data.paused === "string" && data.paused ? data.paused : null;
       const at = typeof data.at === "string" ? data.at : null;
       liveHeard.set(data.jobId, { when: Date.now(), at, paused });
-      if (paused) client.setQueryData<LiveFrame | null>(keys.live(data.jobId), (current) => ({ image: null, at, url: current?.url ?? null, title: current?.title ?? null, width: null, height: null, paused }));
+      if (paused) client.setQueryData<LiveFrame | null>(keys.live(data.jobId), (current) => ({ image: null, at, tab: current?.tab ?? null, url: current?.url ?? null, title: current?.title ?? null, width: null, height: null, paused }));
       else void client.invalidateQueries({ queryKey: keys.live(data.jobId) });
     }) as EventListener);
     // Needs me changed (a run asks, or a card was answered somewhere): re-read it now, not at the next poll.

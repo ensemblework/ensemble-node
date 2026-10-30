@@ -3,19 +3,20 @@
 /**
  * The work of a room with other people, in its conversation (Ensemble docs/35 §12.11–12.14): the offer
  * to join the room's space, the one question when work starts, my lead's private notes of what changed
- * for me there (with Start, and a contract's changes), the catch-up digest when I come back, a result
- * delivered into the room (and its draft, which I post), and a logged decision's line.
+ * for me there (with Start, or Decline for a task proposed to me, and a contract's changes), the catch-up
+ * digest when I come back, a result delivered into the room (and its draft, which I post), a logged
+ * decision's line, a page's role line, and the private line that tells me someone declined what I asked.
  */
-import { ArrowRight, BookCheck, Check, CheckSquare, CircleSlash, ExternalLink, FileText, Folder, Inbox, MessageSquare, Play } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, BookCheck, Check, CheckSquare, CircleSlash, ExternalLink, FileText, Folder, Inbox, Lock, MessageSquare, Play } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { mediaItems } from "@/lib/evidence";
-import { useSpaceActions, useStartTask } from "@/lib/hooks";
-import { contractChanges, digestSections, digestTitle, eventSubjects, offerState, resultState, startable, WORK_MODES, type DigestSection, type EventSubject } from "@/lib/room-work";
+import { useDeclineTask, useSpaceActions, useStartTask } from "@/lib/hooks";
+import { contractChanges, digestSections, digestTitle, eventSubjects, offerState, pageRoleChange, resultState, startable, WORK_MODES, type DigestSection, type EventSubject } from "@/lib/room-work";
 import { ago } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
 import type { Message, WorkMode } from "@/lib/types";
-import { Button, External, Pill } from "../ui";
+import { Button, External, Pill, Textarea } from "../ui";
 import { EvidenceGallery } from "./evidence";
 import type { MessageContext } from "./message";
 import { RichText } from "./rich-text";
@@ -41,8 +42,11 @@ export function ModeChoice({ value, onChange, name }: { value: WorkMode; onChang
   );
 }
 
-/** Starts one of my tasks on the room's board: the one question first, then my lead plans it in My crew. */
-export function StartTask({ roomId, taskId, title, size = "sm" }: { roomId: string; taskId: string; title: string; size?: "sm" | "md" }) {
+/**
+ * Starts one of my tasks on the room's board: the one question first, then my lead plans it in My crew.
+ * `alongside` shows next to Start until it is pressed (Decline, for a task proposed to me).
+ */
+export function StartTask({ roomId, taskId, title, size = "sm", alongside }: { roomId: string; taskId: string; title: string; size?: "sm" | "md"; alongside?: ReactNode }) {
   const start = useStartTask(roomId);
   const [asking, setAsking] = useState(false);
   const [mode, setMode] = useState<WorkMode>("private");
@@ -55,28 +59,21 @@ export function StartTask({ roomId, taskId, title, size = "sm" }: { roomId: stri
   }
   if (!asking) {
     return (
-      <Button size={size} tone="ghost" onClick={() => setAsking(true)} aria-label={`Start “${title}”`}>
-        <Play size={13} /> Start
-      </Button>
+      <>
+        <Button size={size} tone="ghost" onClick={() => setAsking(true)} aria-label={`Start “${title}”`}>
+          <Play size={13} /> Start
+        </Button>
+        {alongside}
+      </>
     );
   }
   return (
     <div className="w-full space-y-2 rounded-xl border border-line bg-bg/60 p-2.5" role="group" aria-label={`Start “${title}”`}>
       <ModeChoice value={mode} onChange={setMode} name={`start-${taskId}`} />
+      {/* A paused lead cannot plan it (409): its words say what to do. */}
+      {start.error ? <p className="text-xs text-danger">{start.error.message}</p> : null}
       <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          busy={start.isPending}
-          onClick={() =>
-            start.mutate(
-              { taskId, mode },
-              {
-                onSuccess: () => setAsking(false),
-                onError: toastError,
-              },
-            )
-          }
-        >
+        <Button size="sm" busy={start.isPending} onClick={() => start.mutate({ taskId, mode }, { onSuccess: () => setAsking(false) })}>
           <Play size={13} /> Start it
         </Button>
         <Button size="sm" tone="quiet" disabled={start.isPending} onClick={() => setAsking(false)}>
@@ -84,6 +81,52 @@ export function StartTask({ roomId, taskId, title, size = "sm" }: { roomId: stri
         </Button>
       </div>
     </div>
+  );
+}
+
+/** Says no to a task proposed to me (the steward's notes), with a note for whoever asked if I like. */
+function DeclineTask({ roomId, taskId, title, asker, onBack }: { roomId: string; taskId: string; title: string; asker: string | null; onBack: () => void }) {
+  const decline = useDeclineTask(roomId);
+  const [note, setNote] = useState("");
+  if (decline.isSuccess) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-muted" role="status">
+        <CircleSlash size={13} aria-hidden /> Declined{asker ? `: ${asker} hears it privately` : ""}.
+      </span>
+    );
+  }
+  const send = () => decline.mutate({ taskId, note }, { onSuccess: () => toast(asker ? `Declined “${title}”. ${asker} hears it privately.` : `Declined “${title}”.`, "ok") });
+  return (
+    <div className="w-full space-y-2 rounded-xl border border-line bg-bg/60 p-2.5" role="group" aria-label={`Decline “${title}”`}>
+      <Textarea aria-label="A note (optional)" placeholder={asker ? `A note for ${asker} (optional, only they see it)` : "A note for whoever asked (optional, only they see it)"} value={note} onChange={(event) => setNote(event.target.value)} rows={2} maxLength={1000} />
+      {decline.error ? <p className="text-xs text-danger">{decline.error.message}</p> : null}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" tone="danger" busy={decline.isPending} onClick={send}>
+          <CircleSlash size={13} /> Decline
+        </Button>
+        <Button size="sm" tone="quiet" disabled={decline.isPending} onClick={onBack}>
+          Back
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** A task proposed to me with no request behind it (the steward's notes): start it, or say no to it. */
+export function ProposedTask({ roomId, taskId, title, asker }: { roomId: string; taskId: string; title: string; asker: string | null }) {
+  const [declining, setDeclining] = useState(false);
+  if (declining) return <DeclineTask roomId={roomId} taskId={taskId} title={title} asker={asker} onBack={() => setDeclining(false)} />;
+  return (
+    <StartTask
+      roomId={roomId}
+      taskId={taskId}
+      title={title}
+      alongside={
+        <Button size="sm" tone="quiet" onClick={() => setDeclining(true)} aria-label={`Decline “${title}”`}>
+          <CircleSlash size={13} /> Decline
+        </Button>
+      }
+    />
   );
 }
 
@@ -153,7 +196,7 @@ export function RoomEventsExtras({ message, ctx }: { message: Message; ctx: Mess
             {tasks.map((task) => (
               <div key={task.taskId} className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
                 {tasks.length > 1 ? <span className="min-w-0 truncate text-xs text-muted">“{task.title}”</span> : null}
-                <StartTask roomId={ctx.roomId} taskId={task.taskId} title={task.title} />
+                {task.proposed ? <ProposedTask roomId={ctx.roomId} taskId={task.taskId} title={task.title} asker={task.asker} /> : <StartTask roomId={ctx.roomId} taskId={task.taskId} title={task.title} />}
               </div>
             ))}
           </div>
@@ -325,6 +368,51 @@ export function DecisionLine({ message, ctx, highlighted }: { message: Message; 
       {ctx.onView ? (
         <button type="button" onClick={() => ctx.onView?.("board")} className="text-accent hover:underline">
           All decisions
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** A page's role changed (`data.pageRole`): the line, what it was and is now when it lost one, and the page. */
+export function PageRoleLine({ message, highlighted }: { message: Message; highlighted?: boolean }) {
+  const role = message.data.pageRole as { pageId?: unknown; spaceId?: unknown } | undefined;
+  const change = pageRoleChange(message.data.pageRole);
+  const pageId = typeof role?.pageId === "string" ? role.pageId : null;
+  return (
+    <div id={`m-${message.id}`} className={`flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 py-2 text-center text-xs text-muted ${highlighted ? "rounded-lg bg-accent/10" : ""}`}>
+      <span className="inline-flex items-center gap-1">
+        <FileText size={12} aria-hidden /> {message.body}
+      </span>
+      {change ? <Pill>{change}</Pill> : null}
+      {pageId ? (
+        <External href={ENSEMBLE_LINKS.inSpace(`/pages/${encodeURIComponent(pageId)}`, typeof role?.spaceId === "string" ? role.spaceId : null)} className="text-accent hover:underline">
+          The page
+        </External>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Someone declined what I asked (`{requestId, declineNote}`, or a proposed task's `{taskId, declined}`): a
+ * line for me alone, with the way to the request's card or the board.
+ */
+export function DeclinedLine({ message, ctx, highlighted }: { message: Message; ctx: MessageContext; highlighted?: boolean }) {
+  const requestId = typeof message.data.requestId === "string" ? message.data.requestId : null;
+  const card = requestId ? ctx.requestOf?.(requestId)?.cardId : null;
+  return (
+    <div id={`m-${message.id}`} data-declined className={`flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 py-2 text-center text-xs text-muted ${highlighted ? "rounded-lg bg-accent/10" : ""}`}>
+      <span className="inline-flex min-w-0 items-center gap-1">
+        <Lock size={11} className="shrink-0 text-private" aria-label="Only you" role="img" /> <span className="break-words">{message.body}</span>
+      </span>
+      {card ? (
+        <button type="button" onClick={() => ctx.onJump(card)} className="text-accent hover:underline">
+          The request
+        </button>
+      ) : typeof message.data.taskId === "string" && ctx.onView ? (
+        <button type="button" onClick={() => ctx.onView?.("board")} className="text-accent hover:underline">
+          The board
         </button>
       ) : null}
     </div>

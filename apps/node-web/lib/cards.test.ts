@@ -6,6 +6,8 @@ test("each kind of card says what it asks and what its answers are called", () =
   assert.deepEqual(cardWords({ type: "post" }, "lead", "Launch"), { title: "Post this in “Launch” for you?", wants: "wants to post for you", approve: "Post", discard: "Discard" });
   assert.equal(cardWords({ type: "post", disclosure: "card-1" }, "lead", "Launch").title, "Post this answer in “Launch” for you?");
   assert.deepEqual(cardWords({ type: "post", result: { outcome: "succeeded" } }, "lead", "Launch"), { title: "Post this result in “Launch” for you?", wants: "drafted a result for you to post", approve: "Post", discard: "Discard" });
+  assert.deepEqual(cardWords({ type: "post", request: { kind: "work", to: { accountId: "ben", name: "Ben", handle: "ben" } } }, "lead", "Launch"), { title: "Send this request to @ben?", wants: "drafted a request to @ben for you to send", approve: "Send request", discard: "Discard" }, "a request the lead drafted is not a post");
+  assert.equal(cardWords({ type: "post", request: { to: { name: "Ben", handle: null } } }, "lead", "Launch").title, "Send this request to Ben?");
   assert.equal(cardWords({ type: "session" }, "lead", "Launch").approve, "Start it");
   assert.deepEqual(cardWords({ type: "session", action: "hand_over", input: { session: "s1", to: "@designer" } }, "lead", "Lead"), { title: "@lead wants to hand a session to @designer", wants: "wants to hand a session to @designer", approve: "Hand it over", discard: "Discard" });
   assert.equal(cardWords({ type: "session", action: "hand_over", input: null }, "lead", "Lead").title, "@lead wants to hand a session to another of your nodes", "a card without its target still reads");
@@ -18,6 +20,7 @@ test("each kind of card says what it asks and what its answers are called", () =
   assert.deepEqual(cardWords({ type: "disclosure", mode: "answer", asker: { name: "Ben" } }, "lead", "Launch"), { title: "Ben asked @lead something", wants: "asks before answering Ben", approve: "Answer", discard: "Don't answer" });
   assert.deepEqual(cardWords({ type: "media_preview", evidence: [{ id: "e1" }] }, "builder", "Lead"), { title: "@builder has a capture for you to check first", wants: "has a capture for you to check first", approve: "Send", discard: "Discard" });
   assert.equal(cardWords({ type: "media_preview", evidence: [{ id: "e1" }, { id: "e2" }, { id: "e3" }] }, "builder", "Lead").wants, "has 3 captures for you to check first");
+  assert.deepEqual(cardWords({ type: "login", origin: "https://ledger.example.com", computer: "Mira's laptop" }, "lead", "Lead"), { title: "@lead needs you to sign in to https://ledger.example.com on Mira's laptop", wants: "needs you to sign in to https://ledger.example.com on Mira's laptop", approve: "Sign in", discard: "Not now" });
   assert.equal(cardWords({ type: "tools" }, "lead", "Launch").title, "@lead wants to do this for you");
   assert.equal(cardWords(null, "lead", "Launch").approve, "Approve");
 });

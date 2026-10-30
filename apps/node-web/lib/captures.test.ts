@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { captureLine, heldReasons, heldReasonWords, heldState, liveMeta, livePausedWords, pageAddress } from "./captures";
+import { captureLine, heldReasons, heldReasonWords, heldState, liveMeta, livePausedWords, pageAddress, takeoverReady } from "./captures";
 
 test("held captures say why in the owner's words, each reason once", () => {
   assert.equal(heldReasonWords("It shows one of your saved secret values."), "It shows one of your saved secrets.");
@@ -34,6 +34,7 @@ test("a paused live view says why; its picture's details come from the headers",
   const headers = new Map(
     Object.entries({
       "X-Ensemble-Live-At": "2026-11-02T10:00:00.000Z",
+      "X-Ensemble-Live-Tab": "t3",
       "X-Ensemble-Live-Url": encodeURIComponent("https://www.example.com/pricing?plan=team"),
       "X-Ensemble-Live-Title": encodeURIComponent("Pricing — Example"),
       "X-Ensemble-Live-Width": "1280",
@@ -41,12 +42,20 @@ test("a paused live view says why; its picture's details come from the headers",
     }),
   );
   const get = (name: string) => headers.get(name) ?? null;
-  assert.deepEqual(liveMeta({ get }), { at: "2026-11-02T10:00:00.000Z", url: "https://www.example.com/pricing?plan=team", title: "Pricing — Example", width: 1280, height: 800, paused: null });
-  assert.deepEqual(liveMeta({ get: (name) => (name === "X-Ensemble-Live-Paused" ? "sensitive" : name === "X-Ensemble-Live-Title" ? "%E0%A4%A" : null) }), { at: null, url: null, title: "%E0%A4%A", width: null, height: null, paused: "sensitive" }, "a header that does not decode shows as it came");
+  assert.deepEqual(liveMeta({ get }), { at: "2026-11-02T10:00:00.000Z", tab: "t3", url: "https://www.example.com/pricing?plan=team", title: "Pricing — Example", width: 1280, height: 800, paused: null });
+  assert.deepEqual(liveMeta({ get: (name) => (name === "X-Ensemble-Live-Paused" ? "sensitive" : name === "X-Ensemble-Live-Title" ? "%E0%A4%A" : name === "X-Ensemble-Live-Tab" ? "tab-9" : null) }), { at: null, tab: null, url: null, title: "%E0%A4%A", width: null, height: null, paused: "sensitive" }, "a header that does not decode shows as it came; a tab is only ever tN");
   assert.equal(pageAddress("https://www.example.com/pricing?plan=team"), "example.com/pricing");
   assert.equal(pageAddress("http://localhost:3000/"), "localhost:3000");
   assert.equal(pageAddress("about:blank"), "about:blank");
   assert.equal(pageAddress(null), null);
+});
+
+test("only a computer that reports takeover shows its browser here", () => {
+  assert.equal(takeoverReady({ takeover: 1 }), true);
+  assert.equal(takeoverReady({ takeover: 2, browser: 1 }), true);
+  assert.equal(takeoverReady({ browser: 1 }), false, "an older Ensemble");
+  assert.equal(takeoverReady({ takeover: "1" as unknown as number }), false, "only a number counts");
+  assert.equal(takeoverReady(null), false);
 });
 
 test("a computer says what it can capture, or what to run there", () => {

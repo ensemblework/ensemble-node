@@ -1,20 +1,21 @@
 "use client";
 
 /**
- * Cards in rooms with other people (rooms v2, Ensemble docs/35 §12): a peer request's public card and
- * the card its target decides on, a question about sharing something private, and the status cards
- * `@leads status` brings. Also a node's proposal of a new node or crew (§6.1). The owner's own cards
- * use the same frame as the other approval cards: what is asked, the answers, and what came of it.
+ * Cards in rooms with other people (rooms v2, Ensemble docs/35 §12): a peer request's public card, the
+ * card its target decides on and a request my lead drafted for me to send, a question about sharing
+ * something private, and the status cards `@leads status` brings. Also a node's proposal of a new node
+ * or crew (§6.1). The owner's own cards use the same frame as the other approval cards: what is asked,
+ * the answers, and what came of it.
  */
 import Link from "next/link";
-import { Check, CheckSquare, CircleSlash, ExternalLink, Handshake, Lock, MessageSquareReply, Pencil, X } from "lucide-react";
+import { Check, CheckSquare, CircleSlash, ExternalLink, Handshake, Lock, MessageSquareReply, Pencil, Send, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { cardWords } from "@/lib/cards";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { modeWords } from "@/lib/room-work";
 import { useBootstrap, usePeerDecision, useSettle } from "@/lib/hooks";
 import type { Badge } from "@/lib/plan";
-import { candidateText, disclosureState, ownerCardState, requestKind, requestRole, requestState, requestUndecided, statusCardView } from "@/lib/rooms";
+import { candidateText, disclosureState, draftCandidateGoes, ownerCardState, requestKind, requestRole, requestState, requestUndecided, statusCardView } from "@/lib/rooms";
 import { toast, toastError } from "@/lib/toast";
 import type { Message, NodePublic, PeerKind, RequestCandidate, RequestRef, StatusCard, WorkMode } from "@/lib/types";
 import { PersonAvatar } from "../node-avatar";
@@ -83,6 +84,7 @@ function Refs({ refs }: { refs: RequestRef[] | null | undefined }) {
   );
 }
 
+/** The public card: only what the requester wrote, who asked whom, how it stands, and links (the answer, the task). */
 type RequestData = {
   requestId: string;
   kind: PeerKind;
@@ -92,10 +94,7 @@ type RequestData = {
   candidate?: RequestCandidate | null;
   from: { accountId: string; name: string; handle?: string | null; nodeId?: string | null; nodeHandle?: string | null };
   to: { accountId: string; name: string; handle?: string | null; leadNodeId?: string | null; leadHandle?: string | null };
-  answer?: string | null;
   answerMessageId?: string | null;
-  outcome?: string | null;
-  requirements?: Array<{ text: string; status: string }>;
   /** A work request between editors of the room's space is a proposed task there, and runs as one of two modes once accepted. */
   taskId?: string | null;
   mode?: string | null;
@@ -115,17 +114,11 @@ function BoardTaskLine({ taskId, spaceId, label, mode }: { taskId: string; space
   );
 }
 
-const OUTCOME: Record<string, Badge> = {
-  succeeded: { label: "Succeeded", tone: "ok" },
-  partially_completed: { label: "Partly done", tone: "warn" },
-  failed: { label: "Failed", tone: "danger" },
-  stopped: { label: "Stopped", tone: "muted" },
-};
-
 /**
  * A peer request's public card (kind `request`), kept current in place: who asked whom, what, and how it
- * stands; the answer or the outcome when there is one. Its asker can cancel it while it is undecided; the
- * person asked decides on their own card in My crew.
+ * stands, with a link to the public answer. A decline note is for the two people alone (from the room's
+ * list of requests). Its asker can cancel it while it is undecided; the person asked decides on their
+ * own card in My crew.
  */
 export function RequestCard({ message, ctx }: { message: Message; ctx: MessageContext }) {
   const data = message.data as RequestData;
@@ -135,7 +128,7 @@ export function RequestCard({ message, ctx }: { message: Message; ctx: MessageCo
   const state = requestState(data.status, role === "to" ? "you" : (data.to?.name ?? "them"));
   const request = ctx.requestOf?.(data.requestId);
   const lead = data.to?.leadHandle ? `@${data.to.leadHandle}` : "their lead";
-  const outcome = data.outcome ? (OUTCOME[data.outcome] ?? { label: data.outcome.replace(/_/g, " "), tone: "muted" as const }) : null;
+  const note = data.status === "declined" && role !== "other" && request?.answer ? request.answer : null;
   const cancel = () => {
     if (!confirm("Cancel this request? Its card says it was cancelled.")) return;
     decide.mutate({ requestId: data.requestId, action: "cancel", cardId: message.id }, { onSuccess: () => toast("Request cancelled.", "ok"), onError: toastError });
@@ -155,26 +148,12 @@ export function RequestCard({ message, ctx }: { message: Message; ctx: MessageCo
       <Candidate candidate={data.candidate} />
       <Refs refs={data.refs} />
       {data.taskId ? <BoardTaskLine taskId={data.taskId} spaceId={ctx.spaceId} label={data.kind === "work" ? (data.status === "open" || data.status === "awaiting_owner" ? "Proposed task on the board" : "Its task on the board") : "The task it is about"} mode={data.mode} /> : null}
-      {data.answer ? (
-        <div className="rounded-lg bg-bg/70 px-2.5 py-1.5 text-sm">
-          <span className="text-xs font-medium text-muted">{data.status === "declined" ? "Declined: " : "Answer: "}</span>
-          <span className="whitespace-pre-wrap break-words">{data.answer}</span>
-        </div>
-      ) : null}
-      {outcome ? (
-        <div className="space-y-1">
-          <p className="flex flex-wrap items-center gap-2 text-xs text-muted">
-            Outcome <Pill tone={outcome.tone}>{outcome.label}</Pill>
-          </p>
-          {data.requirements?.length ? (
-            <ul className="space-y-0.5 text-xs text-muted" aria-label="Requirements">
-              {data.requirements.map((row, at) => (
-                <li key={at} className="break-words">
-                  {row.text} · {row.status.replace(/_/g, " ")}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+      {note ? (
+        <div className="rounded-lg border border-private/30 bg-private/5 px-2.5 py-1.5 text-sm" data-decline-note>
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-muted">
+            <Lock size={10} className="text-private" aria-hidden /> {role === "from" ? `${data.to?.name ?? "Their"}'s note, for you alone:` : `Your note, for ${data.from?.name ?? "them"} alone:`}
+          </span>{" "}
+          <span className="whitespace-pre-wrap break-words">{note}</span>
         </div>
       ) : null}
       {decide.error ? <p className="text-sm text-danger">{decide.error.message}</p> : null}
@@ -222,19 +201,22 @@ type OwnerRequestData = {
   from: { accountId: string; name: string };
   nodes?: Array<{ handle: string; name: string; role: string; lead: boolean }>;
   cost?: string;
+  /** My own words for my lead, when I accepted with them: the room keeps what was asked. */
+  brief?: string | null;
   note?: string | null;
   error?: string | null;
-  /** A proposed task on the room's board: accepting asks how it runs. A review's result goes on the requester's task. */
+  /** A proposed task on the room's board: accepting asks how it runs; once accepted, `mode` is how it runs. A review's result goes on the requester's task. */
   taskId?: string | null;
   modes?: string[];
   defaultMode?: string;
+  mode?: string | null;
   resultTo?: string;
 };
 
 /**
  * The card the person asked decides on, in their My crew: who asks for what, which of their nodes would
- * do it and what it costs. Accept (as asked or edited, and optionally always for this person), or
- * decline with a note.
+ * do it and what it costs. Accept (as asked, or with my own words for my lead, which stay mine, and
+ * optionally always for this person), or decline with a note only the requester reads.
  */
 export function RequestOwnerCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
   const data = message.data as OwnerRequestData;
@@ -256,16 +238,31 @@ export function RequestOwnerCard({ message, ctx, node }: { message: Message; ctx
       { requestId: data.requestId, action: "accept", ...(editing && text.trim() && text.trim() !== data.text ? { text: text.trim() } : {}), ...(always ? { always: true } : {}), ...(modes ? { mode } : {}), cardId: message.id },
       { onSuccess: () => toast(`Accepted. ${node ? `@${node.slug}` : "Your lead"} plans it with your nodes.`, "ok") },
     );
-  const decline = () => decide.mutate({ requestId: data.requestId, action: "decline", ...(note.trim() ? { note: note.trim() } : {}), cardId: message.id }, { onSuccess: () => toast("Declined. The room's card says so.", "ok") });
+  const asker = data.from?.name ?? "them";
+  const decline = () =>
+    decide.mutate(
+      { requestId: data.requestId, action: "decline", ...(note.trim() ? { note: note.trim() } : {}), cardId: message.id },
+      { onSuccess: () => toast(note.trim() ? `Declined. ${asker} reads your note privately; the room's card says only that you declined.` : "Declined. The room's card says so.", "ok") },
+    );
   const request = ctx.requestOf?.(data.requestId);
+  const lead = node ? `@${node.slug}` : "your lead";
   return (
     <OwnerCard title={words.title} state={ownerCardState(data.status)}>
       <div className="space-y-2">
+        <Quote>{data.text}</Quote>
         {editing && pending ? (
-          <Textarea aria-label="The request, as you accept it" value={text} onChange={(event) => setText(event.target.value)} rows={Math.min(8, Math.max(3, text.split("\n").length + 1))} maxLength={4000} />
-        ) : (
-          <Quote>{data.text}</Quote>
-        )}
+          <div className="space-y-1">
+            <Textarea aria-label="Your words for your lead" value={text} onChange={(event) => setText(event.target.value)} rows={Math.min(8, Math.max(3, text.split("\n").length + 1))} maxLength={4000} />
+            <p className="text-xs text-muted">Only {lead} reads these; the room keeps what {asker} asked.</p>
+          </div>
+        ) : data.brief ? (
+          <div className="rounded-lg border border-private/30 bg-private/5 px-2.5 py-1.5 text-sm">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-muted">
+              <Lock size={10} className="text-private" aria-hidden /> Your words for {lead}:
+            </span>
+            <p className="whitespace-pre-wrap break-words">{data.brief}</p>
+          </div>
+        ) : null}
         <Candidate candidate={data.candidate} />
         <Refs refs={data.refs} />
         {data.nodes?.length ? (
@@ -274,7 +271,7 @@ export function RequestOwnerCard({ message, ctx, node }: { message: Message; ctx
           </p>
         ) : null}
         {data.taskId ? (
-          <BoardTaskLine taskId={data.taskId} spaceId={ctx.spaceId} label={data.resultTo === "requester_task" ? `${data.from?.name ?? "Their"}'s task: the review's result goes there` : "A proposed task on the room's board"} mode={request?.mode} />
+          <BoardTaskLine taskId={data.taskId} spaceId={ctx.spaceId} label={data.resultTo === "requester_task" ? `${data.from?.name ?? "Their"}'s task: the review's result goes there` : "A proposed task on the room's board"} mode={data.mode ?? request?.mode} />
         ) : null}
         {data.cost && pending ? <p className="text-xs text-muted">{data.cost}</p> : null}
         {data.note ? <p className="text-xs text-muted">Your note: {data.note}</p> : null}
@@ -303,11 +300,11 @@ export function RequestOwnerCard({ message, ctx, node }: { message: Message; ctx
               </label>
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" busy={decide.isPending && decide.variables?.action === "accept"} disabled={decide.isPending || (editing && !text.trim())} onClick={accept}>
-                  <Check size={13} /> {editing ? "Accept as edited" : "Accept"}
+                  <Check size={13} /> {editing ? "Accept with your words" : "Accept"}
                 </Button>
                 {editing ? null : (
                   <Button size="sm" tone="ghost" disabled={decide.isPending} onClick={() => setEditing(true)}>
-                    <Pencil size={13} /> Edit
+                    <Pencil size={13} /> In my words
                   </Button>
                 )}
                 <Button size="sm" tone="ghost" disabled={decide.isPending} onClick={() => setDeclining(true)}>
@@ -320,6 +317,84 @@ export function RequestOwnerCard({ message, ctx, node }: { message: Message; ctx
           <Button size="sm" tone="ghost" onClick={() => ctx.onJump(request.missionId!)}>
             Open its plan
           </Button>
+        ) : null}
+      </div>
+    </OwnerCard>
+  );
+}
+
+type RequestDraftData = {
+  status: string;
+  request?: { kind?: string; to?: { accountId?: string; name?: string; handle?: string | null } | null; candidate?: RequestCandidate | null } | null;
+  requestId?: string | null;
+  error?: string | null;
+};
+
+const DRAFT_STATE: Record<string, Badge> = {
+  pending: { label: "Waiting for you", tone: "warn" },
+  applying: { label: "Sending…", tone: "accent" },
+  posted: { label: "Sent", tone: "ok" },
+  discarded: { label: "Discarded", tone: "muted" },
+};
+
+/**
+ * A request my lead drafted in My crew (`type: "post"` with `request`): its turn read private things, so
+ * the request reaches the room only when I send it, in the words I approve (refs and candidate are in
+ * them). What kind, for whom; then Send request or Discard.
+ */
+export function RequestDraftCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
+  const data = message.data as RequestDraftData;
+  const settle = useSettle();
+  const words = cardWords(data, node?.slug ?? "node", ctx.roomTitle);
+  const [text, setText] = useState(message.body);
+  const pending = data.status === "pending";
+  const to = data.request?.to;
+  const who = to?.handle ? `@${to.handle}` : (to?.name ?? "them");
+  const error = settle.error?.message ?? data.error ?? null;
+  const card = data.requestId ? ctx.requestOf?.(data.requestId)?.cardId : null;
+  const candidate = data.request?.candidate ?? null;
+  const goes = draftCandidateGoes(candidate, text);
+  return (
+    <OwnerCard title={words.title} state={DRAFT_STATE[data.status] ?? { label: data.status, tone: "muted" }}>
+      <div className="space-y-2">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+          <Handshake size={13} className="text-accent" aria-hidden />
+          <span className="font-semibold uppercase tracking-wide">{requestKind(data.request?.kind ?? "request")}</span>
+          <span>
+            for {to?.name ?? "someone"}
+            {to?.handle && to.name ? ` (@${to.handle})` : ""}, through their lead
+          </span>
+        </p>
+        {pending ? (
+          <Textarea aria-label="The request, as the room will read it" value={text} onChange={(event) => setText(event.target.value)} rows={Math.min(10, Math.max(4, text.split("\n").length + 2))} maxLength={4000} />
+        ) : (
+          <Quote>{message.body}</Quote>
+        )}
+        {pending && candidate ? (
+          <div className="flex flex-wrap items-baseline gap-x-1.5" data-candidate={goes ? "goes" : "stays"}>
+            <Candidate candidate={candidate} />
+            <span className={`text-xs ${goes ? "text-muted" : "text-warn"}`}>{goes ? "· goes with it" : "· stays out: its values are no longer in the words"}</span>
+          </div>
+        ) : null}
+        {pending ? <p className="text-xs text-muted">The room reads exactly this, from you.</p> : null}
+        {error ? <p className="text-sm text-danger">{error}</p> : null}
+        {pending ? (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" busy={settle.isPending && settle.variables?.decision === "approve"} disabled={settle.isPending || !text.trim()} onClick={() => settle.mutate({ messageId: message.id, decision: "approve", body: text })}>
+              <Send size={13} /> {words.approve}
+            </Button>
+            <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: message.id, decision: "discard" })}>
+              <CircleSlash size={13} /> {words.discard}
+            </Button>
+          </div>
+        ) : data.status === "posted" ? (
+          card ? (
+            <Button size="sm" tone="ghost" onClick={() => ctx.onJump(card)}>
+              See it in the room
+            </Button>
+          ) : (
+            <p className="text-xs text-muted">Sent to {who}: its card is in the room.</p>
+          )
         ) : null}
       </div>
     </OwnerCard>

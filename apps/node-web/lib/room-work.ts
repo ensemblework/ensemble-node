@@ -6,7 +6,7 @@
  * log. Nothing here decides anything: the server does; these say what it did.
  */
 import type { Badge, Tone } from "./plan";
-import type { BoardTask, PageRole, RoomDecision, RoomSpaceView, SpaceRole, WorkMode } from "./types";
+import type { BoardNode, BoardRequester, BoardTask, PageRole, RoomDecision, RoomSpaceView, SpaceRole, WorkMode } from "./types";
 
 const ROLE: Record<SpaceRole, string> = { owner: "owner", editor: "editor", viewer: "viewer" };
 
@@ -70,21 +70,25 @@ export function boardGroups(tasks: readonly BoardTask[]): BoardGroup[] {
   return groups.filter((group) => group.tasks.length);
 }
 
-/**
- * Who a task is with and where it came from: "with you · asked by Ben through Scout", "with Ana ·
- * @steward for Ben". `handleOf` gives a node's room handle when it is known here.
- */
-export function taskPeople(task: Pick<BoardTask, "assignee" | "requestedBy" | "madeBy">, meId: string, handleOf: (nodeId: string) => string | null = () => null): string[] {
+/** A node as the board names it: its handle in the room, else its name (it left). */
+const nodeWords = (node: BoardNode) => (node.handle ? `@${node.handle}` : (node.name ?? "a node"));
+
+/** "Ben through @steward": who asked for a task, and the node that relayed it. An older digest named only the person. */
+export function askedBy(requester: BoardRequester | string | null | undefined, meId?: string): string | null {
+  if (!requester) return null;
+  if (typeof requester === "string") return requester.trim() || null;
+  const who = requester.accountId === meId ? "you" : requester.name;
+  return requester.node ? `${who} through ${nodeWords(requester.node)}` : who;
+}
+
+/** Who a task is with and where it came from: "with you · asked by Ben through @scout", "with Ana · @steward for Ben". */
+export function taskPeople(task: Pick<BoardTask, "assignee" | "requestedBy" | "madeBy">, meId: string): string[] {
   const who = (person: { accountId: string; name: string } | null | undefined) => (person ? (person.accountId === meId ? "you" : person.name) : null);
-  const node = (value: { id: string; name: string | null }) => {
-    const handle = handleOf(value.id);
-    return handle ? `@${handle}` : (value.name ?? "a node");
-  };
   const parts: string[] = [];
   const holder = who(task.assignee);
   parts.push(holder ? `with ${holder}` : "nobody's yet");
-  if (task.requestedBy) parts.push(`asked by ${who(task.requestedBy)}${task.requestedBy.node ? ` through ${node(task.requestedBy.node)}` : ""}`);
-  if (task.madeBy && !task.requestedBy?.node) parts.push(`${node(task.madeBy.node)} for ${who(task.madeBy.for) ?? "someone"}`);
+  if (task.requestedBy) parts.push(`asked by ${askedBy(task.requestedBy, meId)}`);
+  if (task.madeBy && !task.requestedBy?.node) parts.push(`${nodeWords(task.madeBy.node)} for ${who(task.madeBy.for) ?? "someone"}`);
   return parts;
 }
 
@@ -94,6 +98,10 @@ export const waitsForMe = (task: Pick<BoardTask, "status" | "assignee" | "peerRe
 /** A task of mine I can start from the room: not from a request (that is accepted instead), not going or finished. */
 export const canStartTask = (task: Pick<BoardTask, "status" | "assignee" | "peerRequestId">, meId: string): boolean =>
   task.assignee?.accountId === meId && !task.peerRequestId && ["proposed", "todo", "blocked"].includes(task.status);
+
+/** A proposed task of mine with no request behind it (from the steward's notes): I can say no to it here. */
+export const canDeclineTask = (task: Pick<BoardTask, "status" | "assignee" | "peerRequestId">, meId: string): boolean =>
+  task.status === "proposed" && task.assignee?.accountId === meId && !task.peerRequestId;
 
 /** "Due 3 Nov", "Due today", "Overdue since 1 Nov" (in the reader's time zone unless one is given). */
 export function dueWords(due: string | null | undefined, now = Date.now(), timeZone?: string): { text: string; late: boolean } | null {
@@ -121,6 +129,13 @@ export const PAGE_ROLES: ReadonlyArray<{ id: PageRole; label: string; hint: stri
 ];
 
 export const pageRole = (role: string): string => PAGE_ROLES.find((row) => row.id === role)?.label ?? role;
+
+/** A page's role line, when it lost one: "Contract → Watched". */
+export function pageRoleChange(value: unknown): string | null {
+  const change = value as { role?: unknown; was?: unknown } | null | undefined;
+  if (typeof change?.was !== "string" || typeof change.role !== "string" || change.was === change.role) return null;
+  return `${pageRole(change.was)} → ${pageRole(change.role)}`;
+}
 
 /** How a delivered result ended: a review's verdict, else the work's outcome. */
 export function resultState(outcome: string | null | undefined, verdict?: string | null): Badge {
@@ -168,20 +183,24 @@ export function contractChanges(items: unknown): Array<{ title: string; added: s
     });
 }
 
-/** The tasks the note offers to start (`start.taskIds`), with their titles from its items. */
-export function startable(data: Record<string, unknown> | null | undefined): Array<{ taskId: string; title: string }> {
+/**
+ * The tasks the note offers to start (`start.taskIds`), with their titles from its items. A task that was
+ * proposed to me (the steward's notes) can also be declined.
+ */
+export function startable(data: Record<string, unknown> | null | undefined): Array<{ taskId: string; title: string; proposed: boolean; asker: string | null }> {
   const start = data?.start as { taskIds?: unknown } | null | undefined;
   const ids = Array.isArray(start?.taskIds) ? start.taskIds.filter((id): id is string => typeof id === "string") : [];
-  const items = Array.isArray(data?.items) ? (data.items as EventItem[]) : [];
+  const items = Array.isArray(data?.items) ? (data.items as Array<EventItem & { status?: unknown; actor?: { name?: unknown } | null }>) : [];
   return [...new Set(ids)].map((taskId) => {
-    const title = items.find((item) => item?.subjectId === taskId && typeof item.title === "string")?.title;
-    return { taskId, title: typeof title === "string" ? title : "This task" };
+    const item = items.find((row) => row?.subjectId === taskId && row.kind === "assigned") ?? items.find((row) => row?.subjectId === taskId);
+    const proposed = item?.status === "proposed";
+    return { taskId, title: typeof item?.title === "string" ? item.title : "This task", proposed, asker: proposed && typeof item?.actor?.name === "string" ? item.actor.name : null };
   });
 }
 
 type DigestItems = {
   asked?: Array<{ requestId?: string; kind?: string; from?: { name?: string }; text?: string; status?: string }>;
-  proposed?: Array<{ taskId?: string; title?: string; requestedBy?: string | null }>;
+  proposed?: Array<{ taskId?: string; title?: string; requestedBy?: BoardRequester | string | null }>;
   events?: unknown[];
   board?: Array<{ taskId?: string; title?: string; status?: string }>;
   results?: Array<{ messageId?: string; text?: string }>;
@@ -207,7 +226,10 @@ export function digestSections(items: DigestItems | null | undefined): DigestSec
     {
       id: "proposed",
       title: "Proposed to you",
-      rows: (items?.proposed ?? []).map((row) => ({ text: `“${text(row.title, "A task")}”${row.requestedBy ? `, asked by ${row.requestedBy}` : ""}`, ...(row.taskId ? { taskId: row.taskId } : {}) })),
+      rows: (items?.proposed ?? []).map((row) => {
+        const asker = askedBy(row.requestedBy);
+        return { text: `“${text(row.title, "A task")}”${asker ? `, asked by ${asker}` : ""}`, ...(row.taskId ? { taskId: row.taskId } : {}) };
+      }),
     },
     { id: "events", title: "For you", rows: (items?.events ?? []).length ? [{ text: `${(items?.events ?? []).length} ${(items?.events ?? []).length === 1 ? "change" : "changes"} on the room's board and pages` }] : [] },
     { id: "board", title: "On the board", rows: (items?.board ?? []).map((row) => ({ text: `“${text(row.title, "A task")}” is ${taskStatus(text(row.status, "todo")).label.toLowerCase()}`, ...(row.taskId ? { taskId: row.taskId } : {}) })) },

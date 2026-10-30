@@ -15,13 +15,13 @@ export class ApiError extends Error {
 }
 
 /** Calls Ensemble's API with the shared session cookie. */
-export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${ENSEMBLE_API}${path}`, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
       credentials: "include",
-      headers: init.body === undefined ? { accept: "application/json" } : { accept: "application/json", "content-type": "application/json" },
+      headers: { ...(init.body === undefined ? { accept: "application/json" } : { accept: "application/json", "content-type": "application/json" }), ...init.headers },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: init.signal,
     });
@@ -269,8 +269,11 @@ export const roomWork = {
   endSteward: (roomId: string) => api<{ steward: null }>(`${roomPath(roomId)}/steward`, { method: "DELETE" }),
   prefs: (roomId: string) => api<{ prefs: RoomPrefs }>(`${roomPath(roomId)}/prefs`).then((result) => result.prefs),
   setPrefs: (roomId: string, body: Partial<RoomPrefs>) => api<{ prefs: RoomPrefs }>(`${roomPath(roomId)}/prefs`, { method: "PUT", body }).then((result) => result.prefs),
-  /** Starts one of my tasks on the room's board: my lead plans it in My crew. */
-  startTask: (roomId: string, taskId: string, mode: WorkMode) => api<{ started: boolean }>(`${roomPath(roomId)}/tasks/${encodeURIComponent(taskId)}/start`, { body: { mode } }),
+  /** Starts one of my tasks on the room's board: my lead plans it in My crew (its turn; the plan follows on the board's row). */
+  startTask: (roomId: string, taskId: string, mode: WorkMode) => api<{ started: boolean; taskId: string; turnId: string | null }>(`${roomPath(roomId)}/tasks/${encodeURIComponent(taskId)}/start`, { body: { mode } }),
+  /** Says no to a task proposed to me (a request's is declined as the request). */
+  declineTask: (roomId: string, taskId: string, note?: string) =>
+    api<{ task: { id: string; status: string } }>(`${roomPath(roomId)}/tasks/${encodeURIComponent(taskId)}/decline`, { body: note?.trim() ? { note: note.trim() } : {} }).then((result) => result.task),
 };
 
 /** The spaces I own (`GET /api/spaces`): any of them can hold a room's work. */

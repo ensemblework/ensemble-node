@@ -269,9 +269,26 @@ export function requestBody(draft: RequestDraft): { to: string; kind: PeerKind; 
   return { to: draft.to, kind: draft.kind, text: draft.text.trim(), ...(Object.keys(candidate).length ? { candidate } : {}) };
 }
 
+/** A drafted request's candidate goes with it only while each of its values is still in the words, as Ensemble sends it. */
+export function draftCandidateGoes(candidate: RequestCandidate | null | undefined, text: string): boolean {
+  if (!candidate || !Object.values(candidate).some(Boolean)) return false;
+  return Object.values(candidate).every((value) => !value || text.includes(value));
+}
+
 /** A candidate in a line: "ensemble at 9f8e7d6", or its address. */
 export function candidateText(candidate: RequestCandidate | null | undefined): string | null {
   if (!candidate) return null;
   const commit = candidate.commit ? `at ${candidate.commit.slice(0, 7)}` : null;
   return [candidate.repo, commit, candidate.url].filter(Boolean).join(" ") || null;
+}
+
+/**
+ * A reaction or pin refused in a room with other people: almost always a message from before I joined,
+ * which nobody there reacts to, pins or logs for me (docs/35 §12.14). Null elsewhere: the server's words stand.
+ */
+export function joinedRefusal(action: "react" | "pin", status: number | undefined, roomKind: string | undefined): string | null {
+  if (roomKind !== "room") return null;
+  if (action === "react" && status === 404) return "You can react only to messages from since you joined.";
+  if (action === "pin" && status === 400) return "You can pin only messages everyone here can read, from since you joined.";
+  return null;
 }

@@ -3,8 +3,9 @@
  * §8.12–8.16, docs/25 §10): captures held for the owner to check first, in Needs me and in their
  * conversation (why, previews fetched from the computer with clear words when it is offline or a file
  * is too large, a video's poster instead, one file sent and one discarded on their own, then the card
- * sent or discarded); a working run card's live view (a picture with its page, larger on a tap, paused
- * while signing in, back again; nothing for a run whose computer sends none); run evidence with held
+ * sent or discarded); a working run card's live view (a picture with its page, larger on a tap, where
+ * Take over opens the takeover view for that very tab; paused while signing in, pointing to the run's
+ * sign-in card once there is one; back again; nothing for a run whose computer sends none); run evidence with held
  * and kept files; a node's video with its poster, length and measured shape; a node's own captures in
  * its settings; and what each computer can capture. Never points at a hosted account or calls a model.
  * Usage is in docs/05 (Browser regression).
@@ -119,16 +120,18 @@ function fixture() {
   const messages = { "dm-builder": [asked, run1, run2, held, media, tall], "dm-lead": [] };
   for (const row of rooms) row.lastSeq = row.readSeq = messages[row.id].length;
   const boot = { me: { id: "me", name: "Mira Chen", email: "mira@fieldnote.example", verified: true }, nodes, rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
-  const job = (id, title) => ({ id, taskId: "task", title, kind: "code", status: "running", provider: "claude-code", model: "claude-opus-4-6", modelUsed: null, reasoningEffort: "high", contextTier: null, progress: "Opening the pricing page", summary: null, error: null, turns: 1, toolCalls: 4, runId: null, deviceName: "Studio", yours: true, folder: "website", branch: "testing", files: [], createdAt: at(-20), startedAt: at(-20), finishedAt: null });
+  const job = (id, title) => ({ id, taskId: "task", deviceId: "d1", title, kind: "code", status: "running", provider: "claude-code", model: "claude-opus-4-6", modelUsed: null, reasoningEffort: "high", contextTier: null, progress: "Opening the pricing page", summary: null, error: null, turns: 1, toolCalls: 4, runId: null, deviceName: "Studio", yours: true, folder: "website", branch: "testing", files: [], createdAt: at(-20), startedAt: at(-20), finishedAt: null });
   const capture = { browser: true, video: "mp4", targets: { web: { screenshot: true, video: true }, electron: { screenshot: true, video: false, reason: "No video encoder here." }, gui: { screenshot: false, video: false, reason: "Needs Xvfb for a private virtual display." }, terminal: { screenshot: true, video: false }, desktop: { screenshot: false, video: false } }, setup: true };
   const device = (id, name, capabilities) => ({ id, name, platform: "linux", appVersion: "0.9.0", folders: ["website"], online: true, lastSeenAt: at(-1), revokedAt: null, sealKey: null, capabilities });
-  const devices = [device("d1", "Studio", { browser: 1, capture }), device("d2", "Old laptop", { worktrees: 1 }), device("d3", "Build box", { browser: 1, capture: { ...capture, browser: false } })];
+  const devices = [device("d1", "Studio", { browser: 1, capture, takeover: 1, logins: 1 }), device("d2", "Old laptop", { worktrees: 1 }), device("d3", "Build box", { browser: 1, capture: { ...capture, browser: false } })];
   const nodeCaptures = [
     evidence("n-shot", "screenshot", "dashboard.png", "image/png", { width: 1280, height: 800 }),
     evidence("n-video", "video", "signup.mp4", "video/mp4", { poster: "n-poster", width: 1280, height: 720, durationMs: 5_000 }),
     evidence("n-held", "screenshot", "settings.png", "image/png", { held: true, holdReason: SECRET }),
   ];
-  return { boot, messages, jobs: { [J1]: job(J1, "Check the pricing page on a phone"), [J2]: job(J2, "Run the unit tests") }, devices, nodeCaptures, live: "picture", fetched: [], calls: [], previews: { "h-shot": 0 } };
+  // The run's sign-in, posted while the test runs: the paused live view points to it.
+  const login = message("approval", "@builder needs you to sign in to fieldnote.example on Studio", { id: "login1", data: { type: "login", status: "pending", loginId: "L1", origin: "https://www.fieldnote.example", computer: "Studio", tab: "t1", saved: true, display: false, takeover: true, reasons: ["the page has a password field"], jobId: J1 } });
+  return { boot, messages, login, jobs: { [J1]: job(J1, "Check the pricing page on a phone"), [J2]: job(J2, "Run the unit tests") }, devices, nodeCaptures, live: "picture", fetched: [], calls: [], previews: { "h-shot": 0 } };
 }
 
 try {
@@ -208,6 +211,10 @@ try {
         if (pictures[id]) return route.fulfill({ status: 200, body: pictures[id], headers: { ...cors, "content-type": "image/png", "cache-control": id.startsWith("h-") ? "no-store" : "private, no-cache" } });
         return json({ error: "That evidence is not available." }, 404);
       }
+      if (path === "/api/node/takeovers" && method === "POST") {
+        state.calls.push({ takeover: request.postDataJSON() });
+        return json({ error: "Someone is already controlling this tab. Stop there first." }, 409);
+      }
       const approval = /^\/api\/node\/approvals\/([^/]+)$/.exec(path);
       if (approval && method === "POST") {
         const body = request.postDataJSON();
@@ -266,23 +273,52 @@ try {
     assert.ok(await liveView.getByText("fieldnote.example/pricing").isVisible(), "and its address, short");
     const larger = liveView.getByRole("button", { name: "Show the live view larger" });
     const small = await larger.boundingBox();
+    assert.equal(await run.getByRole("button", { name: /Take over|Open browser/ }).count(), 0, "small, it only shows; no second way into the browser on the card");
     await shot("live-small");
     await larger.click();
     const big = await liveView.getByRole("button", { name: "Show the live view smaller" }).boundingBox();
     assert.ok(big.width > small.width * 1.8, "a tap shows it larger");
     await run.scrollIntoViewIfNeeded();
+    await fits("Live view, larger");
     await shot("live-view");
+
+    // Larger, it offers to take over that tab: the takeover view opens for the run and the tab the picture shows.
+    await liveView.getByRole("button", { name: "Take over" }).click();
+    const takeover = page.getByRole("dialog", { name: "Control the browser on Studio" });
+    await takeover.getByText("Someone is already controlling this tab. Stop there first.").waitFor();
+    assert.ok(await takeover.getByText("Pricing — Fieldnote on Studio").isVisible(), "the view names the page and the computer");
+    assert.deepEqual(state.calls.find((call) => call.takeover)?.takeover, { jobId: J1, tab: "t1" });
+    await shot("live-takeover");
+    await takeover.getByRole("button", { name: "Close" }).last().click();
+    await takeover.waitFor({ state: "detached" });
     for (let tries = 0; tries < 40 && !state.calls.some((call) => call.live === J2); tries += 1) await page.waitForTimeout(100);
     assert.ok(state.calls.some((call) => call.live === J2), "the second run was asked");
     assert.equal(await timeline.locator("#m-run2 [data-live]").count(), 0, "nothing when the computer sends no live view");
 
+    // A sensitive tab (a sign-in, or someone controlling it) pauses it; a sign-in's card is pointed to once it is there.
     state.live = "paused";
     await emit("node.live", { jobId: J1, at: new Date().toISOString(), paused: "sensitive" });
     await run.getByText("Paused: signing in").waitFor();
     assert.equal(await run.getByRole("region", { name: "Live view" }).count(), 0, "no picture while signing in");
+    assert.equal(await run.getByRole("link", { name: "Go to its sign-in card" }).count(), 0, "no card to point to yet");
+    state.messages["dm-builder"].push(state.login);
+    await emit("node.message", state.login);
+    const pointer = run.getByRole("link", { name: "Go to its sign-in card" });
+    await pointer.waitFor();
+    await fits("Paused live view");
     await shot("live-paused");
+    await pointer.click();
+    const signInCard = timeline.locator("#m-login1");
+    await page.waitForFunction(() => {
+      const box = document.querySelector("#m-login1")?.getBoundingClientRect();
+      return box && box.top >= 0 && box.top < window.innerHeight;
+    });
+    assert.ok(await signInCard.getByText("@builder needs you to sign in to https://www.fieldnote.example on Studio").isVisible(), "the jump lands on the run's sign-in card");
+    state.login.data = { ...state.login.data, status: "signed_in", via: "takeover" };
+    await emit("node.message.updated", state.login);
     state.live = "picture";
     await emit("node.live", { jobId: J1, at: new Date().toISOString() });
+    await run.scrollIntoViewIfNeeded();
     await run.getByRole("region", { name: "Live view" }).waitFor();
 
     // Run evidence: the video with its poster and length; held and kept files listed, never read.

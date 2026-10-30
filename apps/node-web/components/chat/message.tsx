@@ -16,6 +16,7 @@ import type { HeldCall, Member, Message, NodePublic, PeerRequest, ReplyTo, RoomK
 import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { SecretBox } from "../secret-box";
+import { LoginBox } from "../login-box";
 import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
 import { EvidenceGallery } from "./evidence";
@@ -25,8 +26,8 @@ import { HelperThreadChip } from "./helper-thread";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 import { PlanCard } from "./plan-card";
-import { DisclosureCard, NodeProposalCard, RequestCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
-import { DecisionLine, DigestCard, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
+import { DisclosureCard, NodeProposalCard, RequestCard, RequestDraftCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
+import { DecisionLine, DeclinedLine, DigestCard, PageRoleLine, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
 
 export type MessageContext = {
   meId: string;
@@ -144,10 +145,16 @@ const STATUS_PILL: Record<string, { label: string; tone: "warn" | "ok" | "muted"
   partial: { label: "Partly applied", tone: "warn" },
   posted: { label: "Posted", tone: "ok" },
   discarded: { label: "Discarded", tone: "muted" },
+  working: { label: "Working…", tone: "accent" },
+  signed_in: { label: "Signed in", tone: "ok" },
+  declined: { label: "Not now", tone: "muted" },
+  expired: { label: "Expired", tone: "muted" },
+  ended: { label: "Ended", tone: "muted" },
 };
 
 function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
   if (message.data.type === "peer_request") return <RequestOwnerCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "post" && message.data.request) return <RequestDraftCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "disclosure") return <DisclosureCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "node_proposal") return <NodeProposalCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "media_preview") return <HeldCapturesCard message={message} ctx={ctx} node={node} />;
@@ -183,6 +190,8 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
           <p className="text-sm">{message.body}</p>
           <SecretBox message={message} nodeName={node?.name ?? "The node"} />
         </div>
+      ) : data.type === "login" ? (
+        <LoginBox message={message} nodeName={node?.name ?? "The node"} />
       ) : data.type === "session" ? (
         <p className="whitespace-pre-wrap rounded-lg bg-bg/70 p-2 text-sm">{message.body.replace(/^@\S+ wants to /, "")}</p>
       ) : data.type === "post" && data.status === "posted" ? null : data.type === "post" ? (
@@ -229,8 +238,8 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
       )}
       {data.result?.summary ? <p className="mt-2 text-sm text-ok">{handOver ? `${handedTo} manages this session now.` : formatEntityText(data.result.summary, [], { plain: true })}</p> : null}
       {data.result?.failed?.length ? <p className="mt-1 text-sm text-danger">{data.result.failed.map((row: { name: string; error: string }) => `${TOOL_LABEL(row.name)}: ${row.error}`).join(" · ")}</p> : null}
-      {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
-      {pending && data.type !== "secret" ? (
+      {error && data.type !== "login" ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
+      {pending && data.type !== "secret" && data.type !== "login" ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button
             busy={settle.isPending && settle.variables?.decision === "approve"}
@@ -519,6 +528,8 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
       );
     }
     if (type === "decision_logged") return <DecisionLine message={message} ctx={ctx} highlighted={highlighted} />;
+    if (message.data?.pageRole) return <PageRoleLine message={message} highlighted={highlighted} />;
+    if (message.data?.declineNote === true || message.data?.declined === true) return <DeclinedLine message={message} ctx={ctx} highlighted={highlighted} />;
     return (
       <div id={`m-${message.id}`} className={`py-2 text-center text-xs text-muted ${highlighted ? "rounded-lg bg-accent/10" : ""}`}>
         {message.body}

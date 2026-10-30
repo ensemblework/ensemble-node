@@ -271,6 +271,8 @@ export type LiveFrame = {
   /** The picture as a data URL; null when the view is paused or there is none. */
   image: string | null;
   at: string | null;
+  /** The computer's tab it shows (`t3`): a takeover controls that tab. */
+  tab: string | null;
   url: string | null;
   title: string | null;
   width: number | null;
@@ -514,7 +516,8 @@ export type CaptureSummary = {
   targets: Record<string, { screenshot: boolean; video: boolean; reason?: string }>;
   setup: boolean;
 };
-export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; [key: string]: unknown };
+/** `takeover` 1: it shows a tab of its browser here for the owner to control; `logins` 1: it hands sign-ins to the owner. */
+export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; takeover?: number; logins?: number; [key: string]: unknown };
 
 /** Ensemble's Needs me: a run's approval (`GET /api/approvals`). */
 export type ApprovalRecord = { id: string; runId: string; taskId: string | null; kind: string; title: string; preview: unknown; decision: string | null; requestedAt: string };
@@ -576,6 +579,7 @@ export type AgentJob = {
   toolCalls: number;
   runId: string | null;
   /** Only for the person whose computer runs it. */
+  deviceId?: string | null;
   deviceName: string | null;
   /** True when the run is on my computer: only then may I stop it. */
   yours: boolean;
@@ -718,9 +722,14 @@ export type PeerRequest = {
   candidate: RequestCandidate | null;
   from: RequestPerson & { nodeId: string | null; nodeHandle: string | null };
   to: RequestPerson & { leadNodeId: string | null; leadHandle: string | null };
-  answer: string | null;
-  outcome: string | null;
-  requirements: Array<{ text: string; status: string }>;
+  /** The public answer: a message in the room, linked, never copied. */
+  answerMessageId?: string | null;
+  /** A decline note, for the two people only. */
+  answer?: string | null;
+  /** For the person asked only: their own words for their lead, and how the work went. */
+  brief?: string | null;
+  outcome?: string | null;
+  requirements?: Array<{ text: string; status: string }>;
   cardId: string | null;
   ownerCardId?: string | null;
   missionId?: string | null;
@@ -741,6 +750,10 @@ export type RoomSpaceView = {
 };
 
 export type BoardPerson = { accountId: string; name: string };
+/** A node on the room's board: its name, and its handle in the room (null once it left). */
+export type BoardNode = { id: string; name: string | null; handle?: string | null };
+/** Who asked for a task: the person, and the node that relayed it. The digest uses the same shape. */
+export type BoardRequester = BoardPerson & { node: BoardNode | null };
 /** A task of the room's board (`GET /api/node/rooms/:id/board`): who it is with, who asked for it, which node made it for whom. */
 export type BoardTask = {
   id: string;
@@ -749,9 +762,11 @@ export type BoardTask = {
   priority: string | null;
   due: string | null;
   assignee: BoardPerson | null;
-  requestedBy: (BoardPerson & { node: { id: string; name: string | null } | null }) | null;
+  requestedBy: BoardRequester | null;
   peerRequestId: string | null;
-  madeBy: { node: { id: string; name: string | null }; for: BoardPerson | null } | null;
+  madeBy: { node: BoardNode; for: BoardPerson | null } | null;
+  /** My own plan for it, the newest (only I see mine): its card in My crew. */
+  plan?: { id: string; status: string } | null;
   updatedAt: string;
 };
 export type RoomBoard = { space: { id: string; name: string | null; role: SpaceRole | null } | null; tasks: BoardTask[] };

@@ -269,6 +269,12 @@ export function requestBody(draft: RequestDraft): { to: string; kind: PeerKind; 
   return { to: draft.to, kind: draft.kind, text: draft.text.trim(), ...(Object.keys(candidate).length ? { candidate } : {}) };
 }
 
+/** A drafted request's candidate goes with it only while each of its values is still in the words, as Ensemble sends it. */
+export function draftCandidateGoes(candidate: RequestCandidate | null | undefined, text: string): boolean {
+  if (!candidate || !Object.values(candidate).some(Boolean)) return false;
+  return Object.values(candidate).every((value) => !value || text.includes(value));
+}
+
 /** A candidate in a line: "ensemble at 9f8e7d6", or its address. */
 export function candidateText(candidate: RequestCandidate | null | undefined): string | null {
   if (!candidate) return null;

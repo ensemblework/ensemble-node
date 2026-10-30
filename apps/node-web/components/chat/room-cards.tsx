@@ -15,7 +15,7 @@ import { ENSEMBLE_LINKS } from "@/lib/config";
 import { modeWords } from "@/lib/room-work";
 import { useBootstrap, usePeerDecision, useSettle } from "@/lib/hooks";
 import type { Badge } from "@/lib/plan";
-import { candidateText, disclosureState, ownerCardState, requestKind, requestRole, requestState, requestUndecided, statusCardView } from "@/lib/rooms";
+import { candidateText, disclosureState, draftCandidateGoes, ownerCardState, requestKind, requestRole, requestState, requestUndecided, statusCardView } from "@/lib/rooms";
 import { toast, toastError } from "@/lib/toast";
 import type { Message, NodePublic, PeerKind, RequestCandidate, RequestRef, StatusCard, WorkMode } from "@/lib/types";
 import { PersonAvatar } from "../node-avatar";
@@ -352,6 +352,8 @@ export function RequestDraftCard({ message, ctx, node }: { message: Message; ctx
   const who = to?.handle ? `@${to.handle}` : (to?.name ?? "them");
   const error = settle.error?.message ?? data.error ?? null;
   const card = data.requestId ? ctx.requestOf?.(data.requestId)?.cardId : null;
+  const candidate = data.request?.candidate ?? null;
+  const goes = draftCandidateGoes(candidate, text);
   return (
     <OwnerCard title={words.title} state={DRAFT_STATE[data.status] ?? { label: data.status, tone: "muted" }}>
       <div className="space-y-2">
@@ -364,15 +366,17 @@ export function RequestDraftCard({ message, ctx, node }: { message: Message; ctx
           </span>
         </p>
         {pending ? (
-          <Textarea aria-label="The request, as the room will read it" value={text} onChange={(event) => setText(event.target.value)} rows={Math.min(10, Math.max(3, text.split("\n").length + 1))} maxLength={4000} />
+          <Textarea aria-label="The request, as the room will read it" value={text} onChange={(event) => setText(event.target.value)} rows={Math.min(10, Math.max(4, text.split("\n").length + 2))} maxLength={4000} />
         ) : (
           <Quote>{message.body}</Quote>
         )}
-        {pending ? (
-          <p className="text-xs text-muted">
-            The room reads exactly this, from you.{data.request?.candidate ? " The candidate goes with it while its commit or address stays in the words." : ""}
-          </p>
+        {pending && candidate ? (
+          <div className="flex flex-wrap items-baseline gap-x-1.5" data-candidate={goes ? "goes" : "stays"}>
+            <Candidate candidate={candidate} />
+            <span className={`text-xs ${goes ? "text-muted" : "text-warn"}`}>{goes ? "· goes with it" : "· stays out: its values are no longer in the words"}</span>
+          </div>
         ) : null}
+        {pending ? <p className="text-xs text-muted">The room reads exactly this, from you.</p> : null}
         {error ? <p className="text-sm text-danger">{error}</p> : null}
         {pending ? (
           <div className="flex flex-wrap gap-2">

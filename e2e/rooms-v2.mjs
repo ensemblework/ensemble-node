@@ -97,7 +97,7 @@ function fixture() {
     message("launch", "c-reply", "text", "Alpha found 3 stale commands in the README; the sign-up fix itself looks right. I would tell Ben the review can start.", { private: true }),
     message("launch", "c-proposal", "approval", "Make a node: Docs (writer)", { private: true, data: { type: "node_proposal", status: "pending", action: "node", input: { name: "Docs", role: "writer", charter: "You write and keep the docs: the README, the guides and the release notes, in plain British English." }, private: true } }),
     // My lead drafted a request to Ben in My crew: it reaches the room only when I send it.
-    message("launch", "c-req-draft", "approval", "When does the API change land? I need the date for the launch note.", { private: true, data: { type: "post", status: "pending", request: { kind: "question", to: { accountId: "ben", name: "Ben", handle: "ben" }, candidate: null } } }),
+    message("launch", "c-req-draft", "approval", "Please review the date filter fix.\nCandidate: repository acme/web, at commit 1a2b3c4d5e6f", { private: true, data: { type: "post", status: "pending", request: { kind: "review", to: { accountId: "ben", name: "Ben", handle: "ben" }, candidate: { repo: "acme/web", commit: "1a2b3c4d5e6f" } } } }),
   ];
   const task = [
     message("task-alpha", "t-brief", "text", "@lead-alpha Audit the README for stale commands.", { data: { brief: { helperNodeId: "lead-alpha" } } }),
@@ -285,9 +285,9 @@ try {
         if (card.data.type === "node_proposal") card.data = { ...card.data, status: body.decision === "approve" ? "applied" : "discarded", ...(body.decision === "approve" ? { result: { summary: "made @docs (Docs)", nodeId: "docs", handle: "docs" } } : {}) };
         if (card.data.type === "post" && card.data.request && body.decision === "approve") {
           // Sent: the request is made in the words I approved, and its public card is posted.
-          const made = { ...state.requests[0], id: "req-3", kind: card.data.request.kind, status: "open", text: body.body, candidate: null, from: { accountId: "me", name: "Mira", handle: "mira", nodeId: "lead", nodeHandle: "lead" }, to: { accountId: "ben", name: "Ben", handle: "ben", leadNodeId: "ben-lead", leadHandle: "atlas" }, answer: null, brief: null, cardId: "c-request-3", ownerCardId: null, missionId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          const made = { ...state.requests[0], id: "req-3", kind: card.data.request.kind, status: "awaiting_owner", text: body.body, candidate: body.body.includes(card.data.request.candidate.commit) ? card.data.request.candidate : null, from: { accountId: "me", name: "Mira", handle: "mira", nodeId: "lead", nodeHandle: "lead" }, to: { accountId: "ben", name: "Ben", handle: "ben", leadNodeId: "ben-lead", leadHandle: "atlas" }, answer: null, brief: null, cardId: "c-request-3", ownerCardId: null, missionId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
           state.requests.unshift(made);
-          const publicRow = post(state.message("launch", "c-request-3", "request", `Mira asked Ben (question): ${body.body}`, { authorKind: "system", authorNodeId: null, data: state.publicCard(made), createdAt: new Date().toISOString() }));
+          const publicRow = post(state.message("launch", "c-request-3", "request", `Mira asked Ben (review): ${body.body}`, { authorKind: "system", authorNodeId: null, data: state.publicCard(made), createdAt: new Date().toISOString() }));
           setTimeout(() => void emit("node.message", publicRow).then(() => emit("node.request", { roomId: "launch", requestId: "req-3" })), 50);
           card.body = body.body;
           card.data = { ...card.data, status: "posted", requestId: "req-3", error: null };
@@ -434,15 +434,20 @@ try {
     await draft.scrollIntoViewIfNeeded();
     assert.ok(await draft.getByText("Send this request to @ben?").isVisible(), "a drafted request, not a post");
     assert.ok(await draft.getByText("for Ben (@ben), through their lead").isVisible());
-    await draft.getByRole("textbox", { name: "The request, as the room will read it" }).fill("When does the API change land? I need the date for Friday's launch note.");
+    assert.ok(await draft.getByText("· goes with it").isVisible(), "the candidate goes while its commit is in the words");
+    const words = draft.getByRole("textbox", { name: "The request, as the room will read it" });
+    await words.fill("Please review the date filter fix on a phone.");
+    await draft.getByText("· stays out: its values are no longer in the words").waitFor();
+    await words.fill("Please review the date filter fix on a phone.\nCandidate: repository acme/web, at commit 1a2b3c4d5e6f");
+    await draft.getByText("· goes with it").waitFor();
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/request-draft-${width}.png` });
     await draft.getByRole("button", { name: "Send request" }).click();
     await draft.getByText("Sent", { exact: true }).waitFor();
-    assert.deepEqual(state.calls.find((call) => call.approval === "c-req-draft").body, { decision: "approve", body: "When does the API change land? I need the date for Friday's launch note." });
+    assert.deepEqual(state.calls.find((call) => call.approval === "c-req-draft").body, { decision: "approve", body: "Please review the date filter fix on a phone.\nCandidate: repository acme/web, at commit 1a2b3c4d5e6f" });
     await draft.getByRole("button", { name: "See it in the room" }).click();
     await page.waitForFunction(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.startsWith("Room"));
-    await timeline.locator("#m-c-request-3").getByText("When does the API change land? I need the date for Friday's launch note.").waitFor();
+    await timeline.locator("#m-c-request-3").getByText("Please review the date filter fix on a phone.", { exact: false }).waitFor();
     await crewTab.click();
 
     // Share to room: my lead's private reply, through my lead; the copy is in the Room.

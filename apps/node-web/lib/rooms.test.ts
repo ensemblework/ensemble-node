@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { awayLine, awayUntil, canShare, candidateText, disclosureState, isPeopleRoom, joinedRefusal, leadsStatus, liveTabOf, ownerCardState, readTab, requestBody, requestKind, requestProblems, requestRole, requestState, requestUndecided, sharedCopy, sharedLabel, statusCardView, tabMarker, tabOf, tabUnreadOf, withTab, type RequestDraft } from "./rooms";
+import { awayLine, awayUntil, canShare, candidateText, disclosureState, draftCandidateGoes, isPeopleRoom, joinedRefusal, leadsStatus, liveTabOf, ownerCardState, readTab, requestBody, requestKind, requestProblems, requestRole, requestState, requestUndecided, sharedCopy, sharedLabel, statusCardView, tabMarker, tabOf, tabUnreadOf, withTab, type RequestDraft } from "./rooms";
 import type { Message, StatusCard } from "./types";
 
 const message = (seq: number, extra: Partial<Message> = {}): Message => ({
@@ -160,4 +160,11 @@ test("a reaction or pin refused in a room with other people says it is about mes
   assert.equal(joinedRefusal("pin", 400, "room"), "You can pin only messages everyone here can read, from since you joined.");
   assert.equal(joinedRefusal("react", 404, "dm"), null, "elsewhere the server's words stand");
   assert.equal(joinedRefusal("pin", 409, "room"), null, "too many pins says so itself");
+});
+
+test("a drafted request's candidate goes with it only while its values stay in the words", () => {
+  const candidate = { repo: "acme/web", commit: "9f8e7d6c5b4a" };
+  assert.equal(draftCandidateGoes(candidate, "Please review it.\nCandidate: repository acme/web, at commit 9f8e7d6c5b4a"), true);
+  assert.equal(draftCandidateGoes(candidate, "Please review it in acme/web."), false, "the commit was edited out");
+  assert.equal(draftCandidateGoes(null, "anything"), false);
 });

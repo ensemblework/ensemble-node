@@ -14,13 +14,13 @@ export class ApiError extends Error {
 }
 
 /** Calls Ensemble's API with the shared session cookie. */
-export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${ENSEMBLE_API}${path}`, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
       credentials: "include",
-      headers: init.body === undefined ? { accept: "application/json" } : { accept: "application/json", "content-type": "application/json" },
+      headers: { ...(init.body === undefined ? { accept: "application/json" } : { accept: "application/json", "content-type": "application/json" }), ...init.headers },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: init.signal,
     });

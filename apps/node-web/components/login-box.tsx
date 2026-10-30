@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CircleSlash, KeyRound, Lock, LogIn, Monitor, ShieldAlert, ShieldCheck } from "lucide-react";
+import { Check, CircleSlash, KeyRound, Lock, LogIn, Monitor, MonitorSmartphone, ShieldAlert, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { CLI_COMMAND } from "@/lib/config";
 import { keys, putMessage } from "@/lib/hooks";
 import { loginFingerprint, loginOutcomeText, loginReasonText, loginRouteText, typedLoginAnswer, type LoginAnswer, type LoginCardData, type LoginTarget } from "@/lib/login";
 import { toast } from "@/lib/toast";
 import type { Message } from "@/lib/types";
+import { TakeoverView } from "./takeover-view";
 import { Button, Spinner } from "./ui";
 
 type Answered = { message: Message; result: { status: string; message?: string } };
@@ -30,6 +31,7 @@ export function LoginBox({ message, nodeName }: { message: Message; nodeName: st
   const [save, setSave] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [controlling, setControlling] = useState(false);
   const target = useQuery({ queryKey: ["node-login", message.id], queryFn: () => api<LoginTarget>(`/api/node/logins/${message.id}`), enabled: open && typing, retry: false, staleTime: 30_000 });
   const fingerprint = useQuery({
     queryKey: ["node-login-key", message.id, target.data?.route.mode === "sealed" ? target.data.route.sealKey.kid : null],
@@ -96,6 +98,11 @@ export function LoginBox({ message, nodeName }: { message: Message; nodeName: st
             <Check size={14} /> I&apos;m done
           </Button>
         ) : null}
+        {data.takeover ? (
+          <Button size="sm" tone={data.saved || data.display ? "ghost" : "primary"} disabled={working || controlling} onClick={() => setControlling(true)}>
+            <MonitorSmartphone size={14} /> Open the browser
+          </Button>
+        ) : null}
         <Button size="sm" tone="ghost" disabled={working} onClick={() => setTyping((value) => !value)} aria-expanded={typing}>
           <LogIn size={14} /> Type it here
         </Button>
@@ -103,7 +110,21 @@ export function LoginBox({ message, nodeName }: { message: Message; nodeName: st
           <CircleSlash size={14} /> Not now
         </Button>
       </div>
-      {!data.display ? <p className="text-xs text-muted">{computer} has no screen to sign in on.</p> : null}
+      {!data.display ? <p className="text-xs text-muted">{computer} has no screen to sign in on{data.takeover ? ": open its browser here instead, or type it." : "."}</p> : null}
+      {controlling ? (
+        <TakeoverView
+          source={{ loginCardId: message.id }}
+          site={site}
+          computer={computer}
+          onClose={(result) => {
+            setControlling(false);
+            if (result.card) putMessage(client, result.card);
+            void client.invalidateQueries({ queryKey: keys.activity });
+            if (result.signedIn) toast(`Signed in to ${site}. ${nodeName} goes on.`, "ok");
+            else if (result.signedIn === false) setError("Still not signed in. Open the browser again, or answer another way.");
+          }}
+        />
+      ) : null}
       {typing ? (
         <form
           className="space-y-2 rounded-xl border border-line bg-bg/70 p-3"

@@ -3,26 +3,35 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, Download, Ellipsis, Lock, MessagesSquare, Pause, Pin, Search, Settings2, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Download, Ellipsis, Handshake, KanbanSquare, Lock, MessagesSquare, Pause, Pin, Search, Settings2, ShieldCheck, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { messageFiles } from "@/lib/attachments";
 import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
-import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, updateMessages, useBootstrap, useMessages, useSend, type Author } from "@/lib/hooks";
+import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, updateMessages, useBootstrap, useMessages, usePlan, useRoomRequests, useRoomSpace, useSend, useShareToRoom, type Author } from "@/lib/hooks";
 import { clearJump, useJump } from "@/lib/jump";
 import { useLiveRoom } from "@/lib/live";
+import { isPeopleRoom, liveTabOf, sharedCopy, tabMarker, tabOf, tabUnreadOf, type RoomTab } from "@/lib/rooms";
+import { newestSessionCards } from "@/lib/session";
 import { TOOL_LABEL } from "@/lib/text";
+import { helperThread, helperThreads, looseThreads, placeThreads, threadLabel, type HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
 import type { Bootstrap, Member, Message, NodeFull, Room } from "@/lib/types";
+import { workBoard } from "@/lib/work";
 import { NodeAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
-import { IconButton, MenuItem, Spinner, useDismiss } from "../ui";
+import { Drawer, IconButton, MenuItem, Spinner, useDismiss } from "../ui";
 import { Composer, type ComposerDraft, type MentionOption } from "./composer";
+import { HelperThreadView } from "./helper-thread";
 import { authorLabel, MessageItem, replyOf, type MessageContext } from "./message";
 import { PinnedBar, PinsDrawer } from "./pins";
+import { PlanCard } from "./plan-card";
 import { RichText } from "./rich-text";
 import { readableBody } from "@/lib/entity-text";
+import { RoomBoardView } from "./room-board";
+import { RequestForm, TrustSheet } from "./room-people";
 import { RoomSettings } from "./room-settings";
 import { SearchPanel } from "./search";
+import { WorkStrip } from "./work-strip";
 
 const SUGGESTIONS: Record<Room["kind"], string[]> = {
   dm: ["What's on my plate today?", "Add a task to review the onboarding flow next Monday", "Make a page with notes from what I tell you next", "Fix the failing tests in my repo on my laptop"],
@@ -41,6 +50,36 @@ const FILTERS: Array<{ id: ViewFilter; label: string; icon: typeof Users; empty:
 type NodeMember = Extract<Member, { kind: "node" }>;
 type PersonMember = Extract<Member, { kind: "person" }>;
 
+const TABS: ReadonlyArray<{ id: RoomTab | "board"; label: string; title: string }> = [
+  { id: "room", label: "Room", title: "Everyone here reads the Room" },
+  { id: "crew", label: "My crew", title: "Only you and your nodes read My crew" },
+  { id: "board", label: "Board", title: "The room's space: its tasks, the pages it follows and its decisions" },
+];
+
+/** A room's empty tab: who reads it and who answers there, with a few ways to start. */
+function PeopleEmpty({ tab, title, onSuggest, disabled }: { tab: RoomTab; title: string; onSuggest: (text: string) => void; disabled: boolean }) {
+  const room = tab === "room";
+  const suggestions = room ? ["@leads status", "Who can take the API changes this week?"] : ["What did I miss here?", "Draft a short update on my work for the room"];
+  return (
+    <div className="flex flex-col items-center py-14 text-center">
+      <span className={`flex h-14 w-14 items-center justify-center rounded-2xl ${room ? "bg-raised text-muted" : "bg-private/10 text-private"}`}>{room ? <Users size={26} strokeWidth={1.6} /> : <Lock size={24} strokeWidth={1.6} />}</span>
+      <h2 className="mt-4 text-xl font-semibold">{room ? `Welcome to ${title}` : "Your crew, here"}</h2>
+      <p className="mt-2 max-w-md text-sm text-muted">
+        {room
+          ? "Everyone here reads the Room. Only a lead you name answers here, and a message that names no node wakes nobody. Your own nodes answer you privately, in My crew."
+          : "Only you and your nodes read this. Your lead answers what you ask here, or the node you name. Nothing reaches the Room unless you share it."}
+      </p>
+      <div className="mt-5 flex max-w-xl flex-wrap justify-center gap-2">
+        {suggestions.map((text) => (
+          <button key={text} onClick={() => onSuggest(text)} disabled={disabled} className="rounded-full border border-line bg-panel px-3 py-1.5 text-sm text-muted hover:border-accent hover:text-ink disabled:opacity-50">
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function RoomView({ roomId }: { roomId: string }) {
   const client = useQueryClient();
   const boot = useBootstrap();
@@ -48,12 +87,27 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [filter, setFilter] = useState<ViewFilter>("all");
   const author: Author = serverAuthor(filter);
   const messages = useMessages(roomId, author);
+  // The whole conversation, whatever the filter shows: what runs here and which message brought in a helper.
+  const everything = useMessages(roomId, "all");
   const send = useSend(roomId);
   const sendMessage = send.mutate;
   const live = useLiveRoom(roomId);
-  const [panel, setPanel] = useState<null | "settings" | "pins">(null);
+  const [panel, setPanel] = useState<null | "settings" | "pins" | "trust" | "request">(null);
+  // A room with other people has two tabs: the shared Room and my own My crew (rooms v2).
+  const isPeople = Boolean(room && isPeopleRoom(room));
+  const [tab, setTab] = useState<RoomTab>("room");
+  // The room's Board: its space's tasks, pages and decisions, in place of the conversation.
+  const [boardOpen, setBoardOpen] = useState(false);
+  const meId = boot.data?.me.id ?? "";
+  const requests = useRoomRequests(roomId, isPeople);
+  const space = useRoomSpace(roomId, isPeople && Boolean(room?.spaceId));
+  const { mutate: shareMessage } = useShareToRoom();
   const [menu, setMenu] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [helper, setHelper] = useState<HelperThread | null>(null);
+  // A routine run's card, opened from the strip: it is not in the timeline.
+  const [cardId, setCardId] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
   const [reply, setReply] = useState<Message | null>(null);
   const [draft, setDraft] = useState<ComposerDraft | null>(null);
   const [highlight, setHighlight] = useState<string | null>(null);
@@ -71,9 +125,10 @@ export function RoomView({ roomId }: { roomId: string }) {
   const missingChecked = useRef(false);
   const opened = useRef<{ read: number; last: number } | null>(null);
   if (room && !opened.current) {
-    opened.current = { read: room.readSeq ?? room.lastSeq, last: room.lastSeq };
+    opened.current = { read: isPeople ? tabMarker(room, tab) : (room.readSeq ?? room.lastSeq), last: room.lastSeq };
     seenSeq.current = opened.current.read;
   }
+  const hashUsed = useRef(false);
   const jump = useJump(roomId);
   const handledJump = useRef<number | null>(null);
   const lastFilter = useRef(filter);
@@ -98,23 +153,91 @@ export function RoomView({ roomId }: { roomId: string }) {
   }, [boot.data, room, client]);
 
   const all = messages.data ?? [];
-  // Cards of plan steps show inside their plan's card, not in the timeline.
-  const loaded = useMemo(() => all.filter((row) => !row.planId), [all]);
+  // Cards of plan steps show inside their plan's card, not in the timeline; a room with other people shows one tab at a time.
+  const loaded = useMemo(() => all.filter((row) => !row.planId && (!isPeople || tabOf(row) === tab)), [all, isPeople, tab]);
   const inPlan = useMemo(() => {
     const byPlan = new Map<string, Message[]>();
     for (const row of all) if (row.planId) byPlan.set(row.planId, [...(byPlan.get(row.planId) ?? []), row]);
     return byPlan;
   }, [all]);
-  const meId = boot.data?.me.id ?? "";
   const list = filter === "mentions" ? loaded.filter((row) => mentionsMe(row, meId)) : loaded;
+  const nodes = useMemo(() => nodesById(boot.data, room), [boot.data, room]);
+  const whole = everything.data ?? all;
+  const timeline = useMemo(() => whole.filter((row) => !row.planId), [whole]);
+  // Each session's newest card here (step runs inside plan cards too): it keeps the session's line once its run ended.
+  const sessionCards = useMemo(() => newestSessionCards(whole), [whole]);
+  // Each tab's unread as Ensemble counts it, and the newest message the shown tab has.
+  const tabCounts = isPeople && room ? tabUnreadOf(room) : { room: 0, crew: 0 };
+  const tabNewest = useMemo(() => timeline.reduce((max, row) => (row.sending || row.id.startsWith("local-") || (isPeople && tabOf(row) !== tab) ? max : Math.max(max, row.seq)), 0), [timeline, isPeople, tab]);
+  // What runs here, from what is loaded: Stop asks first when it is more than a reply being written.
+  const board = useMemo(() => workBoard(whole, meId, (id) => (id ? (nodes.get(id)?.ownerId ?? null) : null)), [whole, meId, nodes]);
+  const working = board.length > 0;
+  // Helpers' rooms show as threads under the message that brought them in, or in the strip.
+  const rooms = boot.data?.rooms;
+  const threads = useMemo(() => helperThreads(rooms ?? []), [rooms]);
+  const attached = useMemo(() => placeThreads(timeline, threads), [timeline, threads]);
+  const helperRows = useMemo(() => {
+    if (!room) return [];
+    const under = new Map<string, string>();
+    for (const [messageId, found] of attached) for (const thread of found) under.set(thread.roomId, messageId);
+    return [
+      ...threads.filter((thread) => under.has(thread.roomId)).map((thread) => ({ thread, messageId: under.get(thread.roomId) ?? null })),
+      ...looseThreads(threads, new Set(under.keys()), room).map((thread) => ({ thread, messageId: null })),
+    ];
+  }, [attached, threads, room]);
+  const stopRoom = useCallback(async () => {
+    if (working && !confirm("Stop this conversation's work? Its plans, agent runs and the replies being written stop. What was changed so far stays.")) return;
+    setStopping(true);
+    try {
+      const result = await api<{ stopped?: number } | undefined>(`/api/node/rooms/${roomId}/stop`, { body: {} });
+      toast(result?.stopped ? "Stopped. What was changed so far stays." : "Nothing was running here.", result?.stopped ? "ok" : "info");
+    } catch (error) {
+      toastError(error);
+    } finally {
+      setStopping(false);
+    }
+  }, [roomId, working]);
   // Paging counts every message loaded, the ones shown inside plan cards too.
   const lastSeq = all.reduce((max, row) => (row.sending || row.id.startsWith("local-") ? max : Math.max(max, row.seq)), 0);
   const firstReal = all.find((row) => !row.id.startsWith("local-"));
   const hasOlder = !olderDone && all.length >= PAGE && (firstReal?.seq ?? 0) > 1;
+  // Opening a tab sets where its divider goes (`opened`), and its list changes with it.
   const unreadId = useMemo(
     () => (filter === "all" && opened.current ? firstUnread(loaded.filter((row) => row.seq <= opened.current!.last), opened.current.read, meId) : null),
     [filter, loaded, meId],
   );
+  /** What is shown is read: the room's marker moves (in a room with other people, the shown tab's own). */
+  const markSeen = useCallback(() => {
+    if (!isPeople) {
+      if (lastSeq) markRead(client, roomId, lastSeq);
+      return;
+    }
+    if (tabNewest && !boardOpen) markRead(client, roomId, tabNewest, 0, tab);
+  }, [isPeople, lastSeq, client, roomId, tabNewest, tab, boardOpen]);
+  /** Shows a tab: at its first unread (or the newest), at the newest when `bottom`, or where a jump goes. */
+  const showTab = (next: RoomTab, how: "open" | "bottom" | "jump" = "open") => {
+    setBoardOpen(false);
+    if (next === tab) return;
+    const read = room ? tabMarker(room, next) : 0;
+    opened.current = { read, last: lastSeq };
+    seenSeq.current = read;
+    setReply(null);
+    setTab(next);
+    if (how === "jump") return;
+    positioned.current = how === "bottom";
+    stuck.current = true;
+    setAtBottom(true);
+  };
+  /** Shows the room's Board; coming back, the conversation finds its place again. */
+  const openBoard = () => {
+    positioned.current = false;
+    setReply(null);
+    setBoardOpen(true);
+  };
+  const showTabRef = useRef(showTab);
+  showTabRef.current = showTab;
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   if (atBottom && lastSeq > seenSeq.current) seenSeq.current = lastSeq;
   const newBelow = atBottom ? 0 : loaded.filter((row) => row.seq > seenSeq.current && !row.sending && row.kind !== "status" && !(row.authorKind === "human" && row.authorAccountId === meId)).length;
   const liveKey = live.map((row) => row.text.length + row.tools.length).join(",");
@@ -142,11 +265,13 @@ export function RoomView({ roomId }: { roomId: string }) {
   /** Scrolls to a message, loading earlier pages first when it is not loaded yet. */
   const jumpTo = useCallback(
     async (messageId: string) => {
+      setBoardOpen(false);
       if (reveal(messageId)) return;
       pendingJump.current = messageId;
       try {
         const { message } = await api<{ message: Message }>(`/api/node/messages/${messageId}`);
         if (message.roomId !== roomId) return;
+        if (isPeople && tabOf(message) !== tabRef.current) showTabRef.current(tabOf(message), "jump");
         let target: Author = author;
         if (!(filter === "mentions" ? mentionsMe(message, meId) : matchesAuthor(message, author))) {
           target = "all";
@@ -167,7 +292,7 @@ export function RoomView({ roomId }: { roomId: string }) {
         toastError(error);
       }
     },
-    [author, client, filter, meId, reveal, roomId],
+    [author, client, filter, meId, reveal, roomId, isPeople],
   );
 
   // Once a pending jump's message is on screen, go to it.
@@ -189,12 +314,13 @@ export function RoomView({ roomId }: { roomId: string }) {
     if (target) void jumpTo(target);
   }, [takeJump, messages.isLoading, room, jumpTo]);
 
-  // First view: a linked message, else the first unread one, else the newest.
+  // First view (and back from the Board): a linked message, else the first unread one, else the newest.
   useLayoutEffect(() => {
     const element = scroller.current;
-    if (positioned.current || messages.isLoading || !element || !room) return;
+    if (boardOpen || positioned.current || messages.isLoading || !element || !room) return;
     positioned.current = true;
-    const hash = window.location.hash;
+    const hash = hashUsed.current ? "" : window.location.hash;
+    hashUsed.current = true;
     const target = takeJump() ?? (hash.startsWith("#m-") ? hash.slice(3) : null);
     if (target) {
       void jumpTo(target);
@@ -208,7 +334,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     } else {
       element.scrollTop = element.scrollHeight;
     }
-  }, [messages.isLoading, room, unreadId, jumpTo, takeJump]);
+  }, [messages.isLoading, room, unreadId, jumpTo, takeJump, tab, boardOpen]);
 
   // Keep the place when earlier messages are added above.
   useLayoutEffect(() => {
@@ -223,7 +349,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     const element = scroller.current;
     if (!element || !positioned.current) return;
     if (stuck.current) element.scrollTop = element.scrollHeight;
-  }, [list.length, liveKey, filter]);
+  }, [list.length, liveKey, filter, tab]);
 
   useEffect(() => {
     const viewport = scroller.current;
@@ -235,11 +361,11 @@ export function RoomView({ roomId }: { roomId: string }) {
     observer.observe(viewport);
     observer.observe(body);
     return () => observer.disconnect();
-  }, [messages.isLoading, roomId, Boolean(room)]);
+  }, [messages.isLoading, roomId, Boolean(room), boardOpen]);
 
   useEffect(() => {
-    if (lastSeq && stuck.current && document.visibilityState === "visible") markRead(client, roomId, lastSeq);
-  }, [client, roomId, lastSeq]);
+    if (lastSeq && stuck.current && document.visibilityState === "visible") markSeen();
+  }, [lastSeq, tabNewest, markSeen]);
 
   useEffect(() => {
     if (lastFilter.current === filter) return;
@@ -275,7 +401,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       roomTitle: room.title,
       roomKind: room.kind,
       handles: new Set(room.members.map((row) => row.handle)),
-      nodes: nodesById(boot.data, room),
+      nodes,
       people,
       reactions: limitsOf(boot.data).reactions,
       pinned: new Set(room.pinned ?? []),
@@ -290,8 +416,34 @@ export function RoomView({ roomId }: { roomId: string }) {
         if (target) setReply(target);
       },
       inPlan,
+      threadsOf: (message: Message) => attached.get(message.id) ?? [],
+      helperOf: (nodeId: string) => threads.find((thread) => thread.helper?.id === nodeId),
+      onHelper: (thread: HelperThread) => setHelper(thread),
+      sessionCardOf: (sessionId: string) => sessionCards.get(sessionId),
+      ...(isPeopleRoom(room)
+        ? {
+            tab,
+            onView: (view: "board") => {
+              if (view !== "board") return;
+              positioned.current = false;
+              setBoardOpen(true);
+            },
+            spaceId: room.spaceId ?? null,
+            requestOf: (requestId: string) => requests.data?.find((row) => row.id === requestId),
+            onShare: (message: Message, as: "me" | "lead") =>
+              shareMessage(
+                { messageId: message.id, as },
+                {
+                  onSuccess: () => toast(as === "lead" ? "Shared to the room through your lead." : "Shared to the room.", "ok"),
+                  onError: toastError,
+                },
+              ),
+            myLead: room.members.find((row): row is NodeMember => row.kind === "node" && row.accountId === boot.data!.me.id && row.lead)?.node ?? null,
+            sharedCopyOf: (messageId: string) => sharedCopy(whole, messageId),
+          }
+        : {}),
     };
-  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan]);
+  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan, nodes, attached, threads, tab, requests.data, shareMessage, whole, sessionCards]);
 
   if (!boot.data || !ctx || !room) {
     return (
@@ -315,22 +467,30 @@ export function RoomView({ roomId }: { roomId: string }) {
   const lead = nodeMembers.find((row) => row.lead)?.node;
   const myBusy = live.some((row) => ctx.nodes.get(row.nodeId)?.ownerId === me.id);
   const showLive = filter === "all" || filter === "nodes";
+  // In a room with other people, a live reply shows in the tab it is written for (the stream says: My crew, or the Room).
+  const liveHere = isPeople ? live.filter((row) => liveTabOf(row) === tab) : live;
+  const spaceName = isPeople && room.spaceId ? (space.data?.space?.name ?? null) : null;
+  const whose = (accountId: string) => people.find((person) => person.accountId === accountId)?.name ?? "someone";
+  // Who answers where, in a room with other people: said beside each node as it is mentioned.
+  const nodeDetail = (row: NodeMember) =>
+    !isPeople
+      ? `${row.node.role}${row.accountId === me.id ? "" : ` · ${whose(row.accountId)}'s node`}`
+      : row.accountId === me.id
+        ? `${row.node.role} · ${row.lead ? "your lead: answers in the Room" : "yours: answers you in My crew"}`
+        : `${row.node.role} · ${row.lead ? `${whose(row.accountId)}'s lead` : `${whose(row.accountId)}'s node: their lead answers`}`;
   const options: MentionOption[] = [
-    ...nodeMembers.map((row) => ({
-      handle: row.handle,
-      label: row.node.name,
-      detail: `${row.node.role}${row.accountId === me.id ? "" : ` · ${people.find((person) => person.accountId === row.accountId)?.name ?? "someone"}'s node`}`,
-      avatar: row.node.avatar,
-      node: row.node,
-    })),
-    ...others.map((row) => ({ handle: row.handle, label: row.name, detail: row.responsibility ?? "person", person: true })),
-    ...(nodeMembers.length > 1 ? [{ handle: "everyone", label: "Everyone", detail: "Every node in this conversation" }] : []),
+    ...nodeMembers
+      .filter((row) => !isPeople || tab === "room" || row.accountId === me.id)
+      .map((row) => ({ handle: row.handle, label: row.node.name, detail: nodeDetail(row), avatar: row.node.avatar, node: row.node })),
+    ...(isPeople && tab === "crew" ? [] : others.map((row) => ({ handle: row.handle, label: row.name, detail: row.responsibility ?? "person", person: true }))),
+    ...(isPeople ? (tab === "room" ? [{ handle: "leads", label: "Leads", detail: "@leads status: everyone's status card" }] : []) : nodeMembers.length > 1 ? [{ handle: "everyone", label: "Everyone", detail: "Every node in this conversation" }] : []),
   ];
   const attachHint =
     others.length > 0
       ? "Nodes read files only from their owner's messages. Others here see a file's name but cannot open it."
       : `${dmNode ? dmNode.name : "Your nodes"} read${dmNode ? "s" : ""} what you attach: the text of documents, and pictures when ${dmNode ? "its" : "their"} model can see images.`;
   const placeholder = dmNode ? `Message ${dmNode.name}` : room.kind === "crew" ? "Message your crew" : `Message ${room.title}`;
+  const suggest = (text: string) => send.mutate({ body: text, private: isPeople && tab === "crew", clientId: crypto.randomUUID() });
   const filterInfo = FILTERS.find((row) => row.id === filter)!;
 
   const grouped = (message: Message, previous: Message | undefined) =>
@@ -388,13 +548,26 @@ export function RoomView({ roomId }: { roomId: string }) {
                   {room.kind === "task"
                     ? "Helper room · read only"
                     : room.kind === "room"
-                    ? `${people.length} ${people.length === 1 ? "person" : "people"} · ${nodeMembers.length} ${nodeMembers.length === 1 ? "node" : "nodes"}`
+                    ? `${people.length} ${people.length === 1 ? "person" : "people"} · ${nodeMembers.length} ${nodeMembers.length === 1 ? "node" : "nodes"}${spaceName ? ` · ${spaceName}` : ""}`
                     : `${nodeMembers.length} ${nodeMembers.length === 1 ? "node" : "nodes"}${lead ? ` · ${lead.name} leads` : ""}`}
                 </button>
               </>
             )}
           </div>
         </div>
+        {working || myBusy ? (
+          <button
+            type="button"
+            onClick={() => void stopRoom()}
+            disabled={stopping}
+            aria-label="Stop this conversation's work"
+            title="Stop this conversation's work"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-xl border border-danger/40 px-2.5 text-xs font-medium text-danger transition hover:bg-danger/10 disabled:opacity-50"
+          >
+            {stopping ? <Spinner className="h-3.5 w-3.5" /> : <CircleStop size={16} aria-hidden />}
+            <span className="hidden sm:inline">Stop</span>
+          </button>
+        ) : null}
         <IconButton label="Search this conversation" onClick={() => setSearching(!searching)} className={searching ? "bg-raised text-ink" : ""}>
           <Search size={18} />
         </IconButton>
@@ -415,6 +588,16 @@ export function RoomView({ roomId }: { roomId: string }) {
               <MenuItem onClick={() => (setPanel("pins"), setMenu(false))}>
                 <Pin size={15} /> Pinned messages{room.pinned.length ? ` (${room.pinned.length})` : ""}
               </MenuItem>
+              {isPeople ? (
+                <>
+                  <MenuItem onClick={() => (setPanel("request"), setMenu(false))}>
+                    <Handshake size={15} /> Ask someone here…
+                  </MenuItem>
+                  <MenuItem onClick={() => (setPanel("trust"), setMenu(false))}>
+                    <ShieldCheck size={15} /> What your lead may share
+                  </MenuItem>
+                </>
+              ) : null}
               <Link href="/activity" role="menuitem" onClick={() => setMenu(false)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm hover:bg-raised"><Activity size={15} />Activity</Link>
               <MenuItem onClick={exportRoom}>
                 <Download size={15} /> Export as Markdown
@@ -422,10 +605,44 @@ export function RoomView({ roomId }: { roomId: string }) {
               <MenuItem onClick={() => (setPanel("settings"), setMenu(false))}>
                 <Settings2 size={15} /> {room.kind === "dm" ? "Node settings" : room.kind === "crew" ? "Crew settings" : room.kind === "task" ? "About this helper" : "Room settings"}
               </MenuItem>
+              <div className="my-1 border-t border-line" />
+              <MenuItem tone="danger" onClick={() => (setMenu(false), void stopRoom())}>
+                <CircleStop size={15} /> Stop this conversation&apos;s work
+              </MenuItem>
             </div>
           ) : null}
         </div>
       </header>
+      {isPeople ? (
+        <div role="tablist" aria-label="Room, My crew or Board" className="flex shrink-0 items-end gap-1 border-b border-line bg-bg/95 px-3 md:px-6">
+          {TABS.map((row) => {
+            const selected = row.id === "board" ? boardOpen : !boardOpen && tab === row.id;
+            const count = row.id === "board" || selected ? 0 : tabCounts[row.id];
+            return (
+              <button
+                key={row.id}
+                id={`tab-${row.id}`}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                aria-controls={row.id === "board" ? "room-board" : "room-timeline"}
+                title={row.title}
+                onClick={() => (row.id === "board" ? openBoard() : showTab(row.id))}
+                className={`relative inline-flex items-center gap-1.5 px-3 pb-2 pt-2.5 text-sm transition ${selected ? "font-medium text-ink" : "text-muted hover:text-ink"}`}
+              >
+                {row.id === "room" ? <Users size={14} aria-hidden /> : row.id === "crew" ? <Lock size={14} className={selected ? "text-private" : ""} aria-hidden /> : <KanbanSquare size={14} aria-hidden />}
+                {row.label}
+                {count ? (
+                  <span className="rounded-full bg-accent px-1.5 text-[11px] font-semibold leading-4 text-accent-ink" aria-label={`${count} unread`}>
+                    {count}
+                  </span>
+                ) : null}
+                {selected ? <span className={`absolute inset-x-2 -bottom-px h-0.5 rounded-full ${row.id === "crew" ? "bg-private" : "bg-accent"}`} aria-hidden /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       {searching ? (
         <div className="scroll-thin max-h-[55vh] overflow-y-auto border-b border-line bg-panel/80 px-3 py-3 md:px-5">
@@ -440,6 +657,7 @@ export function RoomView({ roomId }: { roomId: string }) {
         </div>
       ) : null}
       <PinnedBar room={room} ctx={ctx} onAll={() => setPanel("pins")} />
+      <WorkStrip items={board} helpers={helperRows} onJump={(messageId) => void jumpTo(messageId)} onCard={setCardId} onHelper={setHelper} />
       {filter !== "all" ? (
         <div className="flex items-center justify-center gap-2 border-b border-line bg-accent/5 px-3 py-1.5 text-xs">
           <filterInfo.icon size={13} className="text-accent" /> Showing {filterInfo.label.toLowerCase()}
@@ -449,6 +667,17 @@ export function RoomView({ roomId }: { roomId: string }) {
         </div>
       ) : null}
 
+      {isPeople && boardOpen ? (
+        <div id="room-board" role="tabpanel" aria-labelledby="tab-board" className="scroll-thin min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
+          <RoomBoardView
+            room={room}
+            meId={me.id}
+            requestOf={(id) => requests.data?.find((row) => row.id === id)}
+            onJump={(messageId) => void jumpTo(messageId)}
+            onSettings={() => setPanel("settings")}
+          />
+        </div>
+      ) : (
       <div
         ref={scroller}
         onScroll={(event) => {
@@ -456,12 +685,13 @@ export function RoomView({ roomId }: { roomId: string }) {
           const near = element.scrollHeight - element.scrollTop - element.clientHeight < 160;
           stuck.current = near;
           if (near !== atBottom) setAtBottom(near);
-          if (near && lastSeq) markRead(client, roomId, lastSeq);
+          if (near && lastSeq) markSeen();
           if (element.scrollTop < 40 && hasOlder && positioned.current && !pendingJump.current) void older();
         }}
         className="chat-timeline scroll-thin min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain"
         aria-live="polite"
         aria-relevant="additions"
+        {...(isPeople ? { id: "room-timeline", role: "tabpanel", "aria-labelledby": `tab-${tab}` } : {})}
       >
         <div ref={content} className="mx-auto w-full max-w-[840px] px-4 pb-8 pt-5 md:px-8">
           {hasOlder ? (
@@ -484,6 +714,8 @@ export function RoomView({ roomId }: { roomId: string }) {
             </div>
           ) : !list.length && filter !== "all" ? (
             <p className="py-16 text-center text-sm text-muted">{filterInfo.empty}</p>
+          ) : !list.length && isPeople ? (
+            <PeopleEmpty tab={tab} title={room.title} onSuggest={suggest} disabled={!me.verified} />
           ) : !list.length ? (
             <div className="flex flex-col items-center py-16 text-center">
               {dmNode ? (
@@ -538,7 +770,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           )}
 
           {showLive
-            ? live.map((row) => {
+            ? liveHere.map((row) => {
                 const node = ctx.nodes.get(row.nodeId);
                 return (
                   <div key={row.nodeId} className="mt-4 flex gap-3">
@@ -576,7 +808,9 @@ export function RoomView({ roomId }: { roomId: string }) {
             : null}
         </div>
       </div>
+      )}
 
+      {isPeople && boardOpen ? null : (
       <div className="relative">
       {dmNode?.status === "paused" ? (
         <div className="mx-auto flex w-full max-w-[840px] items-center gap-2 px-4 pb-1 text-xs text-muted md:px-8" role="status">
@@ -607,11 +841,19 @@ export function RoomView({ roomId }: { roomId: string }) {
         <HelperRoomNote room={room} boot={boot.data} />
       ) : (
       <Composer
-        key={`${me.id}:${roomId}`}
-        draftKey={`${me.id}:${roomId}`}
+        key={`${me.id}:${roomId}${isPeople ? `:${tab}` : ""}`}
+        draftKey={`${me.id}:${roomId}${isPeople ? `:${tab}` : ""}`}
         options={options}
         placeholder={placeholder}
-        canBePrivate={others.length > 0}
+        privatePlaceholder={isPeople ? (tab === "crew" ? "Ask your nodes" : "Ask your nodes privately") : undefined}
+        privacy={isPeople ? (tab === "crew" ? "private" : "choice") : "none"}
+        extra={
+          isPeople && tab === "room" && others.length ? (
+            <button type="button" aria-label="Ask someone here…" title="Ask someone here: a question, a share, a review or work, through their lead" onClick={() => setPanel("request")} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-raised hover:text-ink">
+              <Handshake size={17} />
+            </button>
+          ) : null
+        }
         busy={myBusy}
         disabled={!me.verified}
         disabledReason={
@@ -628,29 +870,83 @@ export function RoomView({ roomId }: { roomId: string }) {
           stuck.current = true;
           setAtBottom(true);
           if (filter !== "all" && filter !== "people") setFilter("all");
-          send.mutate({ body, private: isPrivate, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}), ...(files.length ? { files } : {}) });
+          const privately = isPrivate || (isPeople && tab === "crew");
+          send.mutate({ body, private: privately, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}), ...(files.length ? { files } : {}) });
           setReply(null);
+          // Asking my nodes from the Room: the question and its answer are in My crew.
+          if (isPeople && tab === "room" && privately) showTab("crew", "bottom");
         }}
-        onStop={() => void api(`/api/node/rooms/${roomId}/stop`, { body: {} }).catch(toastError)}
+        onStop={() => void stopRoom()}
       />
       )}
       </div>
-      <RoomSettings key={room.id + room.title} room={room} boot={boot.data} open={panel === "settings"} onClose={() => setPanel(null)} onExport={exportRoom} />
+      )}
+      <RoomSettings
+        key={room.id + room.title}
+        room={room}
+        boot={boot.data}
+        open={panel === "settings"}
+        onClose={() => setPanel(null)}
+        onExport={exportRoom}
+        onPanel={(next) => setPanel(next)}
+        onJump={(messageId) => {
+          setPanel(null);
+          void jumpTo(messageId);
+        }}
+      />
+      {isPeople ? (
+        <>
+          <TrustSheet room={room} meId={me.id} open={panel === "trust"} onClose={() => setPanel(null)} />
+          <RequestForm key={room.id} room={room} meId={me.id} open={panel === "request"} onClose={() => setPanel(null)} onMade={(request) => (request.cardId ? setTimeout(() => void jumpTo(request.cardId!), 300) : undefined)} />
+        </>
+      ) : null}
       <PinsDrawer room={room} ctx={ctx} open={panel === "pins"} onClose={() => setPanel(null)} max={limits.pins} />
+      <Drawer open={Boolean(helper)} onClose={() => setHelper(null)} title={helper ? threadLabel(helper, false).split(" · ")[0]! : "Helper"}>
+        {helper ? <HelperThreadView thread={helper} /> : null}
+      </Drawer>
+      <Drawer open={Boolean(cardId)} onClose={() => setCardId(null)} title="Routine run">
+        {cardId ? <DetachedCard planId={cardId} ctx={ctx} /> : null}
+      </Drawer>
     </div>
   );
 }
 
-/** A helper's room is read-only: the owner talks to the node that made the helper, in its chat. */
+/** A card that is not in the timeline (a routine run's), read with its step cards and shown on its own. */
+function DetachedCard({ planId, ctx }: { planId: string; ctx: MessageContext }) {
+  const plan = usePlan(planId);
+  if (plan.isLoading) {
+    return (
+      <div className="flex justify-center py-6 text-muted">
+        <Spinner />
+      </div>
+    );
+  }
+  if (!plan.data) return <p className="text-sm text-muted">{plan.error?.message ?? "This run's card is not available."} Its routine lists it under Routines.</p>;
+  return <PlanCard message={plan.data.message} ctx={{ ...ctx, inPlan: new Map([[planId, plan.data.runs]]) }} detached />;
+}
+
+/** A helper's room is read-only: the owner talks to the node that made the helper, in its chat (or to the helper's own chat once kept). */
 function HelperRoomNote({ room, boot }: { room: Room; boot: Bootstrap }) {
-  const helper = room.members.find((row): row is NodeMember => row.kind === "node" && Boolean(row.node.parentNodeId));
-  const parentId = helper?.node.parentNodeId ?? room.members.find((row): row is NodeMember => row.kind === "node" && !row.node.parentNodeId)?.node.id;
-  const parent = boot.nodes.find((node) => node.id === parentId);
-  const dm = parent ? boot.rooms.find((row) => row.kind === "dm" && row.members.some((member) => member.kind === "node" && member.node.id === parent.id)) : undefined;
+  const thread = helperThread(room);
+  const helper = thread?.helper;
+  const parent = boot.nodes.find((node) => node.id === thread?.parent?.id);
+  const keptNode = helper ? boot.nodes.find((node) => node.id === helper.id) : undefined;
+  const dmOf = (nodeId: string) => boot.rooms.find((row) => row.kind === "dm" && row.members.some((member) => member.kind === "node" && member.node.id === nodeId));
+  if (keptNode) {
+    const chat = dmOf(keptNode.id);
+    return (
+      <div className="border-t border-line bg-panel/80 px-4 py-3 text-sm text-muted md:px-6">
+        <Lock size={13} className="mr-1.5 inline" />
+        You kept @{keptNode.slug} as a node; this room is its history.{" "}
+        {chat ? <Link href={`/r/${chat.id}`} className="text-accent">Talk to {keptNode.name}</Link> : null}
+      </div>
+    );
+  }
+  const dm = parent ? dmOf(parent.id) : undefined;
   return (
     <div className="border-t border-line bg-panel/80 px-4 py-3 text-sm text-muted md:px-6">
       <Lock size={13} className="mr-1.5 inline" />
-      {parent ? <>@{parent.slug} brought in {helper ? `@${helper.handle}` : "a helper"} for one task and tells you what it finds. You read along here; to steer it, </> : "You read along here. "}
+      {parent ? <>@{parent.slug} brought in {helper ? `@${helper.slug}` : "a helper"} for one task and tells you what it finds. You read along here; to steer it, </> : "You read along here. "}
       {dm ? <Link href={`/r/${dm.id}`} className="text-accent">talk to {parent!.name}</Link> : "talk to its node"}.
       {" "}It goes after 3 quiet days.
     </div>

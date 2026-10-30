@@ -45,7 +45,9 @@ function Inline({ text, handles }: { text: string; handles: ReadonlySet<string> 
  * A message body: Markdown blocks with mentions, links and code. `small` for text inside a card.
  * With `refs` (a node's message), records show by title (lib/entity-text.ts): record links show
  * their label and a known id its title, linked, unless `showIds`. `streaming` holds back a
- * half-written id at the end.
+ * half-written id at the end. `kindLinks` (briefs and reports on cards) shows a record link nobody
+ * named as its kind, linked. `labelHeadings` shows headings as small labels, as cards name their parts
+ * (a packet's "## Goal").
  */
 export function RichText({
   text,
@@ -54,6 +56,8 @@ export function RichText({
   refs,
   showIds = false,
   streaming = false,
+  kindLinks = false,
+  labelHeadings = false,
 }: {
   text: string;
   handles: ReadonlySet<string>;
@@ -61,12 +65,15 @@ export function RichText({
   refs?: readonly EntityRef[];
   showIds?: boolean;
   streaming?: boolean;
+  kindLinks?: boolean;
+  labelHeadings?: boolean;
 }) {
   // Only a node's own words are formatted; what people write shows as they wrote it.
-  const shown = refs ? formatEntityText(text, refs, { showIds, streaming, app: ENSEMBLE_APP }) : text;
+  const shown = refs || kindLinks ? formatEntityText(text, refs ?? [], { showIds, streaming, app: ENSEMBLE_APP, kindLinks }) : text;
   return (
     <div className={`min-w-0 max-w-full space-y-2 break-words leading-relaxed ${small ? "text-sm" : "text-[15px]"}`}>
       {blocks(shown).map((block, index) => {
+        if (block.kind === "heading" && labelHeadings) return <p key={index} className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">{block.text}</p>;
         if (block.kind === "heading") return <p key={index} className="font-semibold">{<Inline text={block.text} handles={handles} />}</p>;
         if (block.kind === "code") return <CodeBlock key={index} code={block.text} lang={block.lang} />;
         if (block.kind === "quote") return <blockquote key={index} className="border-l-2 border-line pl-3 text-muted"><Inline text={block.text} handles={handles} /></blockquote>;

@@ -53,3 +53,29 @@ test("previews, quotes and copies read a node's records by title and leave peopl
   assert.equal(readableBody({ authorKind: "node", body, data: { tools: [{ refs: [refs[0]] }] } }), "Done: Added “Draft brief”.");
   assert.equal(readableBody({ authorKind: "human", body, data: {} }), body);
 });
+
+test("a record link right after its own title links that title once, never repeating it (plan briefs, §4.11)", () => {
+  const brief = `implement ONLY Expire Needs Me requests when their task ends (ensemble://task/${BRIEF}), read its page. Ensure terminal tasks cannot leave actionable stale requests; push to testing.`;
+  const clean = "implement ONLY Expire Needs Me requests when their task ends, read its page. Ensure terminal tasks cannot leave actionable stale requests; push to testing.";
+  const linked = `implement ONLY [Expire Needs Me requests when their task ends](${APP}/tasks/${BRIEF}), read its page. Ensure terminal tasks cannot leave actionable stale requests; push to testing.`;
+  // The task's label is its title, or its title with the start of its description.
+  for (const label of ["Expire Needs Me requests when their task ends", "Expire Needs Me requests when their task ends. Ensure terminal tasks cannot leave actionable stale"]) {
+    const known: EntityRef[] = [{ kind: "task", id: BRIEF, label }];
+    assert.equal(formatEntityText(brief, known, { app: APP }), linked, label);
+    assert.equal(formatEntityText(brief, known, { plain: true }), clean, label);
+    assert.equal(formatEntityText(brief.replace(`ensemble://task/${BRIEF}`, BRIEF), known, { plain: true }), clean, `bare id, ${label}`);
+    assert.equal(readableBody({ authorKind: "node", body: brief, data: { refs: known } }), clean, `copy, ${label}`);
+  }
+  // A quoted title keeps its quotes; other words before the link are not taken for the title.
+  assert.equal(formatEntityText(`See “Draft brief” (ensemble://task/${BRIEF}).`, refs, { app: APP }), `See “[Draft brief](${APP}/tasks/${BRIEF})”.`);
+  assert.equal(formatEntityText(`Read the brief (ensemble://task/${BRIEF}).`, refs, { plain: true }), "Read the brief (Draft brief).");
+  assert.equal(formatEntityText(`Relaunch (ensemble://task/${BRIEF}).`, [{ kind: "task", id: BRIEF, label: "Launch" }], { plain: true }), "Relaunch (Launch).");
+  // While streaming, the link is held back with its bracket until the bracket closes.
+  assert.equal(formatEntityText(`Expire Needs Me requests when their task ends (ensemble://task/${BRIEF}`, [], { streaming: true }), "Expire Needs Me requests when their task ends");
+});
+
+test("a record link to a record the text does not name shows as its kind when asked", () => {
+  const text = `Do the task (ensemble://task/${UNKNOWN}), then the page ensemble://page/${UNKNOWN}.`;
+  assert.equal(formatEntityText(text, [], { app: APP }), text, "addresses stay by default");
+  assert.equal(formatEntityText(text, [], { app: APP, kindLinks: true }), `Do the task ([task](${APP}/tasks/${UNKNOWN})), then the page [page](${APP}/pages/${UNKNOWN}).`);
+});

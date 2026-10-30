@@ -9,7 +9,8 @@
 import { sealFor, type SealKeyInfo } from "./seal";
 import { channelBase64Url, newTakeoverSecret, openMessage, sealMessage, takeoverKeys, unpackMessage, type ChannelKeys, type ChannelMessage } from "./takeover-channel";
 
-export type TakeoverSource = { loginCardId: string } | { jobId: string };
+/** A sign-in card's tab, or a running run's tab: the one its live view shows, by its id when the page knows it. */
+export type TakeoverSource = { loginCardId: string } | { jobId: string; tab?: string };
 
 export type TakeoverInfo = {
   id: string;

@@ -6,6 +6,7 @@
  * The computer fills the page; the node and its models never see what was typed.
  */
 import { sealFingerprint, sealFor, type SealKeyInfo, type Sealed } from "./seal";
+import type { Message } from "./types";
 
 /** `GET /api/node/logins/:id`: the card's computer, how typed values reach it, and what it offers. */
 export type LoginTarget = {
@@ -65,4 +66,9 @@ export function loginOutcomeText(data: LoginCardData): string {
 export function loginReasonText(reasons: string[] | undefined): string {
   const list = (reasons ?? []).filter(Boolean).slice(0, 3);
   return list.length ? `Why: ${list.join("; ")}.` : "";
+}
+
+/** A run's sign-in card still open (waiting, or its computer acting on it) among Needs me's cards: its paused live view points there. */
+export function waitingLoginCard(cards: readonly Message[], jobId: string): Message | undefined {
+  return cards.find((card) => card.kind === "approval" && card.data?.type === "login" && card.data.jobId === jobId && (card.data.status === "pending" || card.data.status === "working"));
 }

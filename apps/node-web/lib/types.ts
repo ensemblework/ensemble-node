@@ -271,6 +271,8 @@ export type LiveFrame = {
   /** The picture as a data URL; null when the view is paused or there is none. */
   image: string | null;
   at: string | null;
+  /** The computer's tab it shows (`t3`): a takeover controls that tab. */
+  tab: string | null;
   url: string | null;
   title: string | null;
   width: number | null;
@@ -514,7 +516,8 @@ export type CaptureSummary = {
   targets: Record<string, { screenshot: boolean; video: boolean; reason?: string }>;
   setup: boolean;
 };
-export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; [key: string]: unknown };
+/** `takeover` 1: it shows a tab of its browser here for the owner to control; `logins` 1: it hands sign-ins to the owner. */
+export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; takeover?: number; logins?: number; [key: string]: unknown };
 
 /** Ensemble's Needs me: a run's approval (`GET /api/approvals`). */
 export type ApprovalRecord = { id: string; runId: string; taskId: string | null; kind: string; title: string; preview: unknown; decision: string | null; requestedAt: string };
@@ -576,6 +579,7 @@ export type AgentJob = {
   toolCalls: number;
   runId: string | null;
   /** Only for the person whose computer runs it. */
+  deviceId?: string | null;
   deviceName: string | null;
   /** True when the run is on my computer: only then may I stop it. */
   yours: boolean;

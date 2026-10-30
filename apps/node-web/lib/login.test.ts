@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { createDecipheriv, createHash, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync } from "node:crypto";
 import test from "node:test";
-import { loginFingerprint, loginOutcomeText, loginReasonText, loginRouteText, typedLoginAnswer, type LoginTarget } from "./login";
+import { loginFingerprint, loginOutcomeText, loginReasonText, loginRouteText, typedLoginAnswer, waitingLoginCard, type LoginTarget } from "./login";
+import type { Message } from "./types";
 
 function computerKey() {
   const { publicKey, privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -56,4 +57,16 @@ test("why the page wants a sign-in, in one line, and a sign-in from the browser 
   assert.equal(loginReasonText(["the page has a password field", "it was sent to sign in at accounts.google.com"]), "Why: the page has a password field; it was sent to sign in at accounts.google.com.");
   assert.equal(loginReasonText([]), "");
   assert.equal(loginOutcomeText({ status: "ended", note: "The work that needed this sign-in ended, or its tab closed." }), "The work that needed this sign-in ended, or its tab closed.");
+});
+
+test("a run's paused live view points to its sign-in card only while that card is open", () => {
+  const card = (id: string, data: Record<string, unknown>, kind = "approval") => ({ id, roomId: "r1", kind, data }) as unknown as Message;
+  const cards = [
+    card("other-run", { type: "login", jobId: "J2", status: "pending" }),
+    card("settled", { type: "login", jobId: "J1", status: "signed_in" }),
+    card("secret", { type: "secret", jobId: "J1", status: "pending" }),
+    card("acting", { type: "login", jobId: "J1", status: "working" }),
+  ];
+  assert.equal(waitingLoginCard(cards, "J1")?.id, "acting");
+  assert.equal(waitingLoginCard(cards.slice(0, 3), "J1"), undefined, "a settled sign-in or another kind of card is not it");
 });

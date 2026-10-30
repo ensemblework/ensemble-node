@@ -3,28 +3,48 @@
 /**
  * A working run's browser tab, live (Ensemble docs/35 §8.16): about every 3 seconds the computer sends
  * a small picture of the tab its agent uses, for its owner only. A small picture with the page's title
- * and address, larger on a tap; paused, it says why (a sign-in, a private site, a secret on screen).
- * Nothing shows when the computer sends none.
+ * and address, larger on a tap; larger, it offers Take over when the computer can show its browser here
+ * (§8.16.2), for that very tab. Paused, it says why (a sign-in, a private site, a secret on screen); while
+ * signing in it points to the sign-in card. Nothing shows when the computer sends none.
  */
-import { PauseCircle } from "lucide-react";
+import Link from "next/link";
+import { MonitorSmartphone, PauseCircle } from "lucide-react";
 import { useState } from "react";
 import { livePausedWords, pageAddress } from "@/lib/captures";
-import { useLiveView } from "@/lib/hooks";
+import { useLiveView, useRunLoginCard } from "@/lib/hooks";
+import { requestJump } from "@/lib/jump";
+import type { LiveFrame } from "@/lib/types";
+import { Button } from "../ui";
 
-export function LiveView({ jobId, enabled }: { jobId: string; enabled: boolean }) {
+const TAKE_OVER_HINT = "Control this tab from here, encrypted end to end; the agent cannot use it meanwhile.";
+
+export function LiveView({ jobId, enabled, onTakeOver }: { jobId: string; enabled: boolean; onTakeOver?: (frame: LiveFrame) => void }) {
   const live = useLiveView(jobId, enabled);
   const [large, setLarge] = useState(false);
   const frame = live.data;
+  // A sign-in (or a takeover) makes the tab sensitive; a sign-in has its card, wherever the run is followed.
+  const signIn = useRunLoginCard(frame?.paused === "sensitive" ? jobId : null);
   if (!frame) return null;
   const address = pageAddress(frame.url);
   const title = frame.title || address;
   if (!frame.image) {
     return (
-      <p className="mt-2 flex min-w-0 items-center gap-2 rounded-xl border border-line bg-bg/60 px-2.5 py-1.5 text-xs text-muted" role="status" data-live="paused">
+      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-line bg-bg/60 px-2.5 py-1.5 text-xs text-muted" role="status" data-live="paused">
         <PauseCircle size={14} className="shrink-0" aria-hidden />
         <span className="shrink-0 font-medium text-ink/80">{livePausedWords(frame.paused)}</span>
-        {title ? <span className="min-w-0 truncate">· {title}</span> : null}
-      </p>
+        {title ? <span className="min-w-[7rem] flex-1 truncate">· {title}</span> : <span className="flex-1" />}
+        {frame.paused === "sensitive" ? (
+          signIn ? (
+            <Link href={`/r/${signIn.roomId}#m-${signIn.id}`} onClick={() => requestJump(signIn.roomId, signIn.id)} className="shrink-0 font-medium text-accent hover:underline">
+              Go to its sign-in card
+            </Link>
+          ) : null
+        ) : onTakeOver ? (
+          <button type="button" onClick={() => onTakeOver(frame)} title={TAKE_OVER_HINT} className="inline-flex shrink-0 items-center gap-1 font-medium text-accent hover:underline">
+            <MonitorSmartphone size={12} aria-hidden /> Take over
+          </button>
+        ) : null}
+      </div>
     );
   }
   return (
@@ -51,6 +71,14 @@ export function LiveView({ jobId, enabled }: { jobId: string; enabled: boolean }
           <p className="truncate text-[11px] text-muted" title={frame.url ?? undefined}>
             {address}
           </p>
+        ) : null}
+        {large && onTakeOver ? (
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <Button size="sm" tone="ghost" onClick={() => onTakeOver(frame)}>
+              <MonitorSmartphone size={13} /> Take over
+            </Button>
+            <span className="text-[11px] text-muted">{TAKE_OVER_HINT}</span>
+          </div>
         ) : null}
       </div>
     </section>

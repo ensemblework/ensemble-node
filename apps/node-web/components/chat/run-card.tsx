@@ -13,11 +13,12 @@
  * ComposerPendingApprovalPanel (MIT License, Copyright (c) 2026 T3 Tools Inc.).
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, CircleStop, ExternalLink, Hammer, MonitorSmartphone } from "lucide-react";
+import { ChevronRight, CircleStop, ExternalLink, Hammer } from "lucide-react";
+import { pageAddress, takeoverReady } from "@/lib/captures";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { approvalsForRun, decisionsForJob } from "@/lib/decisions";
 import { evidenceItems } from "@/lib/evidence";
-import { useApprovals, useDecisions, useJob, useRunSteps, useStopJob } from "@/lib/hooks";
+import { useApprovals, useDecisions, useDevices, useJob, useRunSteps, useStopJob } from "@/lib/hooks";
 import { sessionAgent } from "@/lib/session";
 import { RUN_LABEL } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
@@ -189,7 +190,8 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const box = useRef<HTMLDivElement>(null);
   const onScreen = useOnScreen(box);
   const [open, setOpen] = useState(false);
-  const [controlling, setControlling] = useState(false);
+  // Taking over the tab its live view shows (B21): which tab, and what to call it in the view.
+  const [takeover, setTakeover] = useState<{ tab: string | null; site: string } | null>(null);
   const job = useJob(jobId, { enabled: Boolean(jobId) && (onScreen || open), poll: !runEnded(data.status) && (onScreen || open) });
   const detail = job.data?.job;
   const status = runStatus(data.status, detail?.status);
@@ -227,6 +229,10 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const waiting = status === "waiting_approval";
   const attempt = typeof data.attempt === "number" && data.attempt > 1 ? data.attempt : null;
   const sessionPanel = Boolean(session && !quiet && sessionPanelShows(status));
+  const working = !ended && (status === "running" || status === "claimed");
+  // The run's computer can show its browser here (it reports `takeover`): its live view offers Take over.
+  const devices = useDevices(owner && working && Boolean(detail?.deviceId));
+  const canTakeOver = owner && working && takeoverReady(devices.data?.find((row) => row.id === detail?.deviceId)?.capabilities);
 
   const stopRun = () => {
     if (!confirm("Stop this run? The agent stops where it is; what it changed so far stays.")) return;
@@ -247,17 +253,6 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
                 </span>
               ) : null}
               <Pill tone={pill.tone}>{pill.label}</Pill>
-              {owner && !ended && (status === "running" || status === "claimed") ? (
-                <button
-                  type="button"
-                  onClick={() => setControlling(true)}
-                  aria-label="Open the run's browser"
-                  title="Control the run's browser tab from here, encrypted end to end; the agent waits meanwhile"
-                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-line px-2 text-xs text-muted transition hover:border-accent/50 hover:text-ink"
-                >
-                  <MonitorSmartphone size={13} /> Open browser
-                </button>
-              ) : null}
               {canStop ? (
                 <button
                   type="button"
@@ -298,13 +293,8 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
         </div>
       </div>
 
-      {controlling && jobId ? (
-        <TakeoverView
-          source={{ jobId }}
-          site={message.body}
-          computer={computer ?? "your computer"}
-          onClose={() => setControlling(false)}
-        />
+      {takeover && jobId ? (
+        <TakeoverView source={{ jobId, ...(takeover.tab ? { tab: takeover.tab } : {}) }} site={takeover.site} computer={computer ?? "your computer"} onClose={() => setTakeover(null)} />
       ) : null}
 
       {quiet ? <p className="mt-2 text-[13px] text-muted">{quiet.note}</p> : queuedNote ? <p className="mt-2 text-[13px] text-muted">{queuedNote}</p> : null}
@@ -316,7 +306,13 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
       ) : null}
 
       {/* The agent's browser tab while it works: its owner's computer sends it, when there is one. */}
-      {owner && jobId && !ended && !quiet ? <LiveView jobId={jobId} enabled={onScreen && (status === "running" || status === "claimed")} /> : null}
+      {owner && jobId && !ended && !quiet ? (
+        <LiveView
+          jobId={jobId}
+          enabled={onScreen && working}
+          onTakeOver={canTakeOver ? (frame) => setTakeover({ tab: frame.tab, site: frame.title || pageAddress(frame.url) || message.body }) : undefined}
+        />
+      ) : null}
 
       {asks.length || runApprovals.length ? <NeedsYou decisions={asks} approvals={runApprovals} jobId={jobId} /> : null}
 

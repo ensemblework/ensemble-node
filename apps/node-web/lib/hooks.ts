@@ -5,6 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClie
 import { api, ApiError, eventsUrl, evidence, liveFrame, messageById, ownSpaces, peerRequests, peopleRooms, planById, roomWork, routines, sessions, shareToRoom } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
 import { live, type LiveCall } from "./live";
+import { waitingLoginCard } from "./login";
 import { refsOf } from "./entity-text";
 import { readTab, tabMarker, tabUnreadOf, withTab, type RoomTab } from "./rooms";
 import { moveQueued, withoutQueued } from "./session";
@@ -138,6 +139,12 @@ export function useBootstrap(enabled = true) {
 
 export function useActivity() {
   return useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), refetchInterval: 30_000 });
+}
+
+/** A run's open sign-in card, from the Needs me list the shell keeps fresh: no request of its own. */
+export function useRunLoginCard(jobId: string | null): Message | undefined {
+  const activity = useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), enabled: false });
+  return jobId ? waitingLoginCard(activity.data?.approvals ?? [], jobId) : undefined;
 }
 
 const messagesPath = (roomId: string, author: Author, extra = "") => `/api/node/rooms/${roomId}/messages?limit=${PAGE}${author === "all" ? "" : `&author=${author}`}${extra}`;
@@ -340,8 +347,8 @@ export function useSearch(q: string, roomId: string | null, author: Author) {
 }
 
 /** Ensemble's paired computers, with the folders each shares. */
-export function useDevices() {
-  return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), refetchInterval: 30_000 });
+export function useDevices(enabled = true) {
+  return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), enabled, refetchInterval: enabled ? 30_000 : false });
 }
 
 /** Ensemble's Needs me: run approvals and questions from agents. The stream's `node.needs` re-reads it at once; the poll is the fallback. */
@@ -380,7 +387,7 @@ export function useLiveView(jobId: string, enabled: boolean) {
       const frame = await liveFrame(jobId, signal);
       const heard = liveHeard.get(jobId);
       // Where the API's headers cannot be read, the stream's reason keeps a paused view paused.
-      if (!frame && heard?.paused && Date.now() - heard.when < 15_000) return { image: null, at: heard.at, url: null, title: null, width: null, height: null, paused: heard.paused };
+      if (!frame && heard?.paused && Date.now() - heard.when < 15_000) return { image: null, at: heard.at, tab: null, url: null, title: null, width: null, height: null, paused: heard.paused };
       return frame;
     },
     enabled: Boolean(jobId) && enabled,
@@ -973,7 +980,7 @@ export function useNodeEvents(enabled: boolean) {
       const paused = typeof data.paused === "string" && data.paused ? data.paused : null;
       const at = typeof data.at === "string" ? data.at : null;
       liveHeard.set(data.jobId, { when: Date.now(), at, paused });
-      if (paused) client.setQueryData<LiveFrame | null>(keys.live(data.jobId), (current) => ({ image: null, at, url: current?.url ?? null, title: current?.title ?? null, width: null, height: null, paused }));
+      if (paused) client.setQueryData<LiveFrame | null>(keys.live(data.jobId), (current) => ({ image: null, at, tab: current?.tab ?? null, url: current?.url ?? null, title: current?.title ?? null, width: null, height: null, paused }));
       else void client.invalidateQueries({ queryKey: keys.live(data.jobId) });
     }) as EventListener);
     // Needs me changed (a run asks, or a card was answered somewhere): re-read it now, not at the next poll.

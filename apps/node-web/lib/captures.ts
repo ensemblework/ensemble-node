@@ -63,8 +63,10 @@ const count = (value: string | null): number | null => {
  * the API exposes them (`Access-Control-Expose-Headers`); otherwise every field is null.
  */
 export function liveMeta(headers: { get(name: string): string | null }): Omit<LiveFrame, "image"> {
+  const tab = headers.get("X-Ensemble-Live-Tab");
   return {
     at: headers.get("X-Ensemble-Live-At") || null,
+    tab: tab && /^t\d{1,9}$/.test(tab) ? tab : null,
     url: decoded(headers.get("X-Ensemble-Live-Url")),
     title: decoded(headers.get("X-Ensemble-Live-Title")),
     width: count(headers.get("X-Ensemble-Live-Width")),
@@ -85,6 +87,9 @@ export function pageAddress(url: string | null | undefined): string | null {
     return url;
   }
 }
+
+/** Whether a computer can show its browser here for the owner to control (it reports `takeover` 1 or later). */
+export const takeoverReady = (capabilities: DeviceCapabilities | null | undefined): boolean => typeof capabilities?.takeover === "number" && capabilities.takeover >= 1;
 
 const TARGETS: Array<[string, string]> = [
   ["web", "web pages"],

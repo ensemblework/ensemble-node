@@ -102,6 +102,8 @@ function fixture() {
   for (const row of rooms) {
     row.lastSeq = messages[row.id].at(-1)?.seq ?? 0;
     row.readSeq = row.id === "launch" ? 3 : row.lastSeq;
+    // Ensemble counts each tab of a room with other people: the Room's public news and My crew's private news.
+    if (row.id === "launch") Object.assign(row, { readSeqCrew: 3, unreadRoom: 2, unreadCrew: 5, unread: 7 });
     row.last = messages[row.id].at(-1) ?? null;
   }
   const defaults = { status: "answer", statusDetail: "titles", shareSpaceArtefacts: "answer", shareOther: "ask", workRequests: "ask", acceptKinds: [], freeFormAnswers: "allow" };
@@ -158,11 +160,6 @@ try {
         const q = (url.searchParams.get("q") ?? "").toLowerCase();
         return json({ files: files.filter((row) => row.filename.includes(q)), usage: { maxFileBytes: 25000000 } });
       }
-      if (path === "/api/pages") {
-        const pages = [{ id: "7c1d2a3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d", kind: "page", title: "Roadmap", updatedAt: at(-60) }, { id: "8d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a", kind: "task", title: "Ship the sign-up fix", updatedAt: at(-30) }];
-        const q = (url.searchParams.get("q") ?? "").toLowerCase();
-        return json({ pages: pages.filter((row) => row.title.toLowerCase().includes(q)) });
-      }
       const evidence = /^\/api\/node\/evidence\/([^/]+)$/.exec(path);
       if (evidence) {
         state.evidence.push({ id: evidence[1], message: url.searchParams.get("message") });
@@ -170,6 +167,18 @@ try {
         return route.fulfill({ status: 404, json: { error: "Not here" }, headers: cors });
       }
       if (/^\/api\/node\/rooms\/[^/]+\/read$/.test(path)) return json({});
+      if (path === "/api/node/rooms/launch/space") return json({ space: null, offer: null });
+      if (path === "/api/node/rooms/launch/steward") return json({ steward: null });
+      if (path === "/api/spaces") return json({ spaces: [{ id: "me", name: "Mira's space", primary: true }], shared: [] });
+      if (path === "/api/node/rooms/launch/shareable/candidates") {
+        const items = [
+          { kind: "page", id: "7c1d2a3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d", title: "Roadmap", spaceId: "me", spaceName: "Mira's space", updatedAt: at(-60), shared: false },
+          { kind: "task", id: "8d2e3f4a-5b6c-4d7e-8f9a-0b1c2d3e4f5a", title: "Ship the sign-up fix", spaceId: "me", spaceName: "Mira's space", updatedAt: at(-30), shared: false },
+          { kind: "file", id: "file-1", title: "launch-notes.pdf", spaceId: "me", spaceName: "Mira's space", updatedAt: at(-900), shared: false },
+        ];
+        const q = (url.searchParams.get("q") ?? "").toLowerCase();
+        return json({ spaces: [{ id: "me", name: "Mira's space", role: "owner", linked: false }], items: items.filter((row) => row.title.toLowerCase().includes(q)) });
+      }
       const plan = /^\/api\/node\/plans\/([^/]+)$/.exec(path);
       if (plan && method === "GET") {
         const card = find(plan[1]);
@@ -452,7 +461,7 @@ try {
     await sheet.getByRole("textbox", { name: "Find a page, task or file" }).fill("road");
     await sheet.getByRole("list", { name: "Results" }).getByRole("button", { name: /Roadmap/ }).click();
     await sheet.getByRole("button", { name: "Stop sharing Roadmap" }).waitFor();
-    assert.deepEqual(state.calls.find((call) => call.shareable).shareable, { kind: "page", id: "7c1d2a3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d", shared: true });
+    assert.deepEqual(state.calls.find((call) => call.shareable).shareable, { kind: "page", id: "7c1d2a3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d", spaceId: "me", shared: true });
     await drawerFits();
     if (shots) await page.screenshot({ path: `${shots}/trust-${width}.png` });
     await page.keyboard.press("Escape");

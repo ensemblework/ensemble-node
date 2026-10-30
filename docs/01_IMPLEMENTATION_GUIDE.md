@@ -102,6 +102,7 @@ The plan card keeps running and passing apart ([05](05_UI_AND_UX.md#messages-and
 6. Mira asks her own nodes **privately** (Ask my nodes in the Room, or in My crew); their answers stay in My crew, with their own conversation and cursor, and nothing from it reaches a shared reply. A good answer she **shares to the room**, as herself or through her lead.
 7. Kofi asks Mira for a review of an exact commit ("Ask someone here…"). The Room gets a request card; Mira's My crew gets her own card, with who would do it and what it costs. She accepts it as edited, and always for Kofi's reviews; her manager plans it with her builder and tester, on her computer and credits, and the request card follows to Done with its outcome. A request card can be cancelled by the person who asked while it is undecided.
 8. Mira sets herself away until tomorrow, "at a workshop": her status card and the dot beside her name say so, and her lead goes on answering within her rules.
+9. Mira links her "Launch space" to the room; Kofi joins it as an editor from the card in his My crew (joining the room did not add him). Kofi's request for work becomes a proposed task on the room's **Board**; Mira accepts it as private work with a shared result. When the work ends, her lead drafts the result for her, with its screenshots and the task it went onto; she posts it in the Room. Her lead tells her privately what changed for her in the space, and catches her up when she comes back. A ✅ on "Let's ship on Friday" logs it in the room's decisions.
 
 ### 4.6 Work on a computer
 

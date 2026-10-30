@@ -15,8 +15,9 @@ export type LiveCall = { name: string; state?: string; summary?: string; refs?: 
 /**
  * `refs`: the records the turn showed the model, so the text being written shows titles, not ids.
  * `private`: the reply is for its owner's My crew in a room with other people (the stream says so).
+ * `waiting`: the node's call waits for its owner's answer on a card (`cardId`, when the stream names it).
  */
-export type LiveNode = { thinking: boolean; text: string; tools: LiveCall[]; refs?: EntityRef[]; showIds?: boolean; private?: boolean };
+export type LiveNode = { thinking: boolean; text: string; tools: LiveCall[]; refs?: EntityRef[]; showIds?: boolean; private?: boolean; waiting?: { cardId: string | null } | null };
 export type LiveRow = { nodeId: string } & LiveNode;
 
 const state = new Map<string, LiveNode>();
@@ -103,8 +104,15 @@ function change(roomId: string, nodeId: string, next: (current: LiveNode | undef
 const placed = (isPrivate: boolean | undefined) => (typeof isPrivate === "boolean" ? { private: isPrivate } : {});
 
 export const live = {
-  status(roomId: string, nodeId: string, thinking: boolean, isPrivate?: boolean) {
-    change(roomId, nodeId, (current) => (thinking ? { ...(current ?? { text: "", tools: [] }), thinking: true, ...placed(isPrivate) } : { thinking: false, text: "", tools: [] }));
+  /** Thinking, waiting for its owner's answer on a card (`waiting`), or done. */
+  status(roomId: string, nodeId: string, thinking: boolean, isPrivate?: boolean, waiting?: { cardId: string | null } | null) {
+    change(roomId, nodeId, (current) =>
+      thinking
+        ? { ...(current ?? { text: "", tools: [] }), thinking: true, waiting: null, ...placed(isPrivate) }
+        : waiting
+          ? { ...(current ?? { text: "", tools: [] }), thinking: false, waiting, ...placed(isPrivate) }
+          : { thinking: false, text: "", tools: [] },
+    );
   },
   /** Which thread a reply being written is for, as each frame says: My crew (private) or the room's shared one. */
   place(roomId: string, nodeId: string, isPrivate: boolean) {
@@ -152,7 +160,7 @@ export function roomSnapshot(roomId: string): LiveRow[] {
   const out: LiveRow[] = [];
   const prefix = `${roomId}:`;
   for (const [id, value] of state) {
-    if (id.startsWith(prefix) && (value.thinking || value.text)) out.push({ nodeId: id.slice(prefix.length), ...value });
+    if (id.startsWith(prefix) && (value.thinking || value.text || value.waiting)) out.push({ nodeId: id.slice(prefix.length), ...value });
   }
   const rows = out.length ? out : EMPTY;
   roomRows.set(roomId, rows);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Message, Room } from "./types";
 import { optimisticMessage } from "./chat";
-import { mergeConversationSnapshot, recentConversations, roomWithMessage } from "./conversations";
+import { mergeConversationSnapshot, recentConversations, roomWithMessage, waitingRooms } from "./conversations";
 
 const room = (id: string, kind: Room["kind"], lastMessageAt: string | null, unread = 0): Room => ({
   id, kind, title: id, createdBy: "me", lastMessageAt, lastSeq: 10,
@@ -79,4 +79,14 @@ test("a room with other people counts each tab on its own, live and across a boo
   assert.deepEqual([merged.readSeqCrew, merged.unreadCrew, merged.unreadRoom, merged.unread], [12, 0, 1, 1], "a slower refresh does not bring My crew's badge back");
   const dm = roomWithMessage(room("dm", "dm", null), message("Hi", 11), "me");
   assert.equal(dm.unreadRoom, undefined, "a chat has one thread");
+});
+
+test("a conversation needs me while a node's card there waits, or a run there waits on my answer; it opens at the oldest", () => {
+  const card = (id: string, roomId: string, minute: number) => ({ id, roomId, createdAt: `2026-10-31T01:${String(minute).padStart(2, "0")}:00Z` });
+  const waiting = waitingRooms(
+    [card("newer", "dm-lead", 30), card("crew-card", "crew", 10), card("older", "dm-lead", 5)],
+    [{ roomId: "crew", status: "waiting_approval", messageId: "run-card" }, { roomId: "launch", status: "running", messageId: "busy" }, { roomId: "dm-scout", status: "waiting_approval", messageId: "scout-run" }, { roomId: "dm-x", status: "waiting_approval", messageId: null }],
+  );
+  assert.deepEqual(Object.fromEntries(waiting), { "dm-lead": { count: 2, first: "older" }, crew: { count: 2, first: "crew-card" }, "dm-scout": { count: 1, first: "scout-run" }, "dm-x": { count: 1, first: null } });
+  assert.equal(waitingRooms(undefined, undefined).size, 0);
 });

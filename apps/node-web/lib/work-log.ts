@@ -67,15 +67,46 @@ export function engineLabel(job: Pick<AgentJob, "kind" | "provider">): string {
   return job.kind === "code" && job.provider && ENGINES[job.provider] ? ENGINES[job.provider]! : "Ensemble's agent";
 }
 
-/** Engine, model, thinking level and context, for the run's status line. */
-export function runFacts(job: Pick<AgentJob, "kind" | "provider" | "model" | "modelUsed" | "reasoningEffort" | "contextTier">): string[] {
-  const model = (job.modelUsed || job.model || "").trim();
-  const effort = (job.reasoningEffort ?? "").trim();
+/** An engine by its id or name, as people read it: "copilot-cli" → "GitHub Copilot", "ensemble" → "Ensemble's agent". */
+export function engineName(engine: string | null | undefined): string | null {
+  const value = (engine ?? "").trim();
+  if (!value) return null;
+  if (ENGINES[value]) return ENGINES[value]!;
+  return value === "ensemble" ? "Ensemble's agent" : value;
+}
+
+/** A run's settings as its card carries them, before (or without) its job: engine, model, thinking and context. */
+export type CardRunSettings = { engine: string | null; model: string | null; effort: string | null; context: string | null };
+
+const setting = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : null);
+
+/**
+ * The settings on a run card: its own `engine`, `model`, `effort` and `context` when Ensemble sends them,
+ * else what was sent to the engine (`settings.resolved`), else what was asked for, else the agent's name.
+ */
+export function cardRunSettings(data: Record<string, unknown> | null | undefined): CardRunSettings {
+  const settings = (data?.settings ?? {}) as { resolved?: Record<string, unknown> | null; requested?: Record<string, unknown> | null };
+  const pick = (key: string, alias = key) => setting(data?.[key]) ?? setting(settings.resolved?.[alias]) ?? setting(settings.requested?.[alias]);
+  return { engine: pick("engine", "agent") ?? setting(data?.agent), model: pick("model"), effort: pick("effort"), context: pick("context") };
+}
+
+const modelFact = (model: string | null | undefined) => (model && !["default", "auto"].includes(model.toLowerCase()) ? model : null);
+const effortFact = (effort: string | null | undefined) => (effort && effort !== "default" ? `${effort} thinking` : null);
+/** "long context" for Ensemble's long tier, "1M context" for a size, nothing for the default. */
+const contextFact = (context: string | null | undefined) => (!context || context === "default" ? null : context === "long_context" ? "long context" : /^\d/.test(context) ? `${context} context` : context.replace(/_/g, " "));
+
+/**
+ * Engine, model, thinking level and context, for the run's status line: from its job once read, with
+ * the card's own settings for what the job does not say (and for all of it before the job is read).
+ */
+export function runFacts(job: Pick<AgentJob, "kind" | "provider" | "model" | "modelUsed" | "reasoningEffort" | "contextTier"> | null | undefined, card?: CardRunSettings): string[] {
+  const model = (job?.modelUsed || job?.model || "").trim();
+  const effort = (job?.reasoningEffort ?? "").trim();
   return [
-    engineLabel(job),
-    model && !["default", "auto"].includes(model.toLowerCase()) ? model : null,
-    effort && effort !== "default" ? `${effort} thinking` : null,
-    job.contextTier === "long_context" ? "long context" : null,
+    job ? engineLabel(job) : engineName(card?.engine),
+    modelFact(modelFact(model) ?? card?.model),
+    effortFact(effortFact(effort) ? effort : card?.effort),
+    contextFact(job?.contextTier && job.contextTier !== "default" ? job.contextTier : card?.context),
   ].filter((value): value is string => Boolean(value));
 }
 

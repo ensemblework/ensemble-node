@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { Spinner } from "@/components/ui";
 
-/** Computers live in Settings, Needs me has its own page. */
+/** Computers live in Settings. */
 export default function ComputersPage() {
   const router = useRouter();
   useEffect(() => router.replace("/settings#computers"), [router]);

@@ -169,6 +169,7 @@ try {
       if (evidence) {
         state.evidence.push({ id: evidence[1], message: url.searchParams.get("message") });
         if (evidence[1] === "e-shot" && url.searchParams.get("message") === "c-media") return route.fulfill({ status: 200, body: PICTURE, headers: { ...cors, "content-type": "image/png" } });
+        if (evidence[1] === "e-log" && url.searchParams.get("message") === "c-media") return route.fulfill({ status: 200, body: "$ npm run build\n✓ built in 3.2s\n", headers: { ...cors, "content-type": "text/plain; charset=utf-8" } });
         return route.fulfill({ status: 404, json: { error: "Not here" }, headers: cors });
       }
       if (/^\/api\/node\/rooms\/[^/]+\/read$/.test(path)) return json({});
@@ -344,7 +345,11 @@ try {
     await media.locator("img").first().waitFor();
     assert.ok(state.evidence.some((row) => row.id === "e-shot" && row.message === "c-media"), "a picture is read through its message");
     await media.getByRole("button", { name: /This video does not play here/ }).or(media.locator("video")).first().waitFor();
-    assert.ok(await media.getByRole("button", { name: /Download Log “build.log”/ }).isVisible(), "other files are downloads");
+    // A text file shows in the chat, read through its message too, with its own Download.
+    const log = media.locator('[data-text-preview="text"]');
+    await log.getByText("✓ built in 3.2s").waitFor();
+    assert.ok(await log.getByRole("button", { name: "Download build.log" }).isVisible());
+    assert.ok(state.evidence.some((row) => row.id === "e-log" && row.message === "c-media"), "a text file is read through its message");
 
     // A peer request's public card and the status cards `@leads status` brought.
     const requestCard = timeline.locator("#m-c-request");
@@ -393,6 +398,8 @@ try {
     assert.ok(await owner.getByText("Only @lead reads these; the room keeps what Ben asked.").isVisible());
     await owner.getByLabel("Always accept reviews from Ben in this room").check();
     await owner.getByRole("button", { name: "Accept with your words" }).click();
+    // Answered, a card folds into its checkpoint; opened, it shows what was decided.
+    await owner.getByRole("button", { name: "Accepted Ben's request for a review" }).click();
     await owner.getByText("Accepted", { exact: true }).waitFor();
     assert.deepEqual(state.calls.find((call) => call.accept), { accept: "req-1", body: { text: "Review the sign-up fix on a phone and a computer.", always: true } });
     assert.ok(await owner.getByText("Please review the sign-up fix before we ship.").isVisible(), "what Ben asked stays in view");
@@ -404,6 +411,7 @@ try {
     assert.ok(await disclosure.getByText("May @lead share this with the room?").isVisible());
     assert.ok(await disclosure.getByText("the date from your private roadmap page?", { exact: false }).isVisible());
     await disclosure.getByRole("button", { name: "Allow" }).click();
+    await disclosure.getByRole("button", { name: "Allowed @lead to share with Ben" }).click();
     await disclosure.getByText("Allowed", { exact: true }).waitFor();
     assert.ok(await disclosure.getByText(/is writing the answer. It comes to you as a draft to post./).isVisible());
     assert.deepEqual(state.calls.find((call) => call.approval === "c-disclosure").body, { decision: "approve" });
@@ -413,6 +421,7 @@ try {
     assert.ok(await proposal.getByText("@lead proposes a new node").isVisible());
     assert.ok(await proposal.getByText("Docs", { exact: true }).isVisible());
     await proposal.getByRole("button", { name: "Make it" }).click();
+    await proposal.getByRole("button", { name: "Made @docs" }).click();
     await proposal.getByText("Made @docs.").waitFor();
 
     // A helper's thread under the message that asked (privately), and its plan step by name.
@@ -443,6 +452,7 @@ try {
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/request-draft-${width}.png` });
     await draft.getByRole("button", { name: "Send request" }).click();
+    await draft.getByRole("button", { name: "Sent the request to @ben" }).click();
     await draft.getByText("Sent", { exact: true }).waitFor();
     assert.deepEqual(state.calls.find((call) => call.approval === "c-req-draft").body, { decision: "approve", body: "Please review the date filter fix on a phone.\nCandidate: repository acme/web, at commit 1a2b3c4d5e6f" });
     await draft.getByRole("button", { name: "See it in the room" }).click();

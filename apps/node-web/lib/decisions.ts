@@ -1,8 +1,8 @@
-/** Pure rules for answering Ensemble's Needs me from Node: what a card offers, and which cards belong to a run. */
+/** Pure rules for answering a run's questions from Node: what a card offers, and which cards belong to a run. */
 import type { AgentDecision, ApprovalRecord, DecisionBody } from "./types";
 
 /**
- * How Node can answer a question from Needs me.
+ * How Node can answer a question from an agent.
  * - elsewhere: someone else answers it (the person whose computer runs it).
  * - in-ensemble: an editor's own multiple-choice question; answer it in Ensemble.
  * - on-computer: that computer takes this kind of approval only on itself; Deny works here.
@@ -59,14 +59,23 @@ export function answeredNote(view: DecisionView, body: DecisionBody): string {
   return body.scope === "session" ? "Allowed for this run." : "Allowed once.";
 }
 
+/** Whether a question from an agent belongs to this run: its job asked (`detail.jobId`), or its run's session is the job (`sessionId`). */
+const ofJob = (row: Pick<AgentDecision, "detail" | "sessionId">, jobId: string) => row.detail?.jobId === jobId || row.sessionId === jobId;
+
 /** Pending questions a run asked: the cards whose job is this one, oldest first. */
 export function decisionsForJob(decisions: readonly AgentDecision[] | undefined, jobId: string | null | undefined): AgentDecision[] {
   if (!jobId) return [];
-  return (decisions ?? []).filter((row) => row.status === "pending" && row.detail?.jobId === jobId).sort((a, b) => Date.parse(a.requestedAt) - Date.parse(b.requestedAt));
+  return (decisions ?? []).filter((row) => row.status === "pending" && ofJob(row, jobId)).sort((a, b) => Date.parse(a.requestedAt) - Date.parse(b.requestedAt));
 }
 
-/** Run approvals waiting for this run. */
-export function approvalsForRun(approvals: readonly ApprovalRecord[] | undefined, runId: string | null | undefined): ApprovalRecord[] {
-  if (!runId) return [];
-  return (approvals ?? []).filter((row) => row.runId === runId && !row.decision);
+/** A run's questions that are no longer waiting (answered here or anywhere, or expired), oldest first: its checkpoints. */
+export function answeredForJob(decisions: readonly AgentDecision[] | undefined, jobId: string | null | undefined): AgentDecision[] {
+  if (!jobId) return [];
+  return (decisions ?? []).filter((row) => row.status !== "pending" && ofJob(row, jobId)).sort((a, b) => Date.parse(a.requestedAt) - Date.parse(b.requestedAt));
+}
+
+/** Run approvals waiting for this run: by its run, or by its job when Ensemble says. */
+export function approvalsForRun(approvals: readonly ApprovalRecord[] | undefined, runId: string | null | undefined, jobId?: string | null): ApprovalRecord[] {
+  if (!runId && !jobId) return [];
+  return (approvals ?? []).filter((row) => !row.decision && ((runId && row.runId === runId) || (jobId && row.jobId === jobId)));
 }

@@ -80,6 +80,8 @@ try {
       if (path === "/api/approvals") return json({ approvals: [] });
       if (path === "/api/devices") return json({ devices: [] });
       if (path === "/api/node/models") return json(state.boot.models);
+      // The owner's own Ensemble settings: the run profile a node's sessions use, and Node's browsing rule.
+      if (path === "/api/settings") return json({ settings: { runProfiles: [], defaultRunProfileId: null, node: { askBeforeBrowsing: false } }, connectors: [] });
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
       if (path === "/api/agent/jobs/job") return json({ job: { id: "job", taskId: "task", title: "Build the landing page", kind: "code", status: "succeeded", provider: "copilot-cli", model: "gpt-6.1-sol", modelUsed: null, reasoningEffort: "high", progress: null, summary: "Updated the landing page.", error: null, turns: 1, toolCalls: 2, runId: null, deviceName: "Development laptop", yours: true, folder: "website", branch: "feature/landing", files: [], createdAt: stamp(1), startedAt: stamp(1), finishedAt: stamp(2) }, events: [] });
       if (path.endsWith("/memory")) return json({ memories: [] });

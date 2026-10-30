@@ -439,6 +439,8 @@ try {
     assert.ok(await handCard.getByText("@builder wants to hand a session to @tester").isVisible());
     assert.ok(await handCard.getByText(/It knows the test setup/).isVisible());
     await handCard.getByRole("button", { name: "Hand it over" }).click();
+    // Handed over, the card folds into its checkpoint; opened, it says who manages the session now.
+    await handCard.getByRole("button", { name: "Handed the session to @tester" }).click();
     await handCard.getByText("Handed over", { exact: true }).waitFor();
     assert.ok(await handCard.getByText("@tester manages this session now.").isVisible(), "the owner's words, not the node's");
     assert.deepEqual(state.calls.at(-1), { approval: "hand1", body: { decision: "approve" } });

@@ -1,6 +1,8 @@
 import { liveMeta } from "./captures";
 import { ENSEMBLE_API } from "./config";
 import { evidenceErrorWords, evidencePath } from "./evidence";
+import type { OwnerSettings } from "./owner-settings";
+import type { SudoAnswer, SudoTarget } from "./sudo";
 import type { CardEvidence, FileRecord, LiveFrame, Message, OwnSpace, PageRole, PeerKind, RoomBoard, RoomDecision, RoomPage, RoomPrefs, RoomSpaceView, RoomSteward, ShareCandidates, WorkMode, PeerRequest, RequestCandidate, Routine, RoutineRun, SessionAction, SessionDetail, SessionSummary, ShareableItem, StatusCard, TrustSettings, TrustView } from "./types";
 
 export class ApiError extends Error {
@@ -151,6 +153,52 @@ export async function evidenceBlob(id: string, signal?: AbortSignal, messageId?:
   return response.blob();
 }
 
+/**
+ * The first `max` bytes of a file a run attached (a text file's preview), read like `evidenceBlob` but
+ * never more: the download stops once enough has come, however large the file is.
+ */
+export async function evidenceHead(id: string, max: number, messageId?: string | null): Promise<{ bytes: Uint8Array; truncated: boolean }> {
+  const stop = new AbortController();
+  let response: Response;
+  try {
+    response = await fetch(`${ENSEMBLE_API}${evidencePath(id, messageId)}`, { credentials: "include", signal: stop.signal });
+  } catch {
+    throw new ApiError(0, evidenceErrorWords(0));
+  }
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: unknown };
+    throw new ApiError(response.status, evidenceErrorWords(response.status, typeof data.error === "string" ? data.error : null));
+  }
+  const reader = response.body?.getReader();
+  if (!reader) {
+    const whole = new Uint8Array(await response.arrayBuffer());
+    return { bytes: whole.slice(0, max), truncated: whole.length > max };
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.length;
+    if (size > max) break;
+  }
+  const truncated = size > max;
+  if (truncated) {
+    await reader.cancel().catch(() => undefined);
+    stop.abort();
+  }
+  const bytes = new Uint8Array(Math.min(size, max));
+  let at = 0;
+  for (const chunk of chunks) {
+    if (at >= bytes.length) break;
+    const part = chunk.subarray(0, bytes.length - at);
+    bytes.set(part, at);
+    at += part.length;
+  }
+  return { bytes, truncated };
+}
+
 /** The address a video player streams a run's evidence from; the session cookie goes with it. */
 export const evidenceUrl = (id: string, messageId?: string | null): string => `${ENSEMBLE_API}${evidencePath(id, messageId)}`;
 
@@ -225,6 +273,20 @@ export const routines = {
 
 /** One message I may see (`GET /api/node/messages/:id`). */
 export const messageById = (id: string) => api<{ message: Message }>(`/api/node/messages/${encodeURIComponent(id)}`).then((result) => result.message);
+
+const sudoPath = (messageId: string) => `/api/node/sudo/${encodeURIComponent(messageId)}`;
+
+/** A command a node wants to run as administrator: what the computer would run and how a password reaches it, and the owner's answer (lib/sudo.ts). */
+export const sudoCards = {
+  target: (messageId: string) => api<SudoTarget>(sudoPath(messageId)),
+  answer: (messageId: string, body: SudoAnswer) => api<{ message: Message }>(sudoPath(messageId), { body }).then((result) => result.message),
+};
+
+/** The owner's own Ensemble settings, the parts Node reads (lib/owner-settings.ts); a change sends only what changed and is merged there. */
+export const ownerSettings = {
+  get: () => api<{ settings: OwnerSettings }>("/api/settings").then((result) => result.settings),
+  save: (patch: Record<string, unknown>) => api<{ settings: OwnerSettings }>("/api/settings", { method: "PATCH", body: patch }).then((result) => result.settings),
+};
 
 /** A plan card (or a routine's run) with its steps' run cards, which are not in the timeline (`GET /api/node/plans/:id`). */
 export const planById = (id: string) => api<{ message: Message; runs: Message[] }>(`/api/node/plans/${encodeURIComponent(id)}`);

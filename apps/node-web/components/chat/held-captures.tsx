@@ -21,7 +21,7 @@ import type { EvidenceItem, Message, NodePublic } from "@/lib/types";
 import { Button, Spinner } from "../ui";
 import { forgetPictures, usePicture } from "./evidence";
 import type { MessageContext } from "./message";
-import { OwnerCard } from "./room-cards";
+import { OwnerCard } from "./owner-card";
 
 type Answer = "released" | "discarded";
 

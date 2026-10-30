@@ -4,19 +4,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FolderOpen, Pause, Play, Trash2 } from "lucide-react";
+import { Download, FolderOpen, Pause, Play, SquareTerminal, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
-import { CLI_COMMAND } from "@/lib/config";
+import { CLI_COMMAND, ENSEMBLE_LINKS } from "@/lib/config";
 import { liveDevices } from "@/lib/ensemble";
 import { evidenceItems } from "@/lib/evidence";
-import { keys, useDevices, useNodeCaptures } from "@/lib/hooks";
+import { keys, useDevices, useNodeCaptures, useOwnerSettings } from "@/lib/hooks";
+import { runProfileFor, runProfileLine } from "@/lib/owner-settings";
 import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { ModelPicker } from "./model-picker";
 import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "./node-avatar";
 import { EvidenceGallery } from "./chat/evidence";
 import { NodeRoutines } from "./routines";
-import { Button, Field, Input, Notice, Segmented, Spinner, Switch, Textarea } from "./ui";
+import { Button, External, Field, Input, Notice, Segmented, Spinner, Switch, Textarea } from "./ui";
 
 type Memory = { id: string; content: string; createdAt: string };
 
@@ -61,6 +62,24 @@ function NodeCaptures({ node }: { node: NodeFull }) {
         </button>
       ) : null}
     </div>
+  );
+}
+
+/** Which run profile the node's agent sessions use when a message names none, and what that profile runs. */
+function AgentSessions({ node }: { node: NodeFull }) {
+  const settings = useOwnerSettings();
+  if (!settings.data) return null;
+  const profile = runProfileFor(settings.data, node.runProfileId);
+  return (
+    <p className="flex items-start gap-2 rounded-xl border border-line bg-bg px-3 py-2 text-xs text-muted" data-run-profile={profile.id}>
+      <SquareTerminal size={14} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+      <span className="min-w-0">
+        Agent sessions use: <span className="font-medium text-ink">{profile.name}</span> ({runProfileLine(profile)}), unless your message names another agent or model.{" "}
+        <External href={ENSEMBLE_LINKS.runProfiles} icon className="whitespace-nowrap text-accent hover:underline">
+          Run profiles
+        </External>
+      </span>
+    </p>
   );
 }
 
@@ -209,6 +228,7 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
             options={[{ id: "low", label: "Low · fast" }, { id: "medium", label: "Medium" }, { id: "high", label: "High" }]}
           />
         </Field>
+        <AgentSessions node={node} />
       </Section>
 
       <Section title="Permissions" hint="These save as soon as you change them.">

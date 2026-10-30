@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, ApiError, eventsUrl, evidence, liveFrame, messageById, ownSpaces, peerRequests, peopleRooms, planById, roomWork, routines, sessions, shareToRoom } from "./api";
+import { api, ApiError, eventsUrl, evidence, liveFrame, messageById, ownerSettings, ownSpaces, peerRequests, peopleRooms, planById, roomWork, routines, sessions, shareToRoom } from "./api";
 import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, toggleReaction, type SendInput } from "./chat";
+import type { LocalAnswer } from "./checkpoints";
 import { live, type LiveCall } from "./live";
 import { waitingLoginCard } from "./login";
+import type { OwnerSettings } from "./owner-settings";
 import { refsOf } from "./entity-text";
 import { joinedRefusal, readTab, tabMarker, tabUnreadOf, withTab, type RoomTab } from "./rooms";
 import { moveQueued, withoutQueued } from "./session";
@@ -64,6 +66,10 @@ export const keys = {
   devices: ["devices"] as const,
   approvals: ["approvals"] as const,
   decisions: ["decisions"] as const,
+  /** Agents' questions of the last week, answered or not: a run card's checkpoints. */
+  recentDecisions: ["decisions", "recent"] as const,
+  /** The owner's own Ensemble settings (run profiles, Node's browsing rule). */
+  ownerSettings: ["owner-settings"] as const,
   connectors: ["connectors"] as const,
   mcp: ["mcp-connections"] as const,
   /** The person's Ensemble Files matching a name ("" for the newest). */
@@ -141,7 +147,7 @@ export function useActivity() {
   return useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), refetchInterval: 30_000 });
 }
 
-/** A run's open sign-in card, from the Needs me list the shell keeps fresh: no request of its own. */
+/** A run's open sign-in card, from the cards waiting for me that the shell keeps fresh: no request of its own. */
 export function useRunLoginCard(jobId: string | null): Message | undefined {
   const activity = useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), enabled: false });
   return jobId ? waitingLoginCard(activity.data?.approvals ?? [], jobId) : undefined;
@@ -355,13 +361,67 @@ export function useDevices(enabled = true) {
   return useQuery({ queryKey: keys.devices, queryFn: () => api<{ devices: Device[] }>("/api/devices").then((result) => result.devices), enabled, refetchInterval: enabled ? 30_000 : false });
 }
 
-/** Ensemble's Needs me: run approvals and questions from agents. The stream's `node.needs` re-reads it at once; the poll is the fallback. */
+/** Run approvals waiting for me. The stream's `node.needs` re-reads them at once; the poll is the fallback. */
 export function useApprovals() {
   return useQuery({ queryKey: keys.approvals, queryFn: () => api<{ approvals: ApprovalRecord[] }>("/api/approvals").then((result) => result.approvals), refetchInterval: 60_000 });
 }
 
+/** Agents' questions waiting for me (a run card answers its own). */
 export function useDecisions() {
   return useQuery({ queryKey: keys.decisions, queryFn: () => api<{ decisions: AgentDecision[] }>("/api/decisions?status=pending").then((result) => result.decisions), refetchInterval: 60_000 });
+}
+
+/** Agents' questions of the last week with their answers: a run card's checkpoints. Read while a run card that asked is on screen. */
+export function useRecentDecisions(enabled: boolean) {
+  return useQuery({ queryKey: keys.recentDecisions, queryFn: () => api<{ decisions: AgentDecision[] }>("/api/decisions?status=recent").then((result) => result.decisions), enabled, staleTime: 15_000 });
+}
+
+/** The owner's own Ensemble settings (run profiles, Node's browsing rule). */
+export function useOwnerSettings(enabled = true) {
+  return useQuery({ queryKey: keys.ownerSettings, queryFn: ownerSettings.get, enabled, staleTime: 60_000, retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2 });
+}
+
+/** Changes the owner's Ensemble settings: only what changed is sent; Ensemble merges it and answers with the whole. */
+export function useSaveOwnerSettings() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: Record<string, unknown>) => ownerSettings.save(patch),
+    onSuccess: (settings) => client.setQueryData<OwnerSettings>(keys.ownerSettings, settings),
+  });
+}
+
+type Listener = () => void;
+
+/** Answers given here that their card does not show yet, by card: the card reads as answered until Ensemble updates it. */
+const localAnswers = new Map<string, LocalAnswer>();
+const answerListeners = new Set<Listener>();
+const onAnswers = (listener: Listener) => (answerListeners.add(listener), () => void answerListeners.delete(listener));
+
+/** Kept for the page's life: Ensemble's own state wins as soon as the card is no longer pending (`withLocalAnswer`). */
+export function answerLocally(messageId: string, answer: LocalAnswer) {
+  localAnswers.set(messageId, answer);
+  for (const listener of answerListeners) listener();
+}
+
+/** The answer given here to this card, while its card may still say pending. */
+export function useLocalAnswer(messageId: string): LocalAnswer | undefined {
+  return useSyncExternalStore(onAnswers, () => localAnswers.get(messageId), () => undefined);
+}
+
+/** A run approval answered in this tab: Ensemble's list drops it, so its run card keeps the checkpoint from here. */
+export type AnsweredApproval = { id: string; runId: string; jobId: string | null; title: string; decision: "approved" | "rejected"; at: string };
+let answeredApprovals: readonly AnsweredApproval[] = [];
+const approvalListeners = new Set<Listener>();
+const onApprovals = (listener: Listener) => (approvalListeners.add(listener), () => void approvalListeners.delete(listener));
+
+function rememberApproval(row: AnsweredApproval) {
+  answeredApprovals = [...answeredApprovals.filter((item) => item.id !== row.id), row].slice(-100);
+  for (const listener of approvalListeners) listener();
+}
+
+/** Every run approval answered in this tab; a run card picks its own. */
+export function useAnsweredApprovals(): readonly AnsweredApproval[] {
+  return useSyncExternalStore(onApprovals, () => answeredApprovals, () => answeredApprovals);
 }
 
 /** A run card's computer job: status, engine, model, progress, summary, events. Read again every few seconds while `poll` and the job has not ended; an ended job does not change. */
@@ -535,36 +595,44 @@ export function useSessionQueue(sessionId: string, base: QueuedRun[]) {
   };
 }
 
-/** After an answer: Needs me, and the run that waited on it. */
-function refreshNeedsMe(client: QueryClient, jobId: string | undefined) {
+/** After an answer: the questions and approvals waiting, and the run that waited on it. */
+function refreshAnswered(client: QueryClient, jobId: string | undefined) {
   void client.invalidateQueries({ queryKey: keys.decisions });
   void client.invalidateQueries({ queryKey: keys.approvals });
   if (jobId) void client.invalidateQueries({ queryKey: keys.job(jobId) });
 }
 
-/** Answers a question from Needs me. Once answered, the card leaves the list and `note` is shown. */
+/**
+ * Answers a question from an agent or from the owner's computer. Once answered it leaves the pending
+ * list, and `note` (when given) is shown. `cardId`: the card in the chat that asked, read again after.
+ */
 export function useDecide() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { id: string; body: DecisionBody; jobId?: string; note: string }) => api<unknown>(`/api/decisions/${input.id}/decide`, { body: input.body }),
+    mutationFn: (input: { id: string; body: DecisionBody; jobId?: string; note?: string; cardId?: string }) => api<unknown>(`/api/decisions/${input.id}/decide`, { body: input.body }),
     onSuccess: (_data, input) => {
       client.setQueryData<AgentDecision[]>(keys.decisions, (rows) => rows?.filter((row) => row.id !== input.id));
-      toast(input.note, "ok");
+      if (input.note) toast(input.note, "ok");
     },
-    onSettled: (_data, _error, input) => refreshNeedsMe(client, input.jobId),
+    onSettled: (_data, _error, input) => {
+      refreshAnswered(client, input.jobId);
+      if (input.cardId) rereadCards(client, [input.cardId]);
+    },
   });
 }
 
-/** Approves or rejects a run approval from Needs me. */
+/** Approves or rejects a run approval; its run card keeps a checkpoint of the answer. */
 export function useDecideApproval() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: { id: string; decision: "approved" | "rejected"; jobId?: string }) => api<unknown>(`/api/approvals/${input.id}/decide`, { body: { decision: input.decision } }),
+    mutationFn: (input: { id: string; decision: "approved" | "rejected"; jobId?: string; runId?: string; title?: string }) => api<unknown>(`/api/approvals/${input.id}/decide`, { body: { decision: input.decision } }),
     onSuccess: (_data, input) => {
-      client.setQueryData<ApprovalRecord[]>(keys.approvals, (rows) => rows?.filter((row) => row.id !== input.id));
+      const row = client.getQueryData<ApprovalRecord[]>(keys.approvals)?.find((item) => item.id === input.id);
+      rememberApproval({ id: input.id, runId: input.runId ?? row?.runId ?? "", jobId: input.jobId ?? row?.jobId ?? null, title: input.title ?? row?.title ?? "Approval", decision: input.decision, at: new Date().toISOString() });
+      client.setQueryData<ApprovalRecord[]>(keys.approvals, (rows) => rows?.filter((item) => item.id !== input.id));
       toast(input.decision === "approved" ? "Approved." : "Rejected.", "ok");
     },
-    onSettled: (_data, _error, input) => refreshNeedsMe(client, input.jobId),
+    onSettled: (_data, _error, input) => refreshAnswered(client, input.jobId),
   });
 }
 
@@ -737,7 +805,7 @@ export function usePeerDecision(roomId: string) {
     onSuccess: (request, input) => {
       client.setQueryData<PeerRequest[]>(keys.requests(roomId), (current) => current?.map((row) => (row.id === request.id ? { ...row, ...request } : row)));
       void client.invalidateQueries({ queryKey: keys.requests(roomId) });
-      // Its proposed task follows the request on the room's board; Needs me loses the card.
+      // Its proposed task follows the request on the room's board; the cards waiting for me lose it.
       if (request.taskId) void client.invalidateQueries({ queryKey: keys.board(roomId) });
       void client.invalidateQueries({ queryKey: keys.activity });
       rereadCards(client, [request.cardId, request.ownerCardId, input.cardId]);
@@ -949,9 +1017,9 @@ export function useNodeEvents(enabled: boolean) {
     source.addEventListener("node.message", onMessage as EventListener);
     source.addEventListener("node.message.updated", onMessage as EventListener);
     source.addEventListener("node.status", ((event: MessageEvent<string>) => {
-      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; state: string; private?: boolean };
-      // `private`: the reply is for its owner's My crew in a room with other people.
-      live.status(data.roomId, data.nodeId, data.state === "thinking", typeof data.private === "boolean" ? data.private : undefined);
+      const data = JSON.parse(event.data) as { roomId: string; nodeId: string; state: string; private?: boolean; cardId?: unknown };
+      // `private`: the reply is for its owner's My crew in a room with other people. `waiting`: the node waits for its owner's answer on a card.
+      live.status(data.roomId, data.nodeId, data.state === "thinking", typeof data.private === "boolean" ? data.private : undefined, data.state === "waiting" ? { cardId: typeof data.cardId === "string" ? data.cardId : null } : null);
       if (data.state !== "thinking") void client.invalidateQueries({ queryKey: keys.activity });
     }) as EventListener);
     source.addEventListener("node.frame", ((event: MessageEvent<string>) => {
@@ -998,7 +1066,7 @@ export function useNodeEvents(enabled: boolean) {
       if (paused) client.setQueryData<LiveFrame | null>(keys.live(data.jobId), (current) => ({ image: null, at, tab: current?.tab ?? null, url: current?.url ?? null, title: current?.title ?? null, width: null, height: null, paused }));
       else void client.invalidateQueries({ queryKey: keys.live(data.jobId) });
     }) as EventListener);
-    // Needs me changed (a run asks, or a card was answered somewhere): re-read it now, not at the next poll.
+    // A question or approval changed (a run asks, or one was answered anywhere): re-read them now, not at the next poll.
     source.addEventListener("node.needs", () => {
       void client.invalidateQueries({ queryKey: keys.approvals });
       void client.invalidateQueries({ queryKey: keys.decisions });

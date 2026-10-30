@@ -4,7 +4,9 @@ import type { JobEvent, RunStep } from "./types";
 import {
   callEntry,
   elapsedSeconds,
+  cardRunSettings,
   engineLabel,
+  engineName,
   formatDuration,
   formatElapsed,
   groupKind,
@@ -190,6 +192,15 @@ test("the run's status line and status", () => {
   assert.equal(engineLabel({ kind: "code", provider: "openai" }), "Ensemble's agent");
   assert.deepEqual(runFacts({ kind: "code", provider: "codex", model: "gpt-6", modelUsed: "gpt-6-sol", reasoningEffort: "high", contextTier: "long_context" }), ["Codex", "gpt-6-sol", "high thinking", "long context"]);
   assert.deepEqual(runFacts({ kind: "code", provider: "cursor-agent", model: "default", modelUsed: null, reasoningEffort: "default" }), ["Cursor"]);
+  // Before its job is read, a run card's own settings say how it runs; once read, they fill what the job does not say.
+  const card = cardRunSettings({ engine: "copilot-cli", model: "gpt-6.1-sol", effort: "medium", context: "1M", settings: { resolved: { agent: "codex", model: "x" } } });
+  assert.deepEqual(card, { engine: "copilot-cli", model: "gpt-6.1-sol", effort: "medium", context: "1M" });
+  assert.deepEqual(runFacts(null, card), ["GitHub Copilot", "gpt-6.1-sol", "medium thinking", "1M context"]);
+  assert.deepEqual(runFacts(null, cardRunSettings({ agent: "Claude Code", settings: { requested: { model: "opus" }, resolved: { agent: "claude-code", model: "default", effort: "high", context: "long_context" } } })), ["Claude Code", "high thinking", "long context"]);
+  assert.deepEqual(runFacts(null, cardRunSettings({ agent: "Claude Code" })), ["Claude Code"], "an older card names its agent only");
+  assert.deepEqual(runFacts({ kind: "code", provider: "copilot-cli", model: "default", modelUsed: null, reasoningEffort: null, contextTier: null }, card), ["GitHub Copilot", "gpt-6.1-sol", "medium thinking", "1M context"]);
+  assert.equal(engineName("ensemble"), "Ensemble's agent");
+  assert.equal(engineName(""), null);
   assert.equal(runStatus("running", "succeeded"), "succeeded");
   assert.equal(runStatus("failed", "running"), "failed");
   assert.equal(runStatus("running", "waiting_approval"), "waiting_approval");

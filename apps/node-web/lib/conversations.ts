@@ -1,6 +1,25 @@
-import type { Message, Room, RoomKind } from "./types";
+import { inTimeline } from "./chat";
+import type { Message, Room, RoomKind, Run } from "./types";
 
 export type ConversationFilter = "all" | "unread" | "groups";
+
+/**
+ * What waits for me in each conversation: my nodes' open cards there (a question from my computer, a
+ * command to run as administrator, a draft, a secret…), and runs there that wait on my answer. `first`
+ * is the oldest of them, to open the conversation at. The sidebar marks those conversations.
+ */
+export function waitingRooms(cards: readonly Pick<Message, "id" | "roomId" | "createdAt">[] | undefined, runs: readonly Pick<Run, "roomId" | "status" | "messageId">[] | undefined): Map<string, { count: number; first: string | null }> {
+  const waiting = new Map<string, { count: number; first: string | null; at: number }>();
+  const add = (roomId: string | null | undefined, messageId: string | null, at: number) => {
+    if (!roomId) return;
+    const known = waiting.get(roomId);
+    const older = !known || (messageId !== null && (known.first === null || at < known.at));
+    waiting.set(roomId, { count: (known?.count ?? 0) + 1, first: older ? messageId : known.first, at: older ? at : known.at });
+  };
+  for (const card of cards ?? []) add(card.roomId, card.id, Date.parse(card.createdAt) || 0);
+  for (const run of runs ?? []) if (run.status === "waiting_approval") add(run.roomId, run.messageId, Number.MAX_SAFE_INTEGER);
+  return new Map([...waiting].map(([roomId, row]) => [roomId, { count: row.count, first: row.first }]));
+}
 
 /**
  * One recent list across direct chats, crews and rooms; untouched chats follow active ones. Helpers'
@@ -20,8 +39,8 @@ export function recentConversations(rooms: readonly Room[], filter: Conversation
 
 /** Reactions and old message edits change their preview, never the conversation's position or count. */
 export function roomWithMessage(room: Room, message: Message, meId: string): Room {
-  // A plan step's card is shown inside its plan card: no preview, no unread.
-  if (message.planId) return room;
+  // A plan step's run card is shown inside its plan card: no preview, no unread.
+  if (!inTimeline(message)) return room;
   const same = room.last?.id === message.id || Boolean(message.clientId && room.last?.clientId === message.clientId);
   const pending = Boolean(message.sending || message.failed);
   const newer = !pending && message.seq > room.lastSeq;

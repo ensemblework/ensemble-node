@@ -477,7 +477,7 @@ export type Routine = {
   runs: RoutineRun[];
 };
 
-/** A board task blocked or waiting for an approval: Ensemble's Needs me lists the same. */
+/** A board task blocked or waiting for an approval (`waitingTasks` in `GET /api/node/activity`). */
 export type WaitingTask = { id: string; title: string; status: "blocked" | "waiting_approval"; updatedAt: string };
 
 export type Activity = { approvals: Message[]; runs: Run[]; turns: Turn[]; computers: Computer[]; credits: Credits; waitingTasks?: WaitingTask[] };
@@ -519,10 +519,10 @@ export type CaptureSummary = {
 /** `takeover` 1: it shows a tab of its browser here for the owner to control; `logins` 1: it hands sign-ins to the owner. */
 export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; takeover?: number; logins?: number; [key: string]: unknown };
 
-/** Ensemble's Needs me: a run's approval (`GET /api/approvals`). */
-export type ApprovalRecord = { id: string; runId: string; taskId: string | null; kind: string; title: string; preview: unknown; decision: string | null; requestedAt: string };
+/** Ensemble's run approval (`GET /api/approvals`); `jobId` when Ensemble names the job too. */
+export type ApprovalRecord = { id: string; runId: string; jobId?: string | null; taskId: string | null; kind: string; title: string; preview: unknown; decision: string | null; requestedAt: string };
 
-/** Ensemble's Needs me: a question from an agent or a tool (`GET /api/decisions`). */
+/** A question from an agent or a tool (`GET /api/decisions`): pending, or with its answer (`?status=recent`). */
 export type AgentDecision = {
   id: string;
   source: "cursor" | "claude" | "copilot" | "codex" | "ensemble" | "other";
@@ -551,6 +551,11 @@ export type AgentDecision = {
   sessionId?: string | null;
   canAnswer?: boolean;
   status: "pending" | "decided" | "expired" | "settled";
+  /** Once answered: allow or deny, its scope, and the option picked or words typed. */
+  decision?: "allow" | "deny" | null;
+  scope?: string | null;
+  reason?: string | null;
+  decidedAt?: string | null;
   requestedAt: string;
   expiresAt: string;
 };

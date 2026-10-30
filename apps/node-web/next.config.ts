@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
   env: { ENSEMBLE_NODE_COMMIT: process.env.ENSEMBLE_NODE_COMMIT ?? "" },
   devIndicators: false,
   poweredByHeader: false,
+  // Every question waits in the chat that asked it now; old links to the Needs me page go home.
+  async redirects() {
+    return [{ source: "/needs-me", destination: "/", permanent: false }];
+  },
   async headers() {
     return [
       {

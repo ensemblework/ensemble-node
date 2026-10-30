@@ -18,16 +18,19 @@ import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { SecretBox } from "../secret-box";
 import { LoginBox } from "../login-box";
 import { ToolIcon } from "../tool-icon";
-import { Button, External, Pill, Textarea } from "../ui";
+import { Button, External, Textarea } from "../ui";
 import { EvidenceGallery } from "./evidence";
 import { MessageFiles } from "./file-chips";
+import { ComputerCard } from "./computer-card";
 import { HeldCapturesCard } from "./held-captures";
 import { HelperThreadChip } from "./helper-thread";
+import { CardCheckpoint, OwnerCard } from "./owner-card";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 import { PlanCard } from "./plan-card";
-import { DisclosureCard, NodeProposalCard, RequestCard, RequestDraftCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
+import { CrewAddCard, DisclosureCard, NodeProposalCard, RequestCard, RequestDraftCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
 import { DecisionLine, DeclinedLine, DigestCard, PageRoleLine, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
+import { SudoCard } from "./sudo-card";
 
 export type MessageContext = {
   meId: string;
@@ -153,6 +156,17 @@ const STATUS_PILL: Record<string, { label: string; tone: "warn" | "ok" | "muted"
 };
 
 function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
+  return (
+    <CardCheckpoint message={message} handle={node?.slug ?? "node"} roomTitle={ctx.roomTitle}>
+      {(shown) => <ApprovalBody message={shown} ctx={ctx} node={node} />}
+    </CardCheckpoint>
+  );
+}
+
+function ApprovalBody({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
+  if (message.data.type === "computer") return <ComputerCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "sudo") return <SudoCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "crew_add") return <CrewAddCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "peer_request") return <RequestOwnerCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "post" && message.data.request) return <RequestDraftCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "disclosure") return <DisclosureCard message={message} ctx={ctx} node={node} />;
@@ -175,16 +189,7 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
   const pill = handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
   const error = settle.error?.message ?? (typeof data.error === "string" ? data.error : null);
   return (
-    <div className="mt-1 rounded-2xl border border-warn/40 bg-warn/5 p-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-sm font-medium">{words.title}</span>
-        <span className="flex items-center gap-2">
-          <Pill tone="private">
-            <Lock size={10} /> only you
-          </Pill>
-          <Pill tone={pill.tone}>{pill.label}</Pill>
-        </span>
-      </div>
+    <OwnerCard title={words.title} state={pill}>
       {data.type === "secret" ? (
         <div className="space-y-3">
           <p className="text-sm">{message.body}</p>
@@ -253,7 +258,7 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
           </Button>
         </div>
       ) : null}
-    </div>
+    </OwnerCard>
   );
 }
 

@@ -6,6 +6,7 @@ import {
   dayLabel,
   firstUnread,
   highlightParts,
+  inTimeline,
   keepOlder,
   matchesAuthor,
   mentionsMe,
@@ -138,4 +139,11 @@ test("a message with only files previews as its files", () => {
   const media = [{ evidenceId: "e1", kind: "video", name: "demo.mp4", mime: "video/mp4" }, { evidenceId: "e2", kind: "screenshot", name: "a.png", mime: "image/png" }];
   assert.equal(messagePreview({ authorKind: "node", body: "", data: { media } }), "📎 1 picture, 1 video", "a node's media without words");
   assert.equal(messagePreview({ authorKind: "human", body: "", data: { media } }), "", "only a node's message carries media");
+});
+
+test("a plan step's run card shows in its plan, but a question to its owner always shows in the chat", () => {
+  assert.equal(inTimeline({ planId: null, kind: "text" }), true);
+  assert.equal(inTimeline({ planId: "plan-1", kind: "run" }), false);
+  assert.equal(inTimeline({ planId: "plan-1", kind: "approval" }), true);
+  assert.equal(inTimeline({ kind: "plan" }), true);
 });

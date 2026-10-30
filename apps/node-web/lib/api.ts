@@ -269,8 +269,11 @@ export const roomWork = {
   endSteward: (roomId: string) => api<{ steward: null }>(`${roomPath(roomId)}/steward`, { method: "DELETE" }),
   prefs: (roomId: string) => api<{ prefs: RoomPrefs }>(`${roomPath(roomId)}/prefs`).then((result) => result.prefs),
   setPrefs: (roomId: string, body: Partial<RoomPrefs>) => api<{ prefs: RoomPrefs }>(`${roomPath(roomId)}/prefs`, { method: "PUT", body }).then((result) => result.prefs),
-  /** Starts one of my tasks on the room's board: my lead plans it in My crew. */
-  startTask: (roomId: string, taskId: string, mode: WorkMode) => api<{ started: boolean }>(`${roomPath(roomId)}/tasks/${encodeURIComponent(taskId)}/start`, { body: { mode } }),
+  /** Starts one of my tasks on the room's board: my lead plans it in My crew (its turn; the plan follows on the board's row). */
+  startTask: (roomId: string, taskId: string, mode: WorkMode) => api<{ started: boolean; taskId: string; turnId: string | null }>(`${roomPath(roomId)}/tasks/${encodeURIComponent(taskId)}/start`, { body: { mode } }),
+  /** Says no to a task proposed to me (a request's is declined as the request). */
+  declineTask: (roomId: string, taskId: string, note?: string) =>
+    api<{ task: { id: string; status: string } }>(`${roomPath(roomId)}/tasks/${encodeURIComponent(taskId)}/decline`, { body: note?.trim() ? { note: note.trim() } : {} }).then((result) => result.task),
 };
 
 /** The spaces I own (`GET /api/spaces`): any of them can hold a room's work. */

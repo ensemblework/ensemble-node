@@ -1,9 +1,10 @@
 /**
  * Local, stateful browser fixture for the Needs me page: the newer kinds of a node's card in "From your
  * nodes" — a proposed node and a proposed crew, a request to hand a session to another node, a question
- * about sharing something private, a peer request — beside a card to start work on the computer, each
- * in its own words and answered in place, with a link into its conversation (My crew for a room's
- * cards). Never points at a hosted account or calls a model. Usage is in docs/05 (Browser regression).
+ * about sharing something private, a peer request, a request the lead drafted for me to send — beside
+ * a card to start work on the computer, each in its own words and answered in place (a draft in its
+ * conversation), with a link into its conversation (My crew for a room's cards). Never points at a
+ * hosted account or calls a model. Usage is in docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -39,6 +40,8 @@ function fixture() {
     card("c-share", "launch", "lead", "Ben asked: “When does the API change land?”. May I share: the date from your private roadmap page?", { type: "disclosure", mode: "share", key: "share|launch|ben|api", asker: { accountId: "ben", name: "Ben" }, question: "When does the API change land?", need: "the date from your private roadmap page", triggerMessageId: null, requestId: null }, -5),
     card("c-request", "launch", "lead", "Ben asks for a review: “Please review the sign-up fix before we ship.” (candidate: acme/web at 9f8e7d6c5b4a). Accept, edit or decline.", { type: "peer_request", requestId: "req-1", kind: "review", text: "Please review the sign-up fix before we ship.", refs: null, candidate: { repo: "acme/web", commit: "9f8e7d6c5b4a" }, from: { accountId: "ben", name: "Ben" }, nodes: [{ handle: "lead", name: "Lead", role: "manager", lead: true }], cost: "If you accept, your lead plans it with your nodes, on your computer and your subscriptions and credits." }, -6),
     card("c-start", "crew", "builder", "Start Claude Code in “ensemble”: Fix the login redirect\n\nMake the redirect return to the page you came from, query string and all.", { type: "session", action: "start", input: { title: "Fix the login redirect", prompt: "Make the redirect return to the page you came from, query string and all.", folder: "ensemble" } }, -7),
+    // A request my lead drafted in My crew: sent from its card, in its conversation.
+    card("c-draft", "launch", "lead", "When does the API change land? I need the date for the launch note.", { type: "post", request: { kind: "question", to: { accountId: "ben", name: "Ben", handle: "ben" }, candidate: null } }, -8),
   ];
   const boot = { me: { id: "me", name: "Mira", email: "mira@fieldnote.example", verified: true }, nodes: [lead, builder, designer], rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
   return { boot, approvals, calls: [] };
@@ -92,7 +95,7 @@ try {
 
     await page.goto(`${WEB}/needs-me`);
     const fromNodes = page.getByRole("region", { name: /From your nodes/ });
-    await fromNodes.getByRole("heading", { name: "From your nodes (6)" }).waitFor();
+    await fromNodes.getByRole("heading", { name: "From your nodes (7)" }).waitFor();
     const item = (text) => fromNodes.getByRole("listitem").filter({ hasText: text });
 
     // Each card in its own words, with its own answers.
@@ -121,18 +124,22 @@ try {
     assert.ok(await start.getByText("@builder wants to start work on your computer").isVisible());
     assert.ok(await start.getByRole("button", { name: "Start it" }).isVisible());
     assert.equal(await start.getByRole("link", { name: "Open in “Release crew”" }).getAttribute("href"), "/r/crew#m-c-start");
+    const drafted = item("When does the API change land? I need");
+    assert.ok(await drafted.getByText("@lead drafted a request to @ben for you to send").isVisible(), "a drafted request, not a post");
+    assert.equal(await drafted.getByRole("button", { name: /Send|Post|Approve/ }).count(), 0, "sent from its card, after reading it there");
+    assert.equal(await drafted.getByRole("link", { name: "Review the request in “Launch room” (My crew)" }).getAttribute("href"), "/r/launch#m-c-draft");
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/needs-me-${width}.png`, fullPage: true });
 
     // Answered in place: the card goes, and the count follows.
     await hand.getByRole("button", { name: "Hand it over" }).click();
-    await fromNodes.getByRole("heading", { name: "From your nodes (5)" }).waitFor();
+    await fromNodes.getByRole("heading", { name: "From your nodes (6)" }).waitFor();
     assert.deepEqual(state.calls.at(-1), { settle: "c-hand", body: { decision: "approve" } });
     await share.getByRole("button", { name: "Don't share" }).click();
-    await fromNodes.getByRole("heading", { name: "From your nodes (4)" }).waitFor();
+    await fromNodes.getByRole("heading", { name: "From your nodes (5)" }).waitFor();
     assert.deepEqual(state.calls.at(-1), { settle: "c-share", body: { decision: "discard" } });
     await crew.getByRole("button", { name: "Make it" }).click();
-    await fromNodes.getByRole("heading", { name: "From your nodes (3)" }).waitFor();
+    await fromNodes.getByRole("heading", { name: "From your nodes (4)" }).waitFor();
     assert.deepEqual(state.calls.at(-1), { settle: "c-crew", body: { decision: "approve" } });
     await fits();
 

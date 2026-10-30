@@ -673,7 +673,6 @@ export function RoomView({ roomId }: { roomId: string }) {
             room={room}
             meId={me.id}
             requestOf={(id) => requests.data?.find((row) => row.id === id)}
-            handleOf={(nodeId) => nodeMembers.find((row) => row.node.id === nodeId)?.handle ?? null}
             onJump={(messageId) => void jumpTo(messageId)}
             onSettings={() => setPanel("settings")}
           />

@@ -2,10 +2,12 @@
  * Local, stateful browser fixture for rooms with other people (rooms v2, Ensemble docs/35 §12): the
  * Room and My crew tabs with their own unread, Send to everyone and Ask my nodes (a reply from the Room
  * answered in My crew), Share to room through the lead, `@leads status` and its status cards, a peer
- * request's public card with the owner's own card (edited, always, accepted), a new request, a
- * disclosure card, a node's proposal, the trust sheet with shareable items, away and presence, media
- * in a message read through that message, and a helper's thread under the message that asked with its
- * plan step. Never points at a hosted account or calls a model. Usage is in docs/05 (Browser regression).
+ * request's public card with the owner's own card (accepted in the owner's own words for their lead,
+ * which never reach the room, and always), a request the lead drafted sent from My crew, a new request,
+ * a disclosure card, a node's proposal, the trust sheet with shareable items, away and presence, no
+ * reaction or pin on a message from before I joined, media in a message read through that message, and
+ * a helper's thread under the message that asked with its plan step. Never points at a hosted account
+ * or calls a model. Usage is in docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -78,9 +80,10 @@ function fixture() {
   const request = {
     id: "req-1", roomId: "launch", kind: "review", status: "awaiting_owner", text: "Please review the sign-up fix before we ship.", refs: null, candidate,
     from: { accountId: "ben", name: "Ben", handle: "ben", nodeId: null, nodeHandle: null }, to: { accountId: "me", name: "Mira", handle: "mira", leadNodeId: "lead", leadHandle: "lead" },
-    answer: null, outcome: null, requirements: [], cardId: "c-request", ownerCardId: "c-owner", missionId: null, createdAt: at(-50), updatedAt: at(-50), decidedAt: null,
+    answerMessageId: null, answer: null, brief: null, cardId: "c-request", ownerCardId: "c-owner", missionId: null, createdAt: at(-50), updatedAt: at(-50), decidedAt: null,
   };
-  const publicCard = (row) => ({ type: "peer_request", requestId: row.id, kind: row.kind, status: row.status, text: row.text, refs: row.refs, candidate: row.candidate, from: row.from, to: row.to, answer: row.answer, outcome: row.outcome, requirements: row.requirements, updatedAt: row.updatedAt });
+  // The public card carries only what the requester wrote, who asked whom, how it stands, and links.
+  const publicCard = (row) => ({ type: "peer_request", requestId: row.id, kind: row.kind, status: row.status, text: row.text, refs: row.refs, candidate: row.candidate, from: row.from, to: row.to, answerMessageId: row.answerMessageId ?? null, taskId: row.taskId ?? null, mode: row.mode ?? null, updatedAt: row.updatedAt });
   const launch = [
     message("launch", "c-moved", "status", "This room now has a Room and a My crew. Only leads answer here, when you name them; your own nodes answer you in My crew.", { authorKind: "system", authorNodeId: null }),
     message("launch", "c-ben", "text", "Morning! @lead can you share the launch checklist?", person("ben")),
@@ -93,6 +96,8 @@ function fixture() {
     message("launch", "c-plan", "plan", "Plan", { private: true, data: { type: "plan", contract: 3, missionId: "c-plan", kind: "plan", leadNodeId: "lead", leadHandle: "lead", status: "running", goal: "An independent audit of the README", requirements: [], deferred: [], steps: [{ id: "s1", nodeId: "lead-alpha", handle: "lead-alpha", name: "Alpha", kind: "research", executor: "helper", brief: "Audit the README for stale commands.", after: [], status: "done", outcome: "done", result: "Found 3 stale commands.", progress: null, startedAt: at(-30), endedAt: at(-20), requirementIds: [], held: false, heldBy: null, attempt: 1, attempts: [], sessionId: null }] } }),
     message("launch", "c-reply", "text", "Alpha found 3 stale commands in the README; the sign-up fix itself looks right. I would tell Ben the review can start.", { private: true }),
     message("launch", "c-proposal", "approval", "Make a node: Docs (writer)", { private: true, data: { type: "node_proposal", status: "pending", action: "node", input: { name: "Docs", role: "writer", charter: "You write and keep the docs: the README, the guides and the release notes, in plain British English." }, private: true } }),
+    // My lead drafted a request to Ben in My crew: it reaches the room only when I send it.
+    message("launch", "c-req-draft", "approval", "When does the API change land? I need the date for the launch note.", { private: true, data: { type: "post", status: "pending", request: { kind: "question", to: { accountId: "ben", name: "Ben", handle: "ben" }, candidate: null } } }),
   ];
   const task = [
     message("task-alpha", "t-brief", "text", "@lead-alpha Audit the README for stale commands.", { data: { brief: { helperNodeId: "lead-alpha" } } }),
@@ -263,11 +268,12 @@ try {
         const body = request.postDataJSON();
         state.calls.push({ [decide[2]]: decide[1], body });
         const row = state.requests.find((item) => item.id === decide[1]);
-        Object.assign(row, decide[2] === "accept" ? { status: "approved", missionId: "c-plan", text: body.text ?? row.text } : decide[2] === "decline" ? { status: "declined", answer: body.note ?? null } : { status: "cancelled" });
+        // Accepting in my own words keeps what was asked: the words are my brief for my lead.
+        Object.assign(row, decide[2] === "accept" ? { status: "approved", missionId: "c-plan", ...(body.text ? { brief: body.text } : {}) } : decide[2] === "decline" ? { status: "declined", answer: body.note ?? null } : { status: "cancelled" });
         const card = find(row.cardId);
         card.data = state.publicCard(row);
         const owner = row.ownerCardId ? find(row.ownerCardId) : null;
-        if (owner) owner.data = { ...owner.data, status: decide[2] === "accept" ? "accepted" : decide[2] === "decline" ? "declined" : "cancelled", text: row.text };
+        if (owner) owner.data = { ...owner.data, status: decide[2] === "accept" ? "accepted" : decide[2] === "decline" ? "declined" : "cancelled", text: row.text, ...(row.brief ? { brief: row.brief } : {}) };
         return json({ request: row });
       }
       const approval = /^\/api\/node\/approvals\/([^/]+)$/.exec(path);
@@ -277,8 +283,20 @@ try {
         const card = find(approval[1]);
         if (card.data.type === "disclosure") card.data = { ...card.data, status: body.decision === "approve" ? "approved" : "declined" };
         if (card.data.type === "node_proposal") card.data = { ...card.data, status: body.decision === "approve" ? "applied" : "discarded", ...(body.decision === "approve" ? { result: { summary: "made @docs (Docs)", nodeId: "docs", handle: "docs" } } : {}) };
+        if (card.data.type === "post" && card.data.request && body.decision === "approve") {
+          // Sent: the request is made in the words I approved, and its public card is posted.
+          const made = { ...state.requests[0], id: "req-3", kind: card.data.request.kind, status: "open", text: body.body, candidate: null, from: { accountId: "me", name: "Mira", handle: "mira", nodeId: "lead", nodeHandle: "lead" }, to: { accountId: "ben", name: "Ben", handle: "ben", leadNodeId: "ben-lead", leadHandle: "atlas" }, answer: null, brief: null, cardId: "c-request-3", ownerCardId: null, missionId: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          state.requests.unshift(made);
+          const publicRow = post(state.message("launch", "c-request-3", "request", `Mira asked Ben (question): ${body.body}`, { authorKind: "system", authorNodeId: null, data: state.publicCard(made), createdAt: new Date().toISOString() }));
+          setTimeout(() => void emit("node.message", publicRow).then(() => emit("node.request", { roomId: "launch", requestId: "req-3" })), 50);
+          card.body = body.body;
+          card.data = { ...card.data, status: "posted", requestId: "req-3", error: null };
+        }
         return json({ message: card });
       }
+      // Messages from before I joined: no reaction, no pin (Ensemble's joined filter).
+      if (path === "/api/node/messages/c-ben/reactions" && method === "POST") return json({ error: "That message is not available." }, 404);
+      if (path === "/api/node/rooms/launch/pins" && method === "POST") return json({ error: "Only messages everyone here can read can be pinned." }, 400);
       unexpected.push(`${method} ${path}`);
       return route.fulfill({ status: 404, json: { error: `Unmocked API: ${path}` }, headers: cors });
     });
@@ -366,16 +384,20 @@ try {
     assert.equal(await page.getByRole("radiogroup", { name: "Who reads it" }).count(), 0, "My crew is private: no choice");
     assert.ok(await page.getByText("Only you and your nodes", { exact: true }).isVisible());
 
-    // The owner's own card: accept as edited, and always for this person.
+    // The owner's own card: accept in my own words for my lead (the room keeps Ben's), and always for this person.
     const owner = timeline.locator("#m-c-owner");
     assert.ok(await owner.getByText("Ben asks you for a review").isVisible());
     assert.ok(await owner.getByText("@lead (lead), @builder").isVisible(), "which of my nodes would do it");
-    await owner.getByRole("button", { name: "Edit" }).click();
-    await owner.getByRole("textbox", { name: "The request, as you accept it" }).fill("Review the sign-up fix on a phone and a computer.");
+    await owner.getByRole("button", { name: "In my words" }).click();
+    await owner.getByRole("textbox", { name: "Your words for your lead" }).fill("Review the sign-up fix on a phone and a computer.");
+    assert.ok(await owner.getByText("Only @lead reads these; the room keeps what Ben asked.").isVisible());
     await owner.getByLabel("Always accept reviews from Ben in this room").check();
-    await owner.getByRole("button", { name: "Accept as edited" }).click();
+    await owner.getByRole("button", { name: "Accept with your words" }).click();
     await owner.getByText("Accepted", { exact: true }).waitFor();
     assert.deepEqual(state.calls.find((call) => call.accept), { accept: "req-1", body: { text: "Review the sign-up fix on a phone and a computer.", always: true } });
+    assert.ok(await owner.getByText("Please review the sign-up fix before we ship.").isVisible(), "what Ben asked stays in view");
+    assert.ok(await owner.getByText("Review the sign-up fix on a phone and a computer.").isVisible(), "beside my own words for my lead");
+    assert.ok(await owner.getByText("Your words for @lead:").isVisible());
 
     // A disclosure card: Allow, and the draft comes after.
     const disclosure = timeline.locator("#m-c-disclosure");
@@ -407,6 +429,22 @@ try {
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/crew-${width}.png` });
 
+    // A request my lead drafted: sent in the words I approve, then its card is in the Room.
+    const draft = timeline.locator("#m-c-req-draft");
+    await draft.scrollIntoViewIfNeeded();
+    assert.ok(await draft.getByText("Send this request to @ben?").isVisible(), "a drafted request, not a post");
+    assert.ok(await draft.getByText("for Ben (@ben), through their lead").isVisible());
+    await draft.getByRole("textbox", { name: "The request, as the room will read it" }).fill("When does the API change land? I need the date for Friday's launch note.");
+    await fits();
+    if (shots) await page.screenshot({ path: `${shots}/request-draft-${width}.png` });
+    await draft.getByRole("button", { name: "Send request" }).click();
+    await draft.getByText("Sent", { exact: true }).waitFor();
+    assert.deepEqual(state.calls.find((call) => call.approval === "c-req-draft").body, { decision: "approve", body: "When does the API change land? I need the date for Friday's launch note." });
+    await draft.getByRole("button", { name: "See it in the room" }).click();
+    await page.waitForFunction(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.startsWith("Room"));
+    await timeline.locator("#m-c-request-3").getByText("When does the API change land? I need the date for Friday's launch note.").waitFor();
+    await crewTab.click();
+
     // Share to room: my lead's private reply, through my lead; the copy is in the Room.
     const reply = timeline.locator("#m-c-reply");
     await action(reply, "Share to room");
@@ -421,6 +459,15 @@ try {
 
     // "Decide in My crew" from the public card goes to my own card.
     assert.ok(await requestCard.getByText("Accepted by you").isVisible(), "the public card follows the decision");
+    assert.equal(await requestCard.getByText("Review the sign-up fix on a phone and a computer.").count(), 0, "my words for my lead never reach the room's card");
+
+    // A message from before I joined: no reaction and no pin, said plainly.
+    const before = timeline.locator("#m-c-ben");
+    await action(before, "Add a reaction");
+    await before.getByRole("button", { name: "React with 👍" }).click();
+    await page.getByText("You can react only to messages from since you joined.").waitFor();
+    await action(before, "Pin for everyone here");
+    await page.getByText("You can pin only messages everyone here can read, from since you joined.").waitFor();
 
     // Ask someone here: a review needs its exact candidate.
     await page.getByRole("button", { name: "Ask someone here…", exact: true }).click();

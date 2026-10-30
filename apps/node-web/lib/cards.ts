@@ -3,8 +3,8 @@
  * are called, the same in a conversation and in Needs me. Held writes, drafts, work on the computer
  * (starting or sending to a session, or handing one to another node), secrets and sign-ins; a proposed
  * node or crew; captures held for the owner to check before they are sent; and in rooms with other
- * people, a request for work or a review, and a question about sharing something private (Ensemble
- * docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
+ * people, a request for work or a review, a request the lead drafted for the owner to send, and a
+ * question about sharing something private (Ensemble docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
  */
 
 type CardData = {
@@ -18,6 +18,7 @@ type CardData = {
   input?: { to?: unknown; [key: string]: unknown } | null;
   disclosure?: unknown;
   peerRequest?: unknown;
+  request?: { to?: { name?: unknown; handle?: unknown; [key: string]: unknown } | null; [key: string]: unknown } | null;
   [key: string]: unknown;
 } | null | undefined;
 
@@ -36,12 +37,19 @@ const text = (value: unknown, fallback: string) => (typeof value === "string" &&
 export function cardWords(data: CardData, handle: string, roomTitle: string): CardWords {
   const type = text(data?.type, "tools");
   switch (type) {
-    case "post":
+    case "post": {
+      // A request the lead drafted in My crew: it reaches the room only when its owner sends it.
+      if (data?.request) {
+        const handle = text(data.request.to?.handle, "");
+        const who = handle ? `@${handle.replace(/^@/, "")}` : text(data.request.to?.name, "someone");
+        return { title: `Send this request to ${who}?`, wants: `drafted a request to ${who} for you to send`, approve: "Send request", discard: "Discard" };
+      }
       // A result its work delivers to the room: built from the work's ledger, posted only when its owner says.
       if (data?.result) return { title: `Post this result in “${roomTitle}” for you?`, wants: "drafted a result for you to post", approve: "Post", discard: "Discard" };
       return data?.disclosure || data?.peerRequest
         ? { title: `Post this answer in “${roomTitle}” for you?`, wants: "drafted an answer for you to post", approve: "Post", discard: "Discard" }
         : { title: `Post this in “${roomTitle}” for you?`, wants: "wants to post for you", approve: "Post", discard: "Discard" };
+    }
     case "session": {
       if (data?.action !== "hand_over") return { title: `@${handle} wants to start work on your computer`, wants: "wants to start work on your computer", approve: "Start it", discard: "Discard" };
       // Hand-over cards have no prompt or title: only the session, the node it goes to and a note.

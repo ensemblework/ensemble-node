@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Crown, Download, Handshake, LogOut, MailPlus, Plus, ShieldCheck, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { ENSEMBLE_LINKS } from "@/lib/config";
 import { keys, limitsOf, putRoom, useRoomRequests, useRoomStatus } from "@/lib/hooks";
 import { awayLine, presenceBadge, requestKind, requestState, requestUndecided } from "@/lib/rooms";
 import { ago } from "@/lib/text";
@@ -13,7 +14,7 @@ import { toast } from "@/lib/toast";
 import type { Bootstrap, Member, NodeFull, NodePublic, Room, RoomInvite } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { NodeSettings } from "../node-settings";
-import { Button, Drawer, Field, Input, Notice, Pill } from "../ui";
+import { Button, Drawer, External, Field, Input, Notice, Pill } from "../ui";
 import { useKeepHelper } from "./helper-thread";
 import { PresenceDot } from "./room-cards";
 import { MyStatus } from "./room-people";
@@ -515,7 +516,7 @@ export function RoomSettings({
         {creator ? (
           <Section
             title="Requests to join"
-            hint={`Up to ${limits.roomPeople} people, counting open requests (${Math.max(0, seats)} left). Someone who declines can be asked again after ${limits.declineBlockDays} days. Only you see this list.`}
+            hint={`Up to ${limits.roomPeople} people (your own limit), counting open requests (${Math.max(0, seats)} left). Someone who declines can be asked again after ${limits.declineBlockDays} days. Only you see this list.`}
           >
             <div className="flex gap-2">
               <Input
@@ -531,6 +532,14 @@ export function RoomSettings({
               </Button>
             </div>
             {inviteNote ? <Notice tone={inviteNote.tone}>{inviteNote.text}</Notice> : null}
+            {seats <= 0 ? (
+              <p className="text-xs text-muted">
+                This room is full for your limit.{" "}
+                <External href={ENSEMBLE_LINKS.sharing} icon className="text-accent hover:underline">
+                  Raise it in Ensemble&apos;s Settings › Sharing
+                </External>
+              </p>
+            ) : null}
             {room.invites.length ? (
               <ul className="space-y-1.5">
                 {room.invites.map((row) => (

@@ -7,7 +7,7 @@ import { keepOlder, matchesAuthor, optimisticMessage, reactionsOf, sendBody, tog
 import { live, type LiveCall } from "./live";
 import { waitingLoginCard } from "./login";
 import { refsOf } from "./entity-text";
-import { readTab, tabMarker, tabUnreadOf, withTab, type RoomTab } from "./rooms";
+import { joinedRefusal, readTab, tabMarker, tabUnreadOf, withTab, type RoomTab } from "./rooms";
 import { moveQueued, withoutQueued } from "./session";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
@@ -289,7 +289,8 @@ export function useReact() {
     onSuccess: (message) => putMessage(client, message),
     onError: (error, { message }) => {
       putMessage(client, message);
-      toastError(error);
+      const kind = client.getQueryData<Bootstrap>(keys.bootstrap)?.rooms.find((room) => room.id === message.roomId)?.kind;
+      toastError(joinedRefusal("react", error instanceof ApiError ? error.status : undefined, kind) ?? error);
     },
   });
 }
@@ -314,7 +315,10 @@ export function usePin(roomId: string) {
       putRoom(client, room);
       void client.invalidateQueries({ queryKey: keys.pins(roomId) });
     },
-    onError: toastError,
+    onError: (error) => {
+      const kind = client.getQueryData<Bootstrap>(keys.bootstrap)?.rooms.find((room) => room.id === roomId)?.kind;
+      toastError(joinedRefusal("pin", error instanceof ApiError ? error.status : undefined, kind) ?? error);
+    },
   });
 }
 
@@ -684,11 +688,20 @@ export function useSetRoomPrefs(roomId: string) {
   return useMutation({ mutationFn: (body: Parameters<typeof roomWork.setPrefs>[1]) => roomWork.setPrefs(roomId, body), onSuccess: (prefs) => client.setQueryData(keys.roomPrefs(roomId), prefs) });
 }
 
-/** Starts one of my tasks on the room's board; my lead plans it in My crew. */
+/** Starts one of my tasks on the room's board; my lead plans it in My crew (409 while my lead here is paused). */
 export function useStartTask(roomId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: { taskId: string; mode: Parameters<typeof roomWork.startTask>[2] }) => roomWork.startTask(roomId, input.taskId, input.mode),
+    onSuccess: () => void client.invalidateQueries({ queryKey: keys.board(roomId) }),
+  });
+}
+
+/** Says no to a task proposed to me on the room's board; whoever asked hears so privately, with my note. */
+export function useDeclineTask(roomId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { taskId: string; note?: string }) => roomWork.declineTask(roomId, input.taskId, input.note),
     onSuccess: () => void client.invalidateQueries({ queryKey: keys.board(roomId) }),
   });
 }
@@ -918,6 +931,8 @@ export function useNodeEvents(enabled: boolean) {
       if (message.kind === "plan") client.setQueryData<{ message: Message; runs: Message[] }>(keys.plan(message.id), (current) => (current ? { ...current, message } : current));
       if (message.planId) client.setQueryData<{ message: Message; runs: Message[] }>(keys.plan(message.planId), (current) => (current ? { ...current, runs: mergeMessage(current.runs, message) } : current));
       if (message.kind === "plan" && typeof message.data?.routine?.id === "string") laterRoutine(message.data.routine.id);
+      // A plan for a task of a room's board shows on its row (`plan`, mine only): the board reads it again.
+      if (message.kind === "plan" && message.private) void client.invalidateQueries({ queryKey: keys.board(message.roomId) });
       if (message.authorNodeId) live.posted(message.roomId, message.authorNodeId);
       if (message.kind === "approval" || message.kind === "run") void client.invalidateQueries({ queryKey: keys.activity });
       // A run card changed: its open view reads the job (and the work log, when open) again.

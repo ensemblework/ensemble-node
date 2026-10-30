@@ -26,8 +26,8 @@ import { HelperThreadChip } from "./helper-thread";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 import { PlanCard } from "./plan-card";
-import { DisclosureCard, NodeProposalCard, RequestCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
-import { DecisionLine, DigestCard, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
+import { DisclosureCard, NodeProposalCard, RequestCard, RequestDraftCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
+import { DecisionLine, DeclinedLine, DigestCard, PageRoleLine, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
 
 export type MessageContext = {
   meId: string;
@@ -154,6 +154,7 @@ const STATUS_PILL: Record<string, { label: string; tone: "warn" | "ok" | "muted"
 
 function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
   if (message.data.type === "peer_request") return <RequestOwnerCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "post" && message.data.request) return <RequestDraftCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "disclosure") return <DisclosureCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "node_proposal") return <NodeProposalCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "media_preview") return <HeldCapturesCard message={message} ctx={ctx} node={node} />;
@@ -527,6 +528,8 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
       );
     }
     if (type === "decision_logged") return <DecisionLine message={message} ctx={ctx} highlighted={highlighted} />;
+    if (message.data?.pageRole) return <PageRoleLine message={message} highlighted={highlighted} />;
+    if (message.data?.declineNote === true || message.data?.declined === true) return <DeclinedLine message={message} ctx={ctx} highlighted={highlighted} />;
     return (
       <div id={`m-${message.id}`} className={`py-2 text-center text-xs text-muted ${highlighted ? "rounded-lg bg-accent/10" : ""}`}>
         {message.body}

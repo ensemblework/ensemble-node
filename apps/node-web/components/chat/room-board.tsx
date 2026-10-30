@@ -2,26 +2,26 @@
 
 /**
  * A room's Board (Ensemble docs/35 §12.11–12.14): the space that holds the room's work and my place in
- * it, its tasks (proposed ones first, with who asked; mine to decide or start), the pages the room
- * follows (a contract, the decisions log, watched pages) and the decisions logged from the room. Only
- * people in the space see its board; everyone sees which space it is.
+ * it, its tasks (proposed ones first, with who asked; mine to decide, start or decline, and my plan for
+ * one), the pages the room follows (a contract, the decisions log, watched pages) and the decisions
+ * logged from the room. Only people in the space see its board; everyone sees which space it is.
  */
-import { Bell, BellOff, BookCheck, CheckSquare, ChevronRight, ExternalLink, FileText, Folder, Plus, Search, X } from "lucide-react";
+import { Bell, BellOff, BookCheck, CheckSquare, ChevronRight, ExternalLink, FileText, Folder, ListChecks, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { usePageActions, useRoomBoard, useRoomDecisions, useRoomPages, useRoomSpace, useShareCandidates, useSpaceActions } from "@/lib/hooks";
-import { boardGroups, canStartTask, decisionMeta, dueWords, offerOpen, PAGE_ROLES, pageRole, priorityWord, spaceLine, taskPeople, taskStatus, waitsForMe } from "@/lib/room-work";
+import { missionView } from "@/lib/plan";
+import { boardGroups, canDeclineTask, canStartTask, decisionMeta, dueWords, offerOpen, PAGE_ROLES, pageRole, priorityWord, spaceLine, taskPeople, taskStatus, waitsForMe } from "@/lib/room-work";
 import { toast, toastError } from "@/lib/toast";
 import type { BoardTask, PageRole, PeerRequest, Room, RoomPage } from "@/lib/types";
 import { Button, External, Input, Pill, Segmented, Spinner } from "../ui";
-import { StartTask } from "./room-work";
+import { ProposedTask, StartTask } from "./room-work";
 
 type Props = {
   room: Room;
   meId: string;
   /** A request on the room's list, for the card I decide a proposed task on. */
   requestOf: (requestId: string) => PeerRequest | undefined;
-  handleOf: (nodeId: string) => string | null;
   onJump: (messageId: string) => void;
   /** Opens the room's settings, where its creator links a space. */
   onSettings: () => void;
@@ -103,13 +103,14 @@ function SpaceHeader({ room, meId, onSettings }: Pick<Props, "room" | "meId" | "
   );
 }
 
-function TaskRow({ task, room, meId, requestOf, handleOf, onJump, spaceId }: Omit<Props, "onSettings"> & { task: BoardTask; spaceId: string }) {
+function TaskRow({ task, room, meId, requestOf, onJump, spaceId }: Omit<Props, "onSettings"> & { task: BoardTask; spaceId: string }) {
   const proposed = task.status === "proposed";
   const status = taskStatus(task.status);
   const priority = priorityWord(task.priority);
   const due = task.status === "done" ? null : dueWords(task.due);
   const mine = waitsForMe(task, meId);
   const card = mine && task.peerRequestId ? requestOf(task.peerRequestId)?.ownerCardId : null;
+  const plan = task.plan ? missionView(task.plan.status) : null;
   return (
     <li className={`rounded-xl border px-3 py-2.5 ${proposed ? "border-dashed border-warn/50 bg-warn/5" : "border-line bg-panel"}`} data-task={task.id}>
       <div className="flex items-start gap-2">
@@ -118,13 +119,18 @@ function TaskRow({ task, room, meId, requestOf, handleOf, onJump, spaceId }: Omi
           <External href={ENSEMBLE_LINKS.inSpace(`/tasks/${encodeURIComponent(task.id)}`, spaceId)} className={`break-words text-sm font-medium hover:underline ${task.status === "done" ? "text-muted line-through decoration-muted/50" : ""}`}>
             {task.title}
           </External>
-          <p className="mt-0.5 text-xs text-muted">{taskPeople(task, meId, handleOf).join(" · ")}</p>
+          <p className="mt-0.5 text-xs text-muted">{taskPeople(task, meId).join(" · ")}</p>
           {priority || due || proposed || task.status === "blocked" || task.status === "waiting_approval" ? (
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               {proposed || task.status === "blocked" || task.status === "waiting_approval" ? <Pill tone={status.tone}>{status.label}</Pill> : null}
               {priority ? <Pill tone={priority.tone}>{priority.label}</Pill> : null}
               {due ? <span className={`text-[11px] ${due.late ? "text-danger" : "text-muted"}`}>{due.text}</span> : null}
             </div>
+          ) : null}
+          {task.plan && plan ? (
+            <button type="button" onClick={() => onJump(task.plan!.id)} className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-accent hover:underline" aria-label={`Your plan for “${task.title}”: ${plan.label}`}>
+              <ListChecks size={13} aria-hidden /> Your plan <Pill tone={plan.tone}>{plan.label}</Pill>
+            </button>
           ) : null}
         </div>
       </div>
@@ -138,7 +144,11 @@ function TaskRow({ task, room, meId, requestOf, handleOf, onJump, spaceId }: Omi
             <span className="text-xs text-muted">Your card for it is in My crew.</span>
           )}
         </div>
-      ) : canStartTask(task, meId) ? (
+      ) : canDeclineTask(task, meId) ? (
+        <div className="mt-2 flex flex-wrap gap-2 pl-6">
+          <ProposedTask roomId={room.id} taskId={task.id} title={task.title} asker={task.requestedBy && task.requestedBy.accountId !== meId ? task.requestedBy.name : null} />
+        </div>
+      ) : canStartTask(task, meId) && !(task.plan && plan?.live) ? (
         <div className="mt-2 flex flex-wrap pl-6">
           <StartTask roomId={room.id} taskId={task.id} title={task.title} />
         </div>
@@ -156,7 +166,7 @@ function Tasks(props: Omit<Props, "onSettings"> & { spaceId: string }) {
   const total = board.data?.tasks.length ?? 0;
   return (
     <section aria-label="Board" className="space-y-3">
-      <Heading title="Board" count={total} hint="Proposed tasks wait for the person they are for. Each person starts their own." />
+      <Heading title="Board" count={total} hint="Proposed tasks wait for the person they are for, who starts or declines them. Each person starts their own." />
       {!total ? <p className="text-sm text-muted">No tasks yet. A work request between people in the space becomes a proposed task here.</p> : null}
       {groups.map((group) => {
         const folded = group.id === "done" && !done;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { awayLine, awayUntil, canShare, candidateText, disclosureState, isPeopleRoom, leadsStatus, liveTabOf, ownerCardState, readTab, requestBody, requestKind, requestProblems, requestRole, requestState, requestUndecided, sharedCopy, sharedLabel, statusCardView, tabMarker, tabOf, tabUnreadOf, withTab, type RequestDraft } from "./rooms";
+import { awayLine, awayUntil, canShare, candidateText, disclosureState, isPeopleRoom, joinedRefusal, leadsStatus, liveTabOf, ownerCardState, readTab, requestBody, requestKind, requestProblems, requestRole, requestState, requestUndecided, sharedCopy, sharedLabel, statusCardView, tabMarker, tabOf, tabUnreadOf, withTab, type RequestDraft } from "./rooms";
 import type { Message, StatusCard } from "./types";
 
 const message = (seq: number, extra: Partial<Message> = {}): Message => ({
@@ -153,4 +153,11 @@ test("away lasts an hour, until this evening, until tomorrow morning, until a pi
   assert.equal(awayUntil("custom", now, "2026-10-31T08:15"), new Date(2026, 9, 31, 8, 15).toISOString());
   assert.equal(awayUntil("custom", now, ""), null);
   assert.equal(awayUntil("open", now), null);
+});
+
+test("a reaction or pin refused in a room with other people says it is about messages from before I joined", () => {
+  assert.equal(joinedRefusal("react", 404, "room"), "You can react only to messages from since you joined.");
+  assert.equal(joinedRefusal("pin", 400, "room"), "You can pin only messages everyone here can read, from since you joined.");
+  assert.equal(joinedRefusal("react", 404, "dm"), null, "elsewhere the server's words stand");
+  assert.equal(joinedRefusal("pin", 409, "room"), null, "too many pins says so itself");
 });

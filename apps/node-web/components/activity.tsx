@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Cpu, ShieldQuestion } from "lucide-react";
+import { cardWords } from "@/lib/cards";
 import { useActivity, useBootstrap, nodesById } from "@/lib/hooks";
 import { requestJump } from "@/lib/jump";
 import { ago, RUN_LABEL } from "@/lib/text";
@@ -42,7 +43,9 @@ export function ActivityPanel() {
               <Link key={card.id} href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="flex gap-2 rounded-xl border border-warn/30 bg-warn/5 p-2.5 text-sm hover:border-warn/60">
                 <NodeAvatar node={node} size={24} />
                 <span className="min-w-0">
-                  <span className="block truncate font-medium">{card.data.type === "post" ? `@${node?.slug ?? "node"} wants to post` : `@${node?.slug ?? "node"} wants to act`}</span>
+                  <span className="block truncate font-medium">
+                    @{node?.slug ?? "node"} {cardWords(card.data, node?.slug ?? "node", rooms.get(card.roomId)?.title ?? "the conversation").wants}
+                  </span>
                   <span className="line-clamp-2 text-xs text-muted">{card.body}</span>
                   <span className="text-[11px] text-muted">{rooms.get(card.roomId)?.title ?? ""}</span>
                 </span>

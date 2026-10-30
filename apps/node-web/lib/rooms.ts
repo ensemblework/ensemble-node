@@ -275,3 +275,14 @@ export function candidateText(candidate: RequestCandidate | null | undefined): s
   const commit = candidate.commit ? `at ${candidate.commit.slice(0, 7)}` : null;
   return [candidate.repo, commit, candidate.url].filter(Boolean).join(" ") || null;
 }
+
+/**
+ * A reaction or pin refused in a room with other people: almost always a message from before I joined,
+ * which nobody there reacts to, pins or logs for me (docs/35 §12.14). Null elsewhere: the server's words stand.
+ */
+export function joinedRefusal(action: "react" | "pin", status: number | undefined, roomKind: string | undefined): string | null {
+  if (roomKind !== "room") return null;
+  if (action === "react" && status === 404) return "You can react only to messages from since you joined.";
+  if (action === "pin" && status === 400) return "You can pin only messages everyone here can read, from since you joined.";
+  return null;
+}

@@ -127,7 +127,7 @@ function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: 
               </Button>
             )}
             <Link href={`/r/${card.roomId}#m-${card.id}`} onClick={() => requestJump(card.roomId, card.id)} className="text-xs text-accent hover:underline">
-              {type === "post" ? "Review the draft in" : "Open in"} {where}
+              {type === "post" ? (card.data.request ? "Review the request in" : "Review the draft in") : "Open in"} {where}
             </Link>
           </div>
         </div>

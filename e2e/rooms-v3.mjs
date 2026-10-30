@@ -2,11 +2,14 @@
  * Local, stateful browser fixture for the work of a room with other people (Ensemble docs/35
  * §12.11–12.14): each tab's own unread and read marker as Ensemble keeps them, a live reply in the tab
  * it is written for, the creator linking a space to the room, closing my own tasks, a steward, the
- * Board (a proposed task decided in My crew, a steward's proposal started with the one question, pages
- * the room follows with a contract and a watched page, decisions logged from the room), the owner's
- * card for a proposed task with its mode, the lead's notes of what changed (Start, a contract's diff),
- * the catch-up digest, a result drafted for the owner and posted into the room with its media, the offer
- * to join another room's space, and the mode question in Needs me. Never points at a hosted account or
+ * Board (a proposed task decided in My crew, a steward's proposal named by the board's own handles and
+ * started with the one question while my lead is paused and then not, another declined with a note, my
+ * plan on a task's row, pages the room follows with a contract and a watched page, decisions logged from
+ * the room), a page's role line when it stops being the contract, the owner's card for a proposed task
+ * with its mode, the lead's notes of what changed (Start, Decline for a proposed task, a contract's
+ * diff), the catch-up digest, private lines when someone declined what I asked (and their note on my
+ * request's card), a result drafted for the owner and posted into the room with its media, the offer to
+ * join another room's space, and the mode question in Needs me. Never points at a hosted account or
  * calls a model. Usage is in docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
@@ -75,20 +78,42 @@ function fixture() {
   const requestWork = {
     id: "req-work", roomId: "launch", kind: "work", status: "awaiting_owner", text: "Add a CSV export to the reports page.", refs: null, candidate: null,
     from: { accountId: "ben", name: "Ben", handle: "ben", nodeId: "ben-lead", nodeHandle: "atlas" }, to: { accountId: "me", name: "Mira", handle: "mira", leadNodeId: "lead", leadHandle: "lead" },
-    answer: null, outcome: null, requirements: [], cardId: "c-request", ownerCardId: "c-owner", missionId: null, taskId: "t-req", mode: null, createdAt: at(-60), updatedAt: at(-60), decidedAt: null,
+    answerMessageId: null, answer: null, brief: null, cardId: "c-request", ownerCardId: "c-owner", missionId: null, taskId: "t-req", mode: null, createdAt: at(-60), updatedAt: at(-60), decidedAt: null,
   };
   const requestStudio = { ...requestWork, id: "req-studio", roomId: "studio", text: "Draft the studio's onboarding page.", cardId: null, ownerCardId: "s-owner", taskId: "t-studio" };
-  const publicCard = (row) => ({ type: "peer_request", requestId: row.id, kind: row.kind, status: row.status, text: row.text, refs: row.refs, candidate: row.candidate, from: row.from, to: row.to, answer: row.answer, outcome: row.outcome, requirements: row.requirements, taskId: row.taskId, mode: row.mode, updatedAt: row.updatedAt });
+  // A request of mine that Ben declined: his note is for me alone, on my view of it and as a private line.
+  const requestMine = {
+    ...requestWork, id: "req-mine", status: "declined", text: "Draft the pricing FAQ.", from: { accountId: "me", name: "Mira", handle: "mira", nodeId: null, nodeHandle: null }, to: { accountId: "ben", name: "Ben", handle: "ben", leadNodeId: "ben-lead", leadHandle: "atlas" },
+    answer: "Not this sprint, sorry.", cardId: "c-request-mine", ownerCardId: null, taskId: null,
+  };
+  // The public card carries only what the requester wrote, who asked whom, how it stands, and links.
+  const publicCard = (row) => ({ type: "peer_request", requestId: row.id, kind: row.kind, status: row.status, text: row.text, refs: row.refs, candidate: row.candidate, from: row.from, to: row.to, answerMessageId: row.answerMessageId ?? null, taskId: row.taskId, mode: row.mode, updatedAt: row.updatedAt });
   const ownerCard = (row) => ({ type: "peer_request", status: "pending", requestId: row.id, kind: row.kind, text: row.text, refs: null, candidate: null, from: { accountId: "ben", name: "Ben" }, nodes: [{ handle: "lead", name: "Lead", role: "manager", lead: true }, { handle: "builder", name: "Builder", role: "engineer", lead: false }], cost: "If you accept, your lead plans it with your nodes, on your computer and your subscriptions and credits.", taskId: row.taskId, modes: ["private", "shared"], defaultMode: "private" });
   const launch = [
     message("launch", "c-hello", "text", "Morning! Shall we ship on Thursday?", person("ben")),
     message("launch", "c-friday", "text", "Let's ship on Friday instead: the API needs a day more.", person("ben")),
     message("launch", "c-decision", "status", "Mira logged a decision: “Let's ship on Friday instead: the API needs a day more.” It replaces an earlier one.", { ...system, authorAccountId: "me", data: { type: "decision_logged", decisionId: "d2", messageId: "c-friday", pageId: "p-log", spaceId: "s-launch", text: "Ship on Friday", supersedes: { decisionId: "d1", messageId: "c-hello" } } }),
+    message("launch", "c-role", "status", "Ben made “Old API notes” an ordinary page again: it is no longer a contract.", { ...system, authorAccountId: "ben", data: { pageRole: { pageId: "p-old", spaceId: "s-launch", role: "watched", was: "contract" } } }),
     message("launch", "c-request", "request", "Ben asked Mira (work): Add a CSV export to the reports page.", { ...system, authorAccountId: "ben", data: publicCard(requestWork) }),
+    message("launch", "c-request-mine", "request", "Mira asked Ben (work): Draft the pricing FAQ.\nDeclined", { ...system, authorAccountId: "me", data: publicCard(requestMine) }),
     message("launch", "c-owner", "approval", "Ben asks for work: “Add a CSV export to the reports page.”. Accept, edit or decline.", { private: true, data: ownerCard(requestWork) }),
-    message("launch", "c-events", "text", "Ben assigned you “Landing copy”. Shall I start it with @builder?", { private: true, data: { type: "room_events", items: [{ kind: "assigned", subjectKind: "task", subjectId: "t-copy", title: "Landing copy", spaceId: "s-launch", actor: { accountId: "ben", name: "Ben", nodeId: null }, at: at(-30) }], start: { taskIds: ["t-copy"] }, suggest: { nodeId: "builder", handle: "builder" } } }),
+    message("launch", "c-events", "text", "- Ben assigned you “Landing copy”.\n- “Swap the banner” is now assigned to you.\nShall I start them with @builder?", {
+      private: true,
+      data: {
+        type: "room_events",
+        items: [
+          { kind: "assigned", subjectKind: "task", subjectId: "t-copy", title: "Landing copy", spaceId: "s-launch", actor: { accountId: "ben", name: "Ben", nodeId: null }, status: "todo", at: at(-30) },
+          { kind: "assigned", subjectKind: "task", subjectId: "t-banner", title: "Swap the banner", spaceId: "s-launch", actor: { accountId: "ben", name: "Ben", nodeId: "n-steward" }, status: "proposed", at: at(-29) },
+        ],
+        start: { taskIds: ["t-copy", "t-banner"] },
+        suggest: { nodeId: "builder", handle: "builder" },
+      },
+    }),
     message("launch", "c-contract", "text", "Ben changed the contract “API contract”: + GET /v2/export; − GET /export. It touches your “Landing copy”. Shall I steer @builder to adapt your work to it?", { private: true, data: { type: "room_events", items: [{ kind: "contract_changed", subjectKind: "page", subjectId: "p-contract", title: "API contract", spaceId: "s-launch", actor: { accountId: "ben", name: "Ben", nodeId: null }, revision: 7, diff: { added: ["GET /v2/export returns CSV"], removed: ["GET /export"] }, tasks: [{ taskId: "t-copy", title: "Landing copy" }], at: at(-25) }], suggest: { nodeId: "builder", handle: "builder" } } }),
-    message("launch", "c-digest", "text", "Ben asked you for the CSV export; it waits for your yes.\nThe API contract changed: exports move to /v2.\nA decision was logged: ship on Friday.", { private: true, data: { type: "digest", reason: "back", since: at(-600), items: { asked: [{ requestId: "req-work", kind: "work", from: { accountId: "ben", name: "Ben" }, text: "Add a CSV export to the reports page.", status: "awaiting_owner", taskId: "t-req" }], proposed: [{ taskId: "t-req", title: "Add the CSV export", requestedBy: "Ben" }], events: [{}], board: [{ taskId: "t-api", title: "API v2 endpoints", status: "in_progress" }], results: [], decisions: [{ messageId: "c-decision", text: "Ship on Friday" }], room: { messages: 2, from: ["Ben"] } } } }),
+    message("launch", "c-digest", "text", "Ben asked you for the CSV export; it waits for your yes.\nThe API contract changed: exports move to /v2.\nA decision was logged: ship on Friday.", { private: true, data: { type: "digest", reason: "back", since: at(-600), items: { asked: [{ requestId: "req-work", kind: "work", from: { accountId: "ben", name: "Ben" }, text: "Add a CSV export to the reports page.", status: "awaiting_owner", taskId: "t-req" }], proposed: [{ taskId: "t-req", title: "Add the CSV export", requestedBy: { accountId: "ben", name: "Ben", node: { id: "ben-lead", name: "Atlas", handle: "atlas" } } }], events: [{}], board: [{ taskId: "t-api", title: "API v2 endpoints", status: "in_progress" }], results: [], decisions: [{ messageId: "c-decision", text: "Ship on Friday" }], room: { messages: 2, from: ["Ben"] } } } }),
+    message("launch", "c-declined", "status", "Ben declined your work request (“Draft the pricing FAQ.”): Not this sprint, sorry.", { ...system, private: true, data: { requestId: "req-mine", declineNote: true } }),
+    message("launch", "c-declined-task", "status", "Ben declined “Write the changelog”: I'm on leave next week.", { ...system, private: true, data: { taskId: "t-changelog", declined: true, declineNote: true } }),
+    message("launch", "c-plan-copy", "plan", "Plan", { private: true, data: { type: "plan", contract: 3, missionId: "c-plan-copy", kind: "plan", leadNodeId: "lead", leadHandle: "lead", status: "running", goal: "Landing copy", requirements: [], deferred: [], steps: [] } }),
     message("launch", "c-draft", "approval", "Invoice download is ready.\n- ✓ Downloads a PDF\n- ✓ Works on a phone\nTask: “Invoice download”", { private: true, data: { type: "post", status: "pending", result: { missionId: "mission-9", taskId: "t-invoice", spaceId: "s-launch", outcome: "succeeded", requirements: [{ text: "Downloads a PDF", status: "accepted" }, { text: "Works on a phone", status: "accepted" }], files: 1 }, media: [{ evidenceId: "e-invoice", kind: "screenshot", name: "invoice.png", mime: "image/png", caption: "The invoice on a phone", size: 48210 }], refs: [{ kind: "task", id: "t-invoice", spaceId: "s-launch", title: "Invoice download" }] } }),
   ];
   const studio = [
@@ -104,10 +129,12 @@ function fixture() {
   const person_ = (accountId) => ({ accountId, name: accountId === "me" ? "Mira" : "Ben" });
   const board = {
     launch: [
-      { id: "t-req", title: "Add the CSV export", status: "proposed", priority: "p1", due: null, assignee: person_("me"), requestedBy: { ...person_("ben"), node: { id: "ben-lead", name: "Atlas" } }, peerRequestId: "req-work", madeBy: { node: { id: "ben-lead", name: "Atlas" }, for: person_("ben") }, updatedAt: at(-60) },
-      { id: "t-steward", title: "Write the release checklist", status: "proposed", priority: "p1", due: at(60 * 30), assignee: person_("me"), requestedBy: { ...person_("ben"), node: { id: "builder", name: "Builder" } }, peerRequestId: null, madeBy: { node: { id: "builder", name: "Builder" }, for: person_("ben") }, updatedAt: at(-40) },
-      { id: "t-api", title: "API v2 endpoints", status: "in_progress", priority: "p0", due: at(60 * 20), assignee: person_("ben"), requestedBy: null, peerRequestId: null, madeBy: null, updatedAt: at(-20) },
-      { id: "t-copy", title: "Landing copy", status: "todo", priority: "p1", due: null, assignee: person_("me"), requestedBy: null, peerRequestId: null, madeBy: null, updatedAt: at(-30) },
+      { id: "t-req", title: "Add the CSV export", status: "proposed", priority: "p1", due: null, assignee: person_("me"), requestedBy: { ...person_("ben"), node: { id: "ben-lead", name: "Atlas", handle: "atlas" } }, peerRequestId: "req-work", madeBy: { node: { id: "ben-lead", name: "Atlas", handle: "atlas" }, for: person_("ben") }, plan: null, updatedAt: at(-60) },
+      // From the steward's notes: the board names the node by its handle here (not a member this page knows).
+      { id: "t-steward", title: "Write the release checklist", status: "proposed", priority: "p1", due: at(60 * 30), assignee: person_("me"), requestedBy: { ...person_("ben"), node: { id: "n-steward", name: "Steward", handle: "steward" } }, peerRequestId: null, madeBy: { node: { id: "n-steward", name: "Steward", handle: "steward" }, for: person_("ben") }, plan: null, updatedAt: at(-40) },
+      { id: "t-faq", title: "Update the FAQ", status: "proposed", priority: "p2", due: null, assignee: person_("me"), requestedBy: { ...person_("ben"), node: { id: "n-steward", name: "Steward", handle: "steward" } }, peerRequestId: null, madeBy: { node: { id: "n-steward", name: "Steward", handle: "steward" }, for: person_("ben") }, plan: null, updatedAt: at(-38) },
+      { id: "t-api", title: "API v2 endpoints", status: "in_progress", priority: "p0", due: at(60 * 20), assignee: person_("ben"), requestedBy: null, peerRequestId: null, madeBy: null, plan: null, updatedAt: at(-20) },
+      { id: "t-copy", title: "Landing copy", status: "todo", priority: "p1", due: null, assignee: person_("me"), requestedBy: null, peerRequestId: null, madeBy: null, plan: { id: "c-plan-copy", status: "running" }, updatedAt: at(-30) },
       { id: "t-old", title: "Pricing page", status: "done", priority: "p2", due: null, assignee: person_("ben"), requestedBy: null, peerRequestId: null, madeBy: null, updatedAt: at(-900) },
     ],
     studio: [],
@@ -132,7 +159,7 @@ function fixture() {
   const space = { launch: null, studio: { id: "s-studio", name: "Studio space", ownerId: "ben", ownerName: "Ben", role: null } };
   const offers = { launch: null, studio: { messageId: "s-offer", status: "pending" } };
   const boot = { me: { id: "me", name: "Mira", email: "mira@fieldnote.example", verified: true }, nodes: [lead, builder], rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍", "❤️", "✅"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
-  return { boot, messages, message, requests: { launch: [requestWork], studio: [requestStudio] }, publicCard, board, pages, decisions, candidates, cards, space, offers, steward: null, prefs: { closeTasks: "auto" }, calls: [], reads: [], evidence: [] };
+  return { boot, messages, message, requests: { launch: [requestWork, requestMine], studio: [requestStudio] }, publicCard, board, pages, decisions, candidates, cards, space, offers, steward: null, prefs: { closeTasks: "auto" }, leadPaused: true, calls: [], reads: [], evidence: [] };
 }
 
 try {
@@ -253,7 +280,19 @@ try {
       const start = /^\/api\/node\/rooms\/([^/]+)\/tasks\/([^/]+)\/start$/.exec(path);
       if (start && method === "POST") {
         state.calls.push({ start: start[2], body: request.postDataJSON() });
-        return json({ started: true }, 202);
+        // The first start finds my lead paused here.
+        if (state.leadPaused) {
+          state.leadPaused = false;
+          return json({ error: "Your lead here is paused: resume it first." }, 409);
+        }
+        return json({ started: true, taskId: start[2], turnId: `turn-${start[2]}` }, 202);
+      }
+      const declineTask = /^\/api\/node\/rooms\/([^/]+)\/tasks\/([^/]+)\/decline$/.exec(path);
+      if (declineTask && method === "POST") {
+        state.calls.push({ decline: declineTask[2], body: request.postDataJSON() });
+        const row = state.board[declineTask[1]].find((item) => item.id === declineTask[2]);
+        if (row) row.status = "dropped";
+        return json({ task: { id: declineTask[2], status: "dropped" } });
       }
       const decide = /^\/api\/node\/requests\/([^/]+)\/accept$/.exec(path);
       if (decide && method === "POST") {
@@ -331,7 +370,7 @@ try {
     assert.match((await crewTab.textContent()) ?? "", /My crew5/, "My crew's own unread, as Ensemble counts it");
     assert.ok(await page.locator("#unread-divider").isVisible(), "the Room's divider, from its own marker");
     await timeline.evaluate((element) => element.scrollTo(0, element.scrollHeight));
-    await until(() => state.reads.some((row) => row.room === "launch" && row.tab === "room" && row.upTo === 4), "the Room's marker");
+    await until(() => state.reads.some((row) => row.room === "launch" && row.tab === "room" && row.upTo === 6), "the Room's marker");
     assert.ok(!state.reads.some((row) => row.tab === "crew"), "My crew is not read from the Room");
     assert.match((await crewTab.textContent()) ?? "", /My crew5/, "reading the Room leaves My crew's news");
 
@@ -346,6 +385,14 @@ try {
     // A logged decision's line leads to the Board; this room has no space yet.
     const decisionLine = timeline.locator("#m-c-decision");
     assert.ok(await decisionLine.getByText("Mira logged a decision", { exact: false }).isVisible());
+    // A page that stopped being the contract says so; Ben's note on my declined request is for me alone.
+    const roleLine = timeline.locator("#m-c-role");
+    assert.ok(await roleLine.getByText("Contract → Watched").isVisible(), "what the page was, and is now");
+    assert.ok(await roleLine.getByRole("link", { name: "The page" }).isVisible());
+    const declinedCard = timeline.locator("#m-c-request-mine");
+    await declinedCard.getByText("Ben's note, for you alone:").waitFor();
+    assert.ok(await declinedCard.getByText("Not this sprint, sorry.").isVisible());
+    assert.equal(await timeline.locator("#m-c-request [data-decline-note]").count(), 0, "nothing private on a card I am not party to");
     await fits("The Room");
     await shot("room");
     await decisionLine.getByRole("button", { name: "All decisions" }).click();
@@ -388,11 +435,28 @@ try {
     await requested.waitFor();
     assert.ok(await requested.getByText("with you · asked by Ben through @atlas").isVisible());
     const stewards = proposed.locator('[data-task="t-steward"]');
-    assert.ok(await stewards.getByText("with you · asked by Ben through @builder").isVisible(), "the steward's proposal, for whom");
+    assert.ok(await stewards.getByText("with you · asked by Ben through @steward").isVisible(), "the steward's proposal, for whom, by the board's own handle");
     await stewards.getByRole("button", { name: "Start “Write the release checklist”" }).click();
     await stewards.getByRole("button", { name: "Start it" }).click();
+    await stewards.getByText("Your lead here is paused: resume it first.").waitFor();
+    await stewards.getByRole("button", { name: "Start it" }).click();
     await stewards.getByText("Started: your lead plans it in My crew.").waitFor();
-    assert.deepEqual(state.calls.find((call) => call.start === "t-steward").body, { mode: "private" });
+    assert.deepEqual(state.calls.filter((call) => call.start === "t-steward").map((call) => call.body), [{ mode: "private" }, { mode: "private" }]);
+    // Another of the steward's proposals: declined, with a note only Ben reads.
+    const faq = proposed.locator('[data-task="t-faq"]');
+    await faq.getByRole("button", { name: "Decline “Update the FAQ”" }).click();
+    await faq.getByRole("textbox", { name: "A note (optional)" }).fill("Not for this release.");
+    assert.equal(await faq.getByRole("textbox", { name: "A note (optional)" }).getAttribute("placeholder"), "A note for Ben (optional, only they see it)");
+    await fits("Declining a proposed task");
+    await shot("board-decline");
+    await faq.getByRole("group", { name: "Decline “Update the FAQ”" }).getByRole("button", { name: "Decline", exact: true }).click();
+    await page.getByText("Declined “Update the FAQ”. Ben hears it privately.").waitFor();
+    assert.deepEqual(state.calls.find((call) => call.decline === "t-faq").body, { note: "Not for this release." });
+    await faq.waitFor({ state: "detached" });
+    // My plan for a task of mine, on its row; no second start while it runs.
+    const copyRow = board.locator('[data-task="t-copy"]');
+    assert.ok(await copyRow.getByRole("button", { name: "Your plan for “Landing copy”: Running" }).isVisible());
+    assert.equal(await copyRow.getByRole("button", { name: "Start “Landing copy”" }).count(), 0);
     assert.ok(await board.getByRole("group", { name: "In progress" }).getByText("High").isVisible(), "a high priority stands out");
     assert.equal(await board.getByText("Pricing page").count(), 0, "done tasks fold away");
     await board.getByRole("button", { name: /Done \(1\)/ }).click();
@@ -429,16 +493,21 @@ try {
     await owner.getByText("Accepted", { exact: true }).waitFor();
     assert.deepEqual(state.calls.find((call) => call.accept === "req-work").body, { mode: "shared" });
     await timeline.evaluate((element) => element.scrollTo(0, element.scrollHeight));
-    await until(() => state.reads.some((row) => row.room === "launch" && row.tab === "crew" && row.upTo === 10), "My crew's marker");
+    await until(() => state.reads.some((row) => row.room === "launch" && row.tab === "crew" && row.upTo === 15), "My crew's marker");
 
-    // My lead's notes: Start for a task now mine; a contract's changed lines.
+    // My lead's notes: Start for a task now mine, or Decline one proposed to me; a contract's changed lines.
     const events = timeline.locator("#m-c-events");
     assert.ok(await events.getByRole("link", { name: /Landing copy/ }).isVisible(), "what it is about opens in Ensemble");
+    assert.equal(await events.getByRole("button", { name: "Decline “Landing copy”" }).count(), 0, "a task simply assigned to me is not declined here");
     await events.getByRole("button", { name: "Start “Landing copy”" }).click();
     await events.getByRole("radio", { name: /Shared run/ }).check();
     await events.getByRole("button", { name: "Start it" }).click();
     await events.getByText("Started: your lead plans it in My crew.").waitFor();
     assert.deepEqual(state.calls.find((call) => call.start === "t-copy").body, { mode: "shared" });
+    await events.getByRole("button", { name: "Decline “Swap the banner”" }).click();
+    await events.getByRole("group", { name: "Decline “Swap the banner”" }).getByRole("button", { name: "Decline", exact: true }).click();
+    await events.getByText("Declined: Ben hears it privately.").waitFor();
+    assert.deepEqual(state.calls.find((call) => call.decline === "t-banner").body, {});
     const contract = timeline.locator("#m-c-contract").getByRole("group", { name: "What changed in API contract" });
     assert.ok(await contract.getByText("+ GET /v2/export returns CSV").isVisible());
     assert.ok(await contract.getByText("− GET /export").isVisible());
@@ -452,7 +521,16 @@ try {
     await digest.getByRole("button", { name: "Everything it gathered" }).click();
     assert.ok(await digest.getByText("Ben asked for work: “Add a CSV export to the reports page.” (waiting for you)").isVisible());
     assert.ok(await digest.getByText("“API v2 endpoints” is in progress").isVisible());
+    assert.ok(await digest.getByText("“Add the CSV export”, asked by Ben through @atlas").isVisible(), "who asked, as the board says it");
     await shot("digest");
+
+    // Lines for me alone when someone declined what I asked: to the request's card, or to the board.
+    const declinedLine = timeline.locator("#m-c-declined");
+    await declinedLine.scrollIntoViewIfNeeded();
+    assert.ok(await declinedLine.getByRole("img", { name: "Only you" }).isVisible());
+    assert.ok(await timeline.locator("#m-c-declined-task").getByRole("button", { name: "The board" }).isVisible());
+    await fits("Declined lines");
+    await shot("declined-lines");
 
     // A result drafted for me, then posted into the room with its media and task.
     const draft = timeline.locator("#m-c-draft");
@@ -468,11 +546,19 @@ try {
     const result = post(state.message("launch", "c-result", "text", "Invoice download is ready.\n- ✓ Downloads a PDF\n- ✓ Works on a phone\nTask: “Invoice download”", { data: { type: "room_result", approvedBy: "me", missionId: "mission-9", taskId: "t-invoice", spaceId: "s-launch", outcome: "succeeded", requirements: [{ text: "Downloads a PDF", status: "accepted" }], files: 1, media: [{ evidenceId: "e-invoice", kind: "screenshot", name: "invoice.png", mime: "image/png", size: 48210 }], refs: [{ kind: "task", id: "t-invoice", spaceId: "s-launch", title: "Invoice download" }] }, createdAt: new Date().toISOString() }));
     await emit("node.message", result);
 
+    // "The request" goes to my declined request's card in the Room.
+    await declinedLine.getByRole("button", { name: "The request" }).click();
+    await page.waitForFunction(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.startsWith("Room"));
+    await timeline.locator("#m-c-request-mine").getByText("Ben's note, for you alone:").waitFor();
+    await crewTab.click();
+    await digest.getByRole("button", { name: "Everything it gathered" }).click();
+
     // The digest's decision takes me to its line in the Room; the result is there, with its media and task.
     await digest.getByRole("button", { name: "Ship on Friday" }).click();
     await page.waitForFunction(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.startsWith("Room"));
     const posted = timeline.locator("#m-c-result").getByRole("group", { name: "Result" });
     await posted.waitFor();
+    await posted.scrollIntoViewIfNeeded();
     assert.ok(await posted.getByText("Done", { exact: true }).isVisible());
     await posted.getByRole("region", { name: "Media" }).locator("img").first().waitFor();
     assert.ok(await posted.getByRole("link", { name: /Invoice download/ }).isVisible(), "the task it went onto");
@@ -483,6 +569,12 @@ try {
     await crewTab.click();
     await timeline.getByText("Thinking…").waitFor();
     await emit("node.status", { roomId: "launch", nodeId: "lead", state: "idle", private: true });
+
+    // My plan for a task, from its row on the Board: the plan card in My crew.
+    await boardTab.click();
+    await board.locator('[data-task="t-copy"]').getByRole("button", { name: "Your plan for “Landing copy”: Running" }).click();
+    await page.waitForFunction(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.startsWith("My crew"));
+    await timeline.locator("#m-c-plan-copy").waitFor();
 
     // Another room's space: the offer to join it, then its Board.
     await page.goto(`${WEB}/r/studio`);

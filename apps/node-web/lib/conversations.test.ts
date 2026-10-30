@@ -68,3 +68,15 @@ test("a bootstrap refresh cannot restore an unread badge after reading or erase 
   assert.equal(mergeConversationSnapshot([live], [old])[0]?.last?.body, "New reply");
   assert.equal(mergeConversationSnapshot([live], [old])[0]?.unread, 1);
 });
+
+test("a room with other people counts each tab on its own, live and across a bootstrap refresh", () => {
+  const people: Room = { ...room("launch", "room", "2026-10-25"), lastSeq: 10, readSeq: 10, readSeqCrew: 10, unread: 0, unreadRoom: 0, unreadCrew: 0 };
+  const shared = roomWithMessage(people, message("In the room", 11), "me");
+  const mine = roomWithMessage(shared, { ...message("For you", 12), private: true }, "me");
+  assert.deepEqual([mine.unreadRoom, mine.unreadCrew, mine.unread], [1, 1, 2]);
+  const crewRead = { ...mine, readSeqCrew: 12, unreadCrew: 0, unread: 1 };
+  const merged = mergeConversationSnapshot([crewRead], [{ ...people, lastSeq: 12, unreadRoom: 1, unreadCrew: 1, unread: 2 }])[0]!;
+  assert.deepEqual([merged.readSeqCrew, merged.unreadCrew, merged.unreadRoom, merged.unread], [12, 0, 1, 1], "a slower refresh does not bring My crew's badge back");
+  const dm = roomWithMessage(room("dm", "dm", null), message("Hi", 11), "me");
+  assert.equal(dm.unreadRoom, undefined, "a chat has one thread");
+});

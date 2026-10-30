@@ -1,7 +1,7 @@
 import { liveMeta } from "./captures";
 import { ENSEMBLE_API } from "./config";
 import { evidenceErrorWords, evidencePath } from "./evidence";
-import type { CardEvidence, FileRecord, LiveFrame, Message, PeerKind, PeerRequest, RequestCandidate, Routine, RoutineRun, SessionAction, SessionDetail, SessionSummary, ShareableItem, StatusCard, TrustSettings, TrustView } from "./types";
+import type { CardEvidence, FileRecord, LiveFrame, Message, OwnSpace, PageRole, PeerKind, RoomBoard, RoomDecision, RoomPage, RoomPrefs, RoomSpaceView, RoomSteward, ShareCandidates, WorkMode, PeerRequest, RequestCandidate, Routine, RoutineRun, SessionAction, SessionDetail, SessionSummary, ShareableItem, StatusCard, TrustSettings, TrustView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -247,11 +247,39 @@ export const peopleRooms = {
   requests: (roomId: string) => api<{ requests: PeerRequest[] }>(`${roomPath(roomId)}/requests`).then((result) => result.requests),
   request: (roomId: string, body: { to: string; kind: PeerKind; text: string; candidate?: RequestCandidate }) =>
     api<{ request: PeerRequest }>(`${roomPath(roomId)}/requests`, { body }).then((result) => result.request),
+  /** What I could mark shareable, or give a role: my space and the room's linked space; `q` searches titles. */
+  candidates: (roomId: string, q = "") => api<ShareCandidates>(`${roomPath(roomId)}/shareable/candidates${q ? `?q=${encodeURIComponent(q.slice(0, 100))}` : ""}`),
 };
+
+/** The space that holds a room's work (Ensemble docs/35 §12.11–12.14): linking it, its board and pages, decisions, the steward, my preferences. */
+export const roomWork = {
+  space: (roomId: string) => api<RoomSpaceView>(`${roomPath(roomId)}/space`),
+  /** The room's creator links a space they own, or makes one for the room. */
+  link: (roomId: string, body: { spaceId: string } | { create: true; name?: string }) => api<RoomSpaceView>(`${roomPath(roomId)}/space`, { method: "PUT", body }),
+  unlink: (roomId: string) => api<{ ok: boolean }>(`${roomPath(roomId)}/space`, { method: "DELETE" }),
+  /** My answer to the offer to join the room's space as an editor. */
+  join: (roomId: string, join: boolean) => api<RoomSpaceView>(`${roomPath(roomId)}/space/join`, { body: { join } }),
+  board: (roomId: string) => api<RoomBoard>(`${roomPath(roomId)}/board`),
+  pages: (roomId: string) => api<{ pages: RoomPage[] }>(`${roomPath(roomId)}/pages`).then((result) => result.pages),
+  setPageRole: (roomId: string, pageId: string, role: PageRole) => api<{ pages: RoomPage[] }>(`${roomPath(roomId)}/pages/${encodeURIComponent(pageId)}`, { method: "PUT", body: { role } }).then((result) => result.pages),
+  watchPage: (roomId: string, pageId: string, watching: boolean) => api<{ pages: RoomPage[] }>(`${roomPath(roomId)}/pages/${encodeURIComponent(pageId)}/watch`, { method: "PUT", body: { watching } }).then((result) => result.pages),
+  decisions: (roomId: string) => api<{ decisions: RoomDecision[] }>(`${roomPath(roomId)}/decisions`).then((result) => result.decisions),
+  steward: (roomId: string) => api<{ steward: RoomSteward | null }>(`${roomPath(roomId)}/steward`).then((result) => result.steward),
+  setSteward: (roomId: string, nodeId: string) => api<{ steward: RoomSteward }>(`${roomPath(roomId)}/steward`, { method: "PUT", body: { nodeId } }).then((result) => result.steward),
+  endSteward: (roomId: string) => api<{ steward: null }>(`${roomPath(roomId)}/steward`, { method: "DELETE" }),
+  prefs: (roomId: string) => api<{ prefs: RoomPrefs }>(`${roomPath(roomId)}/prefs`).then((result) => result.prefs),
+  setPrefs: (roomId: string, body: Partial<RoomPrefs>) => api<{ prefs: RoomPrefs }>(`${roomPath(roomId)}/prefs`, { method: "PUT", body }).then((result) => result.prefs),
+  /** Starts one of my tasks on the room's board: my lead plans it in My crew. */
+  startTask: (roomId: string, taskId: string, mode: WorkMode) => api<{ started: boolean }>(`${roomPath(roomId)}/tasks/${encodeURIComponent(taskId)}/start`, { body: { mode } }),
+};
+
+/** The spaces I own (`GET /api/spaces`): any of them can hold a room's work. */
+export const ownSpaces = () =>
+  api<{ spaces: Array<{ id: string; name: string; primary?: boolean }> }>("/api/spaces").then((result) => result.spaces.map((row): OwnSpace => ({ id: row.id, name: row.name, primary: row.primary === true })));
 
 /** A peer request's decisions: its target accepts (optionally edited, optionally always) or declines; its asker cancels. */
 export const peerRequests = {
-  accept: (id: string, body: { text?: string; always?: boolean }) => api<{ request: PeerRequest }>(`/api/node/requests/${encodeURIComponent(id)}/accept`, { body }).then((result) => result.request),
+  accept: (id: string, body: { text?: string; always?: boolean; mode?: WorkMode }) => api<{ request: PeerRequest }>(`/api/node/requests/${encodeURIComponent(id)}/accept`, { body }).then((result) => result.request),
   decline: (id: string, body: { note?: string }) => api<{ request: PeerRequest }>(`/api/node/requests/${encodeURIComponent(id)}/decline`, { body }).then((result) => result.request),
   cancel: (id: string) => api<{ request: PeerRequest }>(`/api/node/requests/${encodeURIComponent(id)}/cancel`, { body: {} }).then((result) => result.request),
 };

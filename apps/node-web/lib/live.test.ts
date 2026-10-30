@@ -60,3 +60,22 @@ test("a reply being written keeps the records of every call and of the turn", ()
   live.flush();
   assert.deepEqual(roomSnapshot("r")[0]!.refs, []);
 });
+
+test("a reply being written says which thread it is for: My crew or the room's shared one", () => {
+  live.reset();
+  live.status("room", "lead", true, false);
+  live.flush();
+  assert.equal(roomSnapshot("room")[0]!.private, false);
+  live.place("room", "lead", true);
+  live.delta("room", "lead", "For you only");
+  live.flush();
+  assert.deepEqual([roomSnapshot("room")[0]!.private, roomSnapshot("room")[0]!.text], [true, "For you only"]);
+  const before = roomSnapshot("room");
+  live.place("room", "lead", true);
+  live.flush();
+  assert.equal(roomSnapshot("room"), before, "the same place changes nothing");
+  live.status("room", "lead", false);
+  live.flush();
+  assert.deepEqual(roomSnapshot("room"), [], "done: nothing is being written");
+  live.reset();
+});

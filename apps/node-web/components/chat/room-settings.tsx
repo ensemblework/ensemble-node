@@ -17,6 +17,7 @@ import { Button, Drawer, Field, Input, Notice, Pill } from "../ui";
 import { useKeepHelper } from "./helper-thread";
 import { PresenceDot } from "./room-cards";
 import { MyStatus } from "./room-people";
+import { SpaceSettings, StewardSettings, WorkPrefs } from "./room-space";
 
 type NodeMember = Extract<Member, { kind: "node" }>;
 type PersonMember = Extract<Member, { kind: "person" }>;
@@ -379,6 +380,10 @@ export function RoomSettings({
             ) : null}
           </div>
         </Section>
+
+        <SpaceSettings room={room} meId={me} open={open} />
+        {room.spaceId ? <WorkPrefs roomId={room.id} open={open} /> : null}
+        <StewardSettings room={room} meId={me} open={open} />
 
         {(requests.data ?? []).some((row) => requestUndecided(row.status) && (row.from.accountId === me || row.to.accountId === me)) ? (
           <Section title="Open requests" hint="Asked through a lead, waiting for an answer or a yes.">

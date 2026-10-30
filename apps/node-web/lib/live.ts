@@ -12,8 +12,11 @@ import { useSyncExternalStore } from "react";
 import type { EntityRef } from "./entity-text";
 
 export type LiveCall = { name: string; state?: string; summary?: string; refs?: EntityRef[] };
-/** `refs`: the records the turn showed the model, so the text being written shows titles, not ids. */
-export type LiveNode = { thinking: boolean; text: string; tools: LiveCall[]; refs?: EntityRef[]; showIds?: boolean };
+/**
+ * `refs`: the records the turn showed the model, so the text being written shows titles, not ids.
+ * `private`: the reply is for its owner's My crew in a room with other people (the stream says so).
+ */
+export type LiveNode = { thinking: boolean; text: string; tools: LiveCall[]; refs?: EntityRef[]; showIds?: boolean; private?: boolean };
 export type LiveRow = { nodeId: string } & LiveNode;
 
 const state = new Map<string, LiveNode>();
@@ -97,9 +100,15 @@ function change(roomId: string, nodeId: string, next: (current: LiveNode | undef
   schedule();
 }
 
+const placed = (isPrivate: boolean | undefined) => (typeof isPrivate === "boolean" ? { private: isPrivate } : {});
+
 export const live = {
-  status(roomId: string, nodeId: string, thinking: boolean) {
-    change(roomId, nodeId, (current) => (thinking ? { ...(current ?? { text: "", tools: [] }), thinking: true } : { thinking: false, text: "", tools: [] }));
+  status(roomId: string, nodeId: string, thinking: boolean, isPrivate?: boolean) {
+    change(roomId, nodeId, (current) => (thinking ? { ...(current ?? { text: "", tools: [] }), thinking: true, ...placed(isPrivate) } : { thinking: false, text: "", tools: [] }));
+  },
+  /** Which thread a reply being written is for, as each frame says: My crew (private) or the room's shared one. */
+  place(roomId: string, nodeId: string, isPrivate: boolean) {
+    change(roomId, nodeId, (current) => (current?.private === isPrivate ? null : { ...(current ?? { text: "", tools: [] }), thinking: true, private: isPrivate }));
   },
   delta(roomId: string, nodeId: string, text: string) {
     const id = key(roomId, nodeId);

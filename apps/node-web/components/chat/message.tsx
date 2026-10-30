@@ -26,6 +26,7 @@ import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 import { PlanCard } from "./plan-card";
 import { DisclosureCard, NodeProposalCard, RequestCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
+import { DecisionLine, DigestCard, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
 
 export type MessageContext = {
   meId: string;
@@ -61,6 +62,10 @@ export type MessageContext = {
   sharedCopyOf?: (messageId: string) => Message | undefined;
   /** A session's newest card in this conversation: it keeps the session's line (who manages it, Hand to…) once its run ended. */
   sessionCardOf?: (sessionId: string) => string | undefined;
+  /** In a room with other people: shows another view of the room (its Board). */
+  onView?: (view: "board") => void;
+  /** The space that holds the room's work, when it has one: tasks and pages there open in it. */
+  spaceId?: string | null;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -181,11 +186,15 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
       ) : data.type === "session" ? (
         <p className="whitespace-pre-wrap rounded-lg bg-bg/70 p-2 text-sm">{message.body.replace(/^@\S+ wants to /, "")}</p>
       ) : data.type === "post" && data.status === "posted" ? null : data.type === "post" ? (
-        pending ? (
-          <Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={Math.min(10, Math.max(3, body.split("\n").length + 1))} />
-        ) : (
-          <RichText text={message.body} handles={ctx.handles} refs={messageRefs(data)} showIds={data.showIds === true} />
-        )
+        <>
+          {pending ? (
+            <Textarea aria-label="The words to post" value={body} onChange={(event) => setBody(event.target.value)} rows={Math.min(10, Math.max(3, body.split("\n").length + 1))} />
+          ) : (
+            <RichText text={message.body} handles={ctx.handles} refs={messageRefs(data)} showIds={data.showIds === true} />
+          )}
+          {/* A result's draft: what goes with it, from the work's own ledger and checked evidence. */}
+          {data.result ? <ResultFacts data={{ ...data.result, media: data.media, refs: data.refs }} messageId={null} /> : null}
+        </>
       ) : (
         <ul className="space-y-1.5">
           {calls.map((call) => (
@@ -490,13 +499,26 @@ function SharedTo({ message, ctx }: { message: Message; ctx: MessageContext }) {
 export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { message: Message; ctx: MessageContext; grouped: boolean; highlighted?: boolean; fresh?: boolean }) {
   const press = useLongPress();
   if (message.kind === "status") {
-    if (message.data?.type === "status_cards") {
+    const type = message.data?.type;
+    if (type === "status_cards" || type === "space_offer" || type === "digest" || type === "room_events") {
       return (
         <div id={`m-${message.id}`} data-new-message={fresh || undefined} className={`chat-message mt-6 rounded-2xl transition ${highlighted ? "ring-2 ring-accent/70 ring-offset-2 ring-offset-bg" : ""}`}>
-          <StatusCardsMessage message={message} ctx={ctx} />
+          {type === "status_cards" ? (
+            <StatusCardsMessage message={message} ctx={ctx} />
+          ) : type === "space_offer" ? (
+            <SpaceOfferCard message={message} ctx={ctx} />
+          ) : type === "digest" ? (
+            <DigestCard message={message} ctx={ctx} />
+          ) : (
+            <div className="rounded-2xl border border-private/30 bg-private/5 px-3 py-2">
+              <RichText text={message.body} handles={ctx.handles} />
+              <RoomEventsExtras message={message} ctx={ctx} />
+            </div>
+          )}
         </div>
       );
     }
+    if (type === "decision_logged") return <DecisionLine message={message} ctx={ctx} highlighted={highlighted} />;
     return (
       <div id={`m-${message.id}`} className={`py-2 text-center text-xs text-muted ${highlighted ? "rounded-lg bg-accent/10" : ""}`}>
         {message.body}
@@ -628,6 +650,10 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
             </div>
           ) : deleted ? (
             <Deleted />
+          ) : message.data.type === "digest" ? (
+            <DigestCard message={message} ctx={ctx} />
+          ) : message.data.type === "room_result" ? (
+            <ResultCard message={message} ctx={ctx} />
           ) : (
             <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
               <SharedLine message={message} ctx={ctx} mine={false} />
@@ -638,6 +664,7 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
               {(ctx.threadsOf?.(message) ?? []).map((thread) => (
                 <HelperThreadChip key={thread.roomId} thread={thread} />
               ))}
+              {message.data.type === "room_events" ? <RoomEventsExtras message={message} ctx={ctx} /> : null}
               <SharedTo message={message} ctx={ctx} />
             </div>
           )}

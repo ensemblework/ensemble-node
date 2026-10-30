@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { awayLine, awayUntil, canShare, candidateText, disclosureState, isPeopleRoom, leadsStatus, liveTab, mergeSeen, ownerCardState, readMarker, requestBody, requestKind, requestProblems, requestRole, requestState, requestUndecided, sharedCopy, sharedLabel, statusCardView, tabOf, tabUnread, type RequestDraft, unreadAfter } from "./rooms";
+import { awayLine, awayUntil, canShare, candidateText, disclosureState, isPeopleRoom, leadsStatus, liveTabOf, ownerCardState, readTab, requestBody, requestKind, requestProblems, requestRole, requestState, requestUndecided, sharedCopy, sharedLabel, statusCardView, tabMarker, tabOf, tabUnreadOf, withTab, type RequestDraft } from "./rooms";
 import type { Message, StatusCard } from "./types";
 
 const message = (seq: number, extra: Partial<Message> = {}): Message => ({
@@ -28,21 +28,16 @@ test("a room with other people has a Room and a My crew; private messages are My
   assert.equal(tabOf(message(2, { private: true, authorKind: "node", authorAccountId: "me", authorNodeId: "lead" })), "crew");
 });
 
-test("each tab counts its own unread; the server's one marker never passes news in either tab", () => {
-  const messages = [
-    message(1),
-    message(2, { private: true, authorKind: "node", authorAccountId: "me", authorNodeId: "lead" }),
-    message(3, { authorAccountId: "me" }),
-    message(4),
-    message(5, { private: true, kind: "run", authorKind: "node", authorAccountId: "me", authorNodeId: "lead", planId: "plan" }),
-    message(6, { private: true, authorKind: "node", authorAccountId: "me", authorNodeId: "lead" }),
-    { ...message(7, { authorAccountId: "me" }), id: "local-7", sending: true },
-  ];
-  assert.deepEqual(tabUnread(messages, { room: 0, crew: 0 }, "me"), { room: 2, crew: 2 }, "my own words and cards inside plans never count");
-  assert.deepEqual(tabUnread(messages, { room: 6, crew: 1 }, "me"), { room: 0, crew: 2 });
-  assert.equal(readMarker(messages, { room: 6, crew: 1 }, "me", 0), 1, "up to just before My crew's first unseen message");
-  assert.equal(readMarker(messages, { room: 6, crew: 6 }, "me", 0), 6, "everything seen: the newest sent message");
-  assert.equal(readMarker(messages, { room: 0, crew: 6 }, "me", 3), 3, "it never moves back");
+test("each tab has its own unread and read marker, as Ensemble keeps them", () => {
+  const room = { lastSeq: 9, readSeq: 4, readSeqCrew: 7, unread: 5, unreadRoom: 3, unreadCrew: 2 };
+  assert.deepEqual(tabUnreadOf(room), { room: 3, crew: 2 });
+  assert.deepEqual(tabUnreadOf({ unread: 4 }), { room: 4, crew: 0 }, "an older server counted the room as one");
+  assert.deepEqual([tabMarker(room, "room"), tabMarker(room, "crew")], [4, 7]);
+  assert.equal(tabMarker({ lastSeq: 9, readSeq: 4 }, "crew"), 4, "no crew marker yet: the room's");
+  const read = readTab(room, "crew", 9);
+  assert.deepEqual([read.readSeqCrew, read.readSeq, read.unreadCrew, read.unreadRoom, read.unread], [9, 4, 0, 3, 3], "reading My crew leaves the Room's news");
+  assert.equal(readTab(room, "room", 2, 3).readSeq, 4, "a marker never moves back");
+  assert.deepEqual(withTab(room, "room", 1, 6), { ...room, readSeq: 1, unreadRoom: 6, unreadCrew: 2, unread: 8 }, "put back as it was when the server refused");
 });
 
 test("only my own private messages and my nodes' private replies can be shared to the room", () => {
@@ -124,10 +119,10 @@ test("a new request needs who it is for and what; a review its exact candidate",
   assert.equal(candidateText(null), null);
 });
 
-test("a node's live reply shows in the tab of the newest person's message", () => {
-  assert.equal(liveTab([]), "room");
-  assert.equal(liveTab([{ authorKind: "human", private: false }, { authorKind: "node", private: true }]), "room");
-  assert.equal(liveTab([{ authorKind: "human", private: false }, { authorKind: "human", private: true }, { authorKind: "system", private: false }]), "crew");
+test("a node's live reply shows in the tab the stream says it is for", () => {
+  assert.equal(liveTabOf({ private: true }), "crew");
+  assert.equal(liveTabOf({ private: false }), "room");
+  assert.equal(liveTabOf({}), "room");
 });
 
 test("a shared message says whose crew it came from, and whose reply it was", () => {
@@ -149,12 +144,6 @@ test("who I am to a request decides what its card offers", () => {
   assert.equal(requestRole(null, "me"), "other");
 });
 
-test("what each tab last saw is kept by the browser, never behind the server's marker", () => {
-  assert.deepEqual(mergeSeen(null, 12), { room: 12, crew: 12 });
-  assert.deepEqual(mergeSeen({ room: 20, crew: 3 }, 12), { room: 20, crew: 12 });
-  assert.deepEqual(mergeSeen({ room: "x" }, 5), { room: 5, crew: 5 });
-});
-
 test("away lasts an hour, until this evening, until tomorrow morning, until a picked time, or until I am back", () => {
   const now = new Date(2026, 9, 29, 10, 30);
   assert.equal(awayUntil("hour", now), new Date(2026, 9, 29, 11, 30).toISOString());
@@ -164,11 +153,4 @@ test("away lasts an hour, until this evening, until tomorrow morning, until a pi
   assert.equal(awayUntil("custom", now, "2026-10-31T08:15"), new Date(2026, 9, 31, 8, 15).toISOString());
   assert.equal(awayUntil("custom", now, ""), null);
   assert.equal(awayUntil("open", now), null);
-});
-
-test("after the marker moves, the server counts what is past it in either tab", () => {
-  const row = (seq: number, extra: Record<string, unknown> = {}) => ({ id: `m${seq}`, seq, private: false, planId: null, authorKind: "node" as const, authorAccountId: "ben", ...extra });
-  const messages = [row(1), row(2, { private: true }), row(3, { authorKind: "human", authorAccountId: "me" }), row(4, { planId: "p" }), row(5)];
-  assert.equal(unreadAfter(messages, 1, "me"), 2, "not my own words, not cards inside a plan");
-  assert.equal(unreadAfter(messages, 5, "me"), 0);
 });

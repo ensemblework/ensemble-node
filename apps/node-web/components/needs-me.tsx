@@ -1,15 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Check, CircleSlash, ShieldQuestion } from "lucide-react";
 import { cardWords } from "@/lib/cards";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { previewText, SOURCE_LABEL } from "@/lib/ensemble";
-import { nodesById, useActivity, useApprovals, useBootstrap, useDecisions, useSettle } from "@/lib/hooks";
+import { nodesById, useActivity, useApprovals, useBootstrap, useDecisions, usePeerDecision, useSettle } from "@/lib/hooks";
 import { requestJump } from "@/lib/jump";
 import { ago } from "@/lib/text";
-import type { AgentDecision, ApprovalRecord, Message, NodePublic, Room } from "@/lib/types";
+import type { AgentDecision, ApprovalRecord, Message, NodePublic, Room, WorkMode } from "@/lib/types";
 import { HeldActions, HeldFiles } from "./chat/held-captures";
+import { ModeChoice } from "./chat/room-work";
 import { ApprovalActions, DecisionActions } from "./decision-answer";
 import { NodeAvatar } from "./node-avatar";
 import { SecretBox } from "./secret-box";
@@ -67,9 +69,15 @@ function DecisionItem({ decision }: { decision: AgentDecision }) {
 /** One of my nodes' approval cards: answered right here, or opened in its conversation (My crew, for a room with other people). */
 function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: NodePublic; roomTitle: string; where: string }) {
   const settle = useSettle();
+  const decide = usePeerDecision(card.roomId);
   const type = typeof card.data.type === "string" ? card.data.type : "tools";
   const words = cardWords(card.data, node?.slug ?? "node", roomTitle);
-  const error = settle.error?.message ?? (typeof card.data.error === "string" ? card.data.error : null);
+  // A proposed task on a room's board asks one question when accepting: how it runs.
+  const modes = type === "peer_request" && Array.isArray(card.data.modes) && card.data.modes.length > 1 && typeof card.data.requestId === "string";
+  const [mode, setMode] = useState<WorkMode>(card.data.defaultMode === "shared" ? "shared" : "private");
+  const busy = settle.isPending || decide.isPending;
+  const approve = () => (modes ? decide.mutate({ requestId: card.data.requestId, action: "accept", mode, cardId: card.id }) : settle.mutate({ messageId: card.id, decision: "approve" }));
+  const error = decide.error?.message ?? settle.error?.message ?? (typeof card.data.error === "string" ? card.data.error : null);
   return (
     <Card>
       <div className="flex gap-3">
@@ -93,16 +101,21 @@ function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: 
               <SecretBox message={card} nodeName={node?.name ?? "The node"} />
             </div>
           ) : null}
+          {modes ? (
+            <div className="mt-2.5">
+              <ModeChoice value={mode} onChange={setMode} name={`needs-mode-${card.id}`} />
+            </div>
+          ) : null}
           {error && type !== "secret" ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
           <div className={`mt-3 flex flex-wrap items-center gap-2 ${type === "secret" ? "hidden" : ""}`}>
             {type === "media_preview" ? <HeldActions card={card} settle={settle} approve={words.approve} discard={words.discard} size="sm" /> : null}
             {type === "post" || type === "media_preview" ? null : (
-              <Button size="sm" busy={settle.isPending && settle.variables?.decision === "approve"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "approve" })}>
+              <Button size="sm" busy={(settle.isPending && settle.variables?.decision === "approve") || decide.isPending} disabled={busy} onClick={approve}>
                 <Check size={14} /> {words.approve}
               </Button>
             )}
             {type === "post" || type === "media_preview" ? null : (
-              <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "discard" })}>
+              <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={busy} onClick={() => settle.mutate({ messageId: card.id, decision: "discard" })}>
                 <CircleSlash size={14} /> {words.discard}
               </Button>
             )}

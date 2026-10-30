@@ -1106,3 +1106,22 @@ The plan's W11 covers the rest: channels (Slack, Teams, text messages), voice, f
 
 - Decision 2: the lead keeps Sol medium.
 - Decision 8: a node with no model of its own talks with Sol at low thinking. Luna stays the fast model that a turn cut off by a rate limit answers with.
+
+## Build status
+
+Every block of this plan is built. The backend is Ensemble's `node` module (`ensemblework/ensemble`, `apps/hub-api/src/node`), described in Ensemble's docs/35. The website is this repository. Ensemble 0.5.0 ships the computer's side (the CLI and the desktop app).
+
+| Block | Built | What is not done |
+| --- | --- | --- |
+| B0 Harness | Live checks with real models: `node-smoke.mjs` (the incident), `node-smoke-dm.mjs` (helpers, routines, proposals, stop) and `node-smoke-room.mjs` (two people in a room). Model evaluation: `node-plan-eval.mjs`. | |
+| B1–B5, B15 | Typed outcomes, the repair loop, run settings, the outbox, lanes, a stop without a model, and decisions closing with their work | |
+| B16 Session manager | Card controls, queue editing, the watchdog, agent questions answered from the mission, handing a session over or taking one over, the Sessions page | |
+| B6–B8, B17, B18 | The mission contract, worker reports and evidence, direct dispatch from packets, every space, helpers inline | |
+| B9, B10, B19 | Device tools, the browser broker with a live view, screenshots and video of pages and apps | App capture is untested on macOS and does not exist on Windows. The Xvfb and ffmpeg paths are tested only without those programs. |
+| B20 | Media in the chat; captures checked before they are sent, including a model that reads the picture | |
+| B11, B12, B21 | Sign-in hand-off and saved logins; secrets sealed in the browser for the computer's key, used by reference; remote takeover, end-to-end encrypted | No OS key store: keys are in the data folder, encrypted with the runtime's local key. There is no toolbar in the computer's own browser window. |
+| B13, B14 | Parallel work (serial, worktrees, snapshots), routines | |
+| C1–C3 | Audience-bound turns, rooms v2, questions and requests across people | |
+| C4–C7 | The room's space and proposed tasks, room events and the catch-up digest, results onto the board, contracts, the decisions log and the steward | Contract changes are seen from page edits only, not commits. The steward is the sponsor's own node, acting only on request. |
+
+Everything above was reviewed for security. Each finding was fixed with a regression test.

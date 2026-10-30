@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { answeredNote, approvalsForRun, decisionBody, decisionsForJob, decisionView } from "./decisions";
+import { answeredForJob, answeredNote, approvalsForRun, decisionBody, decisionsForJob, decisionView } from "./decisions";
 import type { AgentDecision, ApprovalRecord } from "./types";
 
 const decision = (more: Partial<AgentDecision> = {}, detail: AgentDecision["detail"] = {}): AgentDecision => ({
@@ -61,4 +61,21 @@ test("a run card shows only its own pending cards, oldest first", () => {
   assert.deepEqual(decisionsForJob(rows, null), []);
   const approval = (id: string, runId: string, decided: string | null = null): ApprovalRecord => ({ id, runId, taskId: null, kind: "publish", title: "Push", preview: null, decision: decided, requestedAt: "2026-10-26T10:00:00.000Z" });
   assert.deepEqual(approvalsForRun([approval("x", "run-1"), approval("y", "run-2"), approval("z", "run-1", "approved")], "run-1").map((row) => row.id), ["x"]);
+});
+
+test("a run's questions are found by the job that asked or by the session that is the job, pending or answered", () => {
+  const rows = [
+    decision({ id: "by-session", sessionId: "job-9", requestedAt: "2026-10-26T10:01:00.000Z" }, {}),
+    decision({ id: "by-detail" }, { jobId: "job-9" }),
+    decision({ id: "answered", sessionId: "job-9", status: "decided", decision: "allow", scope: "once" }, { command: "npm test" }),
+    decision({ id: "expired", status: "expired", requestedAt: "2026-10-26T09:00:00.000Z" }, { jobId: "job-9" }),
+    decision({ id: "other", sessionId: "job-8", status: "decided" }, {}),
+  ];
+  assert.deepEqual(decisionsForJob(rows, "job-9").map((row) => row.id), ["by-detail", "by-session"]);
+  assert.deepEqual(answeredForJob(rows, "job-9").map((row) => row.id), ["expired", "answered"]);
+  assert.deepEqual(answeredForJob(rows, undefined), []);
+  const approval = (id: string, more: Partial<ApprovalRecord>): ApprovalRecord => ({ id, runId: "r-0", taskId: null, kind: "publish", title: "Push", preview: null, decision: null, requestedAt: "2026-10-26T10:00:00.000Z", ...more });
+  assert.deepEqual(approvalsForRun([approval("by-job", { jobId: "job-9" }), approval("by-run", { runId: "run-9" }), approval("neither", {})], "run-9", "job-9").map((row) => row.id), ["by-job", "by-run"]);
+  assert.deepEqual(approvalsForRun([approval("by-job", { jobId: "job-9" })], null, "job-9").map((row) => row.id), ["by-job"], "before the job's run is known");
+  assert.deepEqual(approvalsForRun([approval("x", {})], null, null), []);
 });

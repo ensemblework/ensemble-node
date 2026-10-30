@@ -12,22 +12,25 @@
  * WorkingTimer, the changed-file counts from its DiffStatLabel, and the inline approvals from its
  * ComposerPendingApprovalPanel (MIT License, Copyright (c) 2026 T3 Tools Inc.).
  */
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronRight, CircleStop, ExternalLink, Hammer } from "lucide-react";
 import { pageAddress, takeoverReady } from "@/lib/captures";
 import { ENSEMBLE_LINKS } from "@/lib/config";
-import { approvalsForRun, decisionsForJob } from "@/lib/decisions";
+import { approvalCheckpoint, decisionCheckpoint, type Checkpoint } from "@/lib/checkpoints";
+import { answeredForJob, approvalsForRun, decisionsForJob } from "@/lib/decisions";
+import { previewText } from "@/lib/ensemble";
 import { evidenceItems } from "@/lib/evidence";
-import { useApprovals, useDecisions, useDevices, useJob, useRunSteps, useStopJob } from "@/lib/hooks";
+import { useAnsweredApprovals, useApprovals, useDecisions, useDevices, useJob, useRecentDecisions, useRunSteps, useStopJob } from "@/lib/hooks";
 import { sessionAgent } from "@/lib/session";
 import { RUN_LABEL } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
 import type { AgentDecision, ApprovalRecord, Message, NodePublic, RunSession, RunSettings, StepReport } from "@/lib/types";
-import { elapsedSeconds, formatElapsed, runEnded, runFacts, runStatus, shortPath, workLog } from "@/lib/work-log";
+import { cardRunSettings, elapsedSeconds, formatElapsed, runEnded, runFacts, runStatus, shortPath, workLog } from "@/lib/work-log";
 import { ApprovalActions, DecisionActions } from "../decision-answer";
 import { External, Pill, Spinner } from "../ui";
 import { EvidenceGallery, type RequirementLink } from "./evidence";
 import { LiveView } from "./live-view";
+import { CheckpointChip } from "./owner-card";
 import type { MessageContext } from "./message";
 import { ReportView } from "./report";
 import { RichText } from "./rich-text";
@@ -134,15 +137,16 @@ function ChangedFiles({ files }: { files: Array<{ path: string; added: number; r
 }
 
 /** What the run asks, one card at a time, answered here. */
-function NeedsYou({ decisions, approvals, jobId }: { decisions: AgentDecision[]; approvals: ApprovalRecord[]; jobId: string }) {
+function NeedsYou({ decisions, approvals, jobId, runId }: { decisions: AgentDecision[]; approvals: ApprovalRecord[]; jobId: string; runId: string | null }) {
   const total = decisions.length + approvals.length;
   const decision = decisions[0];
   const approval = decision ? undefined : approvals[0];
   const label = decision ? (decision.event === "question" ? "Question" : decision.detail?.command ? "Command approval" : "Permission") : "Approval";
   return (
-    <section className="mt-3 rounded-xl border border-warn/40 bg-warn/5 p-3" role="group" aria-label={`Needs you: ${label}`}>
+    <section className="mt-3 rounded-xl border border-warn/60 bg-warn/[0.07] p-3 shadow-[inset_3px_0_0_rgb(var(--warn))]" role="group" aria-label={`Waiting for you: ${label}`}>
       <div className="flex items-center gap-2 text-[11px]">
-        <span className="font-semibold uppercase tracking-wide text-warn">Needs you · {label}</span>
+        <span className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-pulse" aria-hidden />
+        <span className="font-semibold uppercase tracking-wide text-warn">Waiting for you · {label}</span>
         {total > 1 ? <span className="ml-auto tabular-nums text-muted">1 of {total}</span> : null}
       </div>
       {decision ? (
@@ -163,12 +167,57 @@ function NeedsYou({ decisions, approvals, jobId }: { decisions: AgentDecision[];
       ) : approval ? (
         <>
           <p className="mt-1 break-words text-sm font-medium">{approval.title}</p>
+          {previewText(approval.preview) ? (
+            <pre className="scroll-thin mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-bg p-2 font-mono text-xs" tabIndex={0} aria-label="What it would do">
+              {previewText(approval.preview)}
+            </pre>
+          ) : null}
           <div className="mt-2.5">
-            <ApprovalActions key={approval.id} approval={approval} jobId={jobId} size="sm" />
+            <ApprovalActions key={approval.id} approval={approval} jobId={jobId} runId={runId ?? undefined} size="sm" />
           </div>
         </>
       ) : null}
     </section>
+  );
+}
+
+type Answered = { id: string; at: number; point: Checkpoint; title: string; command: string | null };
+
+/** One answered question or approval of the run: its checkpoint, which opens to what was asked. */
+function AnsweredItem({ row }: { row: Answered }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <li className="max-w-full">
+      <CheckpointChip point={row.point} expanded={open} onToggle={() => setOpen(!open)} controls={id} />
+      {open ? (
+        <div id={id} className="mt-1 rounded-lg border border-line bg-bg/60 px-2.5 py-1.5 text-xs">
+          <p className="break-words text-ink/90">{row.title}</p>
+          {row.command ? <pre className="scroll-thin mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-muted">{row.command}</pre> : null}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/** What the run asked that is no longer waiting: answered here or anywhere, or gone unanswered. The newest three, then the rest on request. */
+function AnsweredList({ rows }: { rows: Answered[] }) {
+  const [all, setAll] = useState(false);
+  if (!rows.length) return null;
+  const shown = all ? rows : rows.slice(-3);
+  return (
+    <div className="mt-2" role="group" aria-label="What it asked you">
+      {rows.length > shown.length ? (
+        <button type="button" onClick={() => setAll(true)} className="mb-1 text-xs text-muted hover:text-ink">
+          Show {rows.length - shown.length} earlier
+        </button>
+      ) : null}
+      <ul className="flex flex-col items-start gap-1">
+        {shown.map((row) => (
+          <AnsweredItem key={row.id} row={row} />
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -202,13 +251,23 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const decisions = useDecisions();
   const approvals = useApprovals();
   const asks = decisionsForJob(decisions.data, jobId);
-  const runApprovals = approvalsForRun(approvals.data, detail?.runId);
+  const runApprovals = approvalsForRun(approvals.data, detail?.runId, jobId);
+  const owner = node?.ownerId === ctx.meId;
+  // What it asked that no longer waits: Ensemble's recent answers, and approvals answered in this tab.
+  const recent = useRecentDecisions(owner && Boolean(jobId) && (onScreen || open));
+  const answeredHere = useAnsweredApprovals();
+  const answered = useMemo<Answered[]>(() => {
+    const runId = detail?.runId ?? null;
+    return [
+      ...answeredForJob(recent.data, jobId).map((row) => ({ id: row.id, at: Date.parse(row.decidedAt ?? row.requestedAt) || 0, point: decisionCheckpoint(row), title: `${row.detail?.header ? `${row.detail.header}: ` : ""}${row.title}`, command: row.detail?.command ?? null })),
+      ...answeredHere.filter((row) => (runId && row.runId === runId) || (jobId && row.jobId === jobId)).map((row) => ({ id: row.id, at: Date.parse(row.at) || 0, point: approvalCheckpoint(row), title: row.title, command: null })),
+    ].sort((a, b) => a.at - b.at);
+  }, [recent.data, answeredHere, jobId, detail?.runId]);
   const stop = useStopJob();
   const session = sessionOf(data.session);
   const agent = sessionAgent(session);
   const report = reportOf(data.report);
   const evidence = useMemo(() => evidenceItems(data.evidence), [data.evidence]);
-  const owner = node?.ownerId === ctx.meId;
   // The packet Ensemble compiled for the agent (a plan step sent straight to it), or its one request for a result.
   const told = typeof data.told === "string" && data.told.trim() ? data.told : null;
   const reportAsked = data.reportAsked === true;
@@ -217,8 +276,9 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const summary = (detail?.summary ?? data.summary ?? log?.result ?? "").trim();
   const error = (detail?.error ?? data.error ?? "").trim();
   const computer = detail?.deviceName ?? data.computer ?? null;
-  // Before the job is read (or when it cannot be), the session's agent names the engine.
-  const facts = detail ? runFacts(detail) : agent.name ? [agent.name] : [];
+  // The engine, model, thinking and context: the job's once read, the card's own settings until then and for what the job leaves out.
+  const cardSettings = cardRunSettings(data);
+  const facts = runFacts(detail ?? null, { ...cardSettings, engine: cardSettings.engine ?? agent.id ?? agent.name ?? null });
   const took = ended ? elapsedSeconds(detail?.startedAt, detail?.finishedAt) : null;
   const toolCalls = detail?.toolCalls ?? 0;
   const quiet = typeof data.quiet === "string" ? QUIET[data.quiet] : undefined;
@@ -242,7 +302,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   return (
     <div ref={box} className="mt-1 rounded-2xl border border-line bg-panel p-3">
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 shrink-0"><ModelLogo provider={detail?.provider ?? agent.id} model={detail?.provider === "ensemble" ? detail.model : undefined} size={19} /></span>
+        <span className="mt-0.5 shrink-0"><ModelLogo provider={detail?.provider ?? agent.id ?? cardSettings.engine} model={detail?.provider === "ensemble" ? detail.model : undefined} size={19} /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
             <p className="min-w-0 break-words text-sm font-medium">{message.body}</p>
@@ -314,7 +374,8 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
         />
       ) : null}
 
-      {asks.length || runApprovals.length ? <NeedsYou decisions={asks} approvals={runApprovals} jobId={jobId} /> : null}
+      {asks.length || runApprovals.length ? <NeedsYou decisions={asks} approvals={runApprovals} jobId={jobId} runId={detail?.runId ?? null} /> : null}
+      <AnsweredList rows={answered} />
 
       {sessionPanel && session ? (
         <SessionPanel session={session} jobId={jobId} cardId={message.id} runStatus={status} runTitle={message.body} onScreen={onScreen} owner={owner} told={told} handles={ctx.handles} nodes={ctx.nodes} />
@@ -377,7 +438,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
         ) : null}
         {waiting && !asks.length && !runApprovals.length ? (
           <External href={ENSEMBLE_LINKS.needsMe} className="inline-flex items-center gap-1 text-warn hover:underline">
-            Answer it in Needs me <ExternalLink size={11} />
+            Answer it in Ensemble <ExternalLink size={11} />
           </External>
         ) : null}
       </div>

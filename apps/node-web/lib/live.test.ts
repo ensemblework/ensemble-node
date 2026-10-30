@@ -79,3 +79,21 @@ test("a reply being written says which thread it is for: My crew or the room's s
   assert.deepEqual(roomSnapshot("room"), [], "done: nothing is being written");
   live.reset();
 });
+
+test("a node waiting for its owner's answer shows as waiting, not thinking, until it goes on", () => {
+  live.reset();
+  live.status("room", "web", true);
+  live.tool("room", "web", { name: "computer_browse", state: "awaiting_approval" });
+  live.status("room", "web", false, undefined, { cardId: "card-1" });
+  live.flush();
+  assert.deepEqual(roomSnapshot("room")[0]!.waiting, { cardId: "card-1" });
+  assert.equal(roomSnapshot("room")[0]!.tools.length, 1, "what it was doing stays");
+  assert.equal(busySnapshot().size, 0, "waiting is not thinking");
+  live.status("room", "web", true);
+  live.flush();
+  assert.equal(roomSnapshot("room")[0]!.waiting, null, "answered: it goes on");
+  live.status("room", "web", false);
+  live.flush();
+  assert.deepEqual(roomSnapshot("room"), []);
+  live.reset();
+});

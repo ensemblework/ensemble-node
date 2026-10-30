@@ -24,3 +24,18 @@ test("each kind of card says what it asks and what its answers are called", () =
   assert.equal(cardWords({ type: "tools" }, "lead", "Launch").title, "@lead wants to do this for you");
   assert.equal(cardWords(null, "lead", "Launch").approve, "Approve");
 });
+
+test("a question from the owner's computer, a command as administrator and a node for the crew say what they ask", () => {
+  assert.deepEqual(cardWords({ type: "computer", capability: "run", scope: "folder", label: "live-test", deviceName: "Akash's-HomeServer" }, "assistant-3", "Assistant"), {
+    title: "@assistant-3 wants to run commands in live-test on Akash's-HomeServer",
+    wants: "wants to run commands in live-test on Akash's-HomeServer",
+    approve: "Allow",
+    discard: "Don't allow",
+  });
+  assert.equal(cardWords({ type: "computer", capability: "browse", scope: "origin", label: "walmart.com" }, "assistant-3", "Assistant").title, "@assistant-3 wants to browse walmart.com");
+  assert.equal(cardWords({ type: "computer", capability: "http", scope: "origin", label: "api.example.com" }, "x", "X").wants, "wants to call api.example.com");
+  assert.deepEqual(cardWords({ type: "sudo", command: "apt-get install -y xvfb", deviceName: "Studio" }, "builder", "Builder"), { title: "@builder wants to run a command as administrator on Studio", wants: "wants to run a command as administrator on Studio", approve: "Run as administrator", discard: "Don't run" });
+  assert.deepEqual(cardWords({ type: "crew_add", nodeSlug: "tester", nodeName: "Tester" }, "lead", "Software team"), { title: "@lead wants to add @tester to this crew", wants: "wants to add @tester to “Software team”", approve: "Approve", discard: "Not now" });
+  assert.equal(cardWords({ type: "crew_add", nodeName: "Tester" }, "lead", "Crew").title, "@lead wants to add Tester to this crew");
+  assert.deepEqual(cardWords({ type: "crew_add", nodeSlug: "tester", crewTitle: "Software team" }, "lead", "Lead"), { title: "@lead wants to add @tester to “Software team”", wants: "wants to add @tester to “Software team”", approve: "Approve", discard: "Not now" }, "asked from the lead's own chat, the crew is named");
+});

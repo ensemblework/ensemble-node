@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { durationLabel, evidenceCount, evidenceErrorWords, evidenceItems, evidenceKind, evidenceOfCards, evidencePath, evidenceShow, isSafeImage, keptAs, mediaFrame, mediaItems, mimeOf } from "./evidence";
+import { durationLabel, evidenceCount, evidenceErrorWords, evidenceItems, evidenceKind, evidenceOfCards, evidencePath, evidenceShow, isSafeImage, isTall, keptAs, mediaFrame, mediaItems, mimeOf } from "./evidence";
 
 test("only pictures that cannot run script show inline; videos play; active formats always download", () => {
   assert.equal(evidenceShow({ mime: "image/png", name: "home.png" }), "image");
@@ -76,4 +76,12 @@ test("a video's length, the space media takes before it loads, and why a file co
   assert.equal(evidenceErrorWords(404), "This file is not available any more.");
   assert.equal(evidenceErrorWords(0), "Ensemble cannot be reached. Check your connection and try again.");
   assert.equal(evidenceErrorWords(500), "The file could not be read (500).");
+});
+
+test("a full-page capture is a tall picture: shown from its top, and scrolled when opened", () => {
+  assert.equal(isTall({ width: 1280, height: 9464 }), true);
+  assert.equal(isTall({ width: 390, height: 844 }), false, "a phone screenshot is not tall enough to crop");
+  assert.equal(isTall({ width: 1280, height: 720 }), false);
+  assert.equal(isTall({ width: 1000, height: 2200 }), true);
+  assert.equal(isTall({}), false, "unmeasured pictures are measured once they load");
 });

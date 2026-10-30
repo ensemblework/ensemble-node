@@ -68,7 +68,7 @@ export function loginReasonText(reasons: string[] | undefined): string {
   return list.length ? `Why: ${list.join("; ")}.` : "";
 }
 
-/** A run's sign-in card still open (waiting, or its computer acting on it) among Needs me's cards: its paused live view points there. */
+/** A run's sign-in card still open (waiting, or its computer acting on it) among the cards waiting for me: its paused live view points there. */
 export function waitingLoginCard(cards: readonly Message[], jobId: string): Message | undefined {
   return cards.find((card) => card.kind === "approval" && card.data?.type === "login" && card.data.jobId === jobId && (card.data.status === "pending" || card.data.status === "working"));
 }

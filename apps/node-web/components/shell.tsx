@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity as ActivityIcon, Inbox, Lock, Menu, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plug, Repeat, Search, Settings, ShieldQuestion, SquarePen, SquareTerminal, Users } from "lucide-react";
+import { Activity as ActivityIcon, Inbox, Lock, Menu, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plug, Repeat, Search, Settings, SquarePen, SquareTerminal, Users } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { requestJump } from "@/lib/jump";
 import { useBusyNodes } from "@/lib/live";
-import { keys, useActivity, useApprovals, useBootstrap, useDecisions, useMe, useNodeEvents } from "@/lib/hooks";
+import { keys, useActivity, useBootstrap, useMe, useNodeEvents } from "@/lib/hooks";
 import { messagePreview } from "@/lib/chat";
-import { recentConversations, roomKindName, type ConversationFilter } from "@/lib/conversations";
+import { recentConversations, roomKindName, waitingRooms, type ConversationFilter } from "@/lib/conversations";
 import { toastError } from "@/lib/toast";
 import { ago } from "@/lib/text";
 import type { Bootstrap, Room } from "@/lib/types";
@@ -24,7 +24,8 @@ export function dmRoomOf(boot: Bootstrap | undefined, nodeId: string): Room | un
   return boot?.rooms.find((room) => room.kind === "dm" && room.members.some((member) => member.kind === "node" && member.node.id === nodeId));
 }
 
-function RoomRow({ room, boot, busy, active, compact = false, onNavigate }: { room: Room; boot: Bootstrap; busy: Set<string>; active: boolean; compact?: boolean; onNavigate?: () => void }) {
+/** A conversation in the list. `waiting`: how many things wait for me there (its cards, runs that wait on my answer): a "needs you" dot. */
+function RoomRow({ room, boot, busy, active, waiting = 0, compact = false, onNavigate }: { room: Room; boot: Bootstrap; busy: Set<string>; active: boolean; waiting?: number; compact?: boolean; onNavigate?: () => void }) {
   const thinking = room.members.some(member => member.kind === "node" && busy.has(member.node.id));
   const preview = thinking ? "Thinking…" : room.last ? `${room.last.failed ? "Not sent · " : room.last.sending ? "Sending · " : ""}${messagePreview(room.last)}` : "Start a conversation";
   let icon: ReactNode;
@@ -37,14 +38,19 @@ function RoomRow({ room, boot, busy, active, compact = false, onNavigate }: { ro
   } else {
     icon = <span className="flex size-[38px] shrink-0 items-center justify-center rounded-[13px] border border-line bg-raised text-muted"><Users size={18} strokeWidth={1.7} /></span>;
   }
+  const needs = waiting ? `${waiting === 1 ? "Something waits" : `${waiting} things wait`} for you here` : null;
   return (
-    <Link href={`/r/${room.id}`} onClick={onNavigate} title={title} aria-label={`${room.title}${room.unread ? `, ${room.unread} unread` : ""}`} aria-current={active ? "page" : undefined}
-      data-conversation={room.id} className={`chat-room-row relative flex items-center gap-3 rounded-2xl ${compact ? "justify-center px-1 py-2" : "px-3 py-3"} ${active ? "bg-accent/10" : "hover:bg-raised/70"}`}>
+    <Link href={`/r/${room.id}`} onClick={onNavigate} title={needs ? `${title} · ${needs}` : title} aria-label={`${room.title}${room.unread ? `, ${room.unread} unread` : ""}${waiting ? ", needs you" : ""}`} aria-current={active ? "page" : undefined}
+      data-conversation={room.id} data-needs-you={waiting || undefined} className={`chat-room-row relative flex items-center gap-3 rounded-2xl ${compact ? "justify-center px-1 py-2" : "px-3 py-3"} ${active ? "bg-accent/10" : "hover:bg-raised/70"}`}>
       {icon}
+      {compact && waiting ? <span className="absolute bottom-1.5 right-1 size-2.5 rounded-full bg-warn ring-2 ring-panel" aria-hidden /> : null}
       {!compact ? <span className="min-w-0 flex-1">
         <span className="flex items-center justify-between gap-2">
           <span className={`truncate text-sm ${room.unread ? "font-semibold" : "font-medium"}`}>{room.title}</span>
-          <span className="shrink-0 text-[11px] text-muted">{ago(room.lastMessageAt)}</span>
+          <span className="flex shrink-0 items-center gap-1.5">
+            {waiting ? <span className="inline-flex items-center gap-1 text-[10px] font-medium text-warn" aria-hidden><span className="size-2 rounded-full bg-warn" />needs you</span> : null}
+            <span className="text-[11px] text-muted">{ago(room.lastMessageAt)}</span>
+          </span>
         </span>
         <span className="flex items-center justify-between gap-2">
           <span className={`flex min-w-0 items-center gap-1.5 truncate text-xs ${room.last?.failed ? "text-danger" : thinking ? "text-accent" : "text-muted"}`}>
@@ -69,7 +75,7 @@ function NavLink({ href, icon: Icon, label, badge, active, compact, onNavigate }
   );
 }
 
-function Sidebar({ boot, onNavigate, onSearch, needsMe, compact = false, onCollapse }: { boot: Bootstrap; onNavigate?: () => void; onSearch: () => void; needsMe: number; compact?: boolean; onCollapse?: () => void }) {
+function Sidebar({ boot, onNavigate, onSearch, waiting, compact = false, onCollapse }: { boot: Bootstrap; onNavigate?: () => void; onSearch: () => void; waiting: ReadonlyMap<string, { count: number }>; compact?: boolean; onCollapse?: () => void }) {
   const pathname = usePathname();
   const busy = useBusyNodes();
   const [query, setQuery] = useState("");
@@ -88,12 +94,11 @@ function Sidebar({ boot, onNavigate, onSearch, needsMe, compact = false, onColla
         <div className="flex gap-1.5" role="group" aria-label="Conversation filters">{([["all", "All"], ["unread", "Unread"], ["groups", "Groups"]] as const).map(([id, title]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${filter === id ? "bg-accent/15 text-accent" : "text-muted hover:bg-raised"}`}>{title}</button>)}</div>
       </div> : null}
       <nav className="scroll-thin min-h-[120px] flex-1 overflow-y-auto px-2 pb-4" aria-label="Conversations">
-        {rooms.map(room => <RoomRow key={room.id} room={room} boot={boot} busy={busy} compact={compact} active={pathname === `/r/${room.id}`} onNavigate={onNavigate} />)}
+        {rooms.map(room => <RoomRow key={room.id} room={room} boot={boot} busy={busy} compact={compact} waiting={waiting.get(room.id)?.count ?? 0} active={pathname === `/r/${room.id}`} onNavigate={onNavigate} />)}
         {!rooms.length && !compact ? <p className="px-3 py-6 text-center text-xs text-muted">{query ? "No matching chats." : filter === "unread" ? "All caught up." : filter === "groups" ? "No groups yet." : "Your conversations will appear here."}</p> : null}
       </nav>
 
       <div className="space-y-0.5 border-t border-line px-2 pb-2 pt-2" role="navigation" aria-label="More">
-        <NavLink compact={compact} href="/needs-me" icon={ShieldQuestion} label="Needs me" badge={needsMe} active={pathname === "/needs-me"} onNavigate={onNavigate} />
         <NavLink compact={compact} href="/routines" icon={Repeat} label="Routines" active={pathname === "/routines"} onNavigate={onNavigate} />
         <NavLink compact={compact} href="/sessions" icon={SquareTerminal} label="Sessions" active={pathname === "/sessions"} onNavigate={onNavigate} />
         <NavLink compact={compact} href="/requests" icon={Inbox} label="Invites" badge={boot.invites?.length ?? 0} active={pathname === "/requests"} onNavigate={onNavigate} />
@@ -138,8 +143,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const signedIn = Boolean(me.data);
   const boot = useBootstrap(signedIn);
   const activity = useActivity();
-  const approvals = useApprovals();
-  const decisions = useDecisions();
   const [menu, setMenu] = useState(false);
   const [panel, togglePanel] = useNavigationPreference("node.activity-open", false);
   const [collapsed, toggleCollapsed] = useNavigationPreference("node.sidebar-collapsed", false);
@@ -215,25 +218,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
   const waiting = activity.data?.approvals.length ?? 0;
-  // The same count as Ensemble's Needs me: run approvals, agents' questions, nodes' cards and waiting tasks.
-  const needsMe = (approvals.data?.length ?? 0) + (decisions.data?.length ?? 0) + waiting + (activity.data?.waitingTasks?.length ?? 0);
+  // Every question waits in its own conversation: the list marks those conversations.
+  const waitingIn = waitingRooms(activity.data?.approvals, activity.data?.runs);
   const openSearch = () => {
     setMenu(false);
     setSearch(true);
   };
 
   return (
-    <div ref={frame} data-needs-me={needsMe > 0} className="chat-shell flex overflow-hidden" style={{ height: "var(--node-viewport-height, 100dvh)" }}>
+    <div ref={frame} data-needs-you={waitingIn.size > 0} className="chat-shell flex overflow-hidden" style={{ height: "var(--node-viewport-height, 100dvh)" }}>
       <aside className={`chat-sidebar hidden shrink-0 border-r border-line bg-panel/70 md:block ${collapsed ? "w-[68px]" : "w-[304px]"}`} data-sidebar-collapsed={collapsed} aria-label="Chat sidebar">
-        <Sidebar boot={boot.data} compact={collapsed} onCollapse={toggleCollapsed} onSearch={openSearch} needsMe={needsMe} />
+        <Sidebar boot={boot.data} compact={collapsed} onCollapse={toggleCollapsed} onSearch={openSearch} waiting={waitingIn} />
       </aside>
-      <Drawer open={menu} onClose={() => setMenu(false)} title="Chats" side="left"><Sidebar boot={boot.data} onNavigate={() => setMenu(false)} onSearch={openSearch} needsMe={needsMe} /></Drawer>
+      <Drawer open={menu} onClose={() => setMenu(false)} title="Chats" side="left"><Sidebar boot={boot.data} onNavigate={() => setMenu(false)} onSearch={openSearch} waiting={waitingIn} /></Drawer>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <div className={`${pathname.startsWith("/r/") ? "hidden" : "flex"} shrink-0 items-center justify-between border-b border-line px-2 py-1.5 md:hidden`}>
           <IconButton label="Menu" onClick={() => setMenu(true)} className="relative">
             <Menu size={18} />
-            {boot.data.invites?.length || needsMe ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent" /> : null}
+            {waitingIn.size ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" /> : boot.data.invites?.length ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent" /> : null}
           </IconButton>
           <Link href="/chat" className="flex items-center gap-1.5 text-sm font-semibold">
             <Mark size={20} /> Node

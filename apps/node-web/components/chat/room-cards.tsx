@@ -4,8 +4,9 @@
  * Cards in rooms with other people (rooms v2, Ensemble docs/35 §12): a peer request's public card, the
  * card its target decides on and a request my lead drafted for me to send, a question about sharing
  * something private, and the status cards `@leads status` brings. Also a node's proposal of a new node
- * or crew (§6.1). The owner's own cards use the same frame as the other approval cards: what is asked,
- * the answers, and what came of it.
+ * or crew, and a lead's request to bring one of my existing nodes into its crew (§6.1). The owner's own
+ * cards use the same frame as the other approval cards (./owner-card.tsx): what is asked, the answers,
+ * and what came of it.
  */
 import Link from "next/link";
 import { Check, CheckSquare, CircleSlash, ExternalLink, Handshake, Lock, MessageSquareReply, Pencil, Send, X } from "lucide-react";
@@ -18,29 +19,12 @@ import type { Badge } from "@/lib/plan";
 import { candidateText, disclosureState, draftCandidateGoes, ownerCardState, requestKind, requestRole, requestState, requestUndecided, statusCardView } from "@/lib/rooms";
 import { toast, toastError } from "@/lib/toast";
 import type { Message, NodePublic, PeerKind, RequestCandidate, RequestRef, StatusCard, WorkMode } from "@/lib/types";
-import { PersonAvatar } from "../node-avatar";
+import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { Button, External, Pill, Textarea } from "../ui";
 import type { MessageContext } from "./message";
+import { OwnerCard } from "./owner-card";
 import { RichText } from "./rich-text";
 import { ModeChoice } from "./room-work";
-
-/** The frame of a card only its owner sees: what it asks, that it is theirs alone, and where it stands. */
-export function OwnerCard({ title, state, children }: { title: ReactNode; state: Badge; children: ReactNode }) {
-  return (
-    <div className="mt-1 rounded-2xl border border-warn/40 bg-warn/5 p-3">
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="min-w-0 text-sm font-medium">{title}</span>
-        <span className="flex items-center gap-2">
-          <Pill tone="private">
-            <Lock size={10} /> only you
-          </Pill>
-          <Pill tone={state.tone}>{state.label}</Pill>
-        </span>
-      </div>
-      {children}
-    </div>
-  );
-}
 
 function Quote({ children }: { children: ReactNode }) {
   return <div className="whitespace-pre-wrap break-words rounded-lg border-l-2 border-line bg-bg/70 px-2.5 py-1.5 text-sm">{children}</div>;
@@ -534,6 +518,79 @@ export function NodeProposalCard({ message, ctx, node }: { message: Message; ctx
               </Link>
             ) : null}
           </p>
+        ) : null}
+      </div>
+    </OwnerCard>
+  );
+}
+
+type CrewAddData = { status: string; nodeId?: string; nodeSlug?: string; nodeName?: string; roomId?: string; crewTitle?: string; reason?: string | null; error?: string | null; handle?: string };
+
+const CREW_ADD: Record<string, Badge> = {
+  pending: { label: "Waiting for you", tone: "warn" },
+  applying: { label: "Adding…", tone: "accent" },
+  approved: { label: "Added", tone: "ok" },
+  applied: { label: "Added", tone: "ok" },
+  discarded: { label: "Not now", tone: "muted" },
+  expired: { label: "Expired", tone: "muted" },
+};
+
+/**
+ * A crew's lead wants one of my existing nodes in the crew (Ensemble's crew_add card): a node joins a
+ * crew only when I say so. Approve, and it is a member (its handle is its own); Not now, and the lead
+ * goes on without it.
+ */
+export function CrewAddCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
+  const data = message.data as CrewAddData;
+  const settle = useSettle();
+  const lead = node ? `@${node.slug}` : "The lead";
+  const words = cardWords(data, node?.slug ?? "lead", ctx.roomTitle);
+  const pending = data.status === "pending";
+  const joining = data.nodeId ? ctx.nodes.get(data.nodeId) : undefined;
+  const slug = (data.handle ?? data.nodeSlug ?? joining?.slug ?? "").replace(/^@/, "");
+  const who = slug ? `@${slug}` : (data.nodeName ?? "The node");
+  // The crew it would join: this conversation, or the crew the lead leads when it asks from elsewhere.
+  const crew = data.crewTitle?.trim() || ctx.roomTitle;
+  const error = settle.error?.message ?? data.error ?? null;
+  return (
+    <OwnerCard title={words.title} state={CREW_ADD[data.status] ?? { label: data.status, tone: "muted" }}>
+      <div className="space-y-2">
+        <div className="flex min-w-0 items-center gap-2.5 rounded-lg bg-bg/70 px-2.5 py-2">
+          <NodeAvatar node={joining} size={28} />
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium">{joining?.name ?? data.nodeName ?? who}</span>
+            <span className="block truncate text-xs text-muted">
+              {slug ? `@${slug}` : null}
+              {joining?.role ? ` · ${joining.role}` : ""}
+            </span>
+          </span>
+        </div>
+        {data.reason ? (
+          <p className="text-sm">
+            <span className="text-muted">Why:</span> {data.reason}
+          </p>
+        ) : null}
+        {error && pending ? <p className="text-sm text-danger" role="alert">{error}</p> : null}
+        {pending ? (
+          <>
+            <p className="text-xs text-muted">
+              Approve, and {who} joins “{crew}” as a member. Not now, and {lead} goes on without it.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" busy={settle.isPending && settle.variables?.decision === "approve"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: message.id, decision: "approve" })}>
+                <Check size={13} /> {words.approve}
+              </Button>
+              <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: message.id, decision: "discard" })}>
+                <CircleSlash size={13} /> {words.discard}
+              </Button>
+            </div>
+          </>
+        ) : data.status === "approved" || data.status === "applied" ? (
+          <p className="text-sm text-ok">
+            {who} is in “{crew}” now.
+          </p>
+        ) : data.status === "discarded" ? (
+          <p className="text-sm text-muted">Not added. {lead} goes on without it.</p>
         ) : null}
       </div>
     </OwnerCard>

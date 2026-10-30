@@ -8,7 +8,8 @@ import { api } from "@/lib/api";
 import { useActivity, useBootstrap } from "@/lib/hooks";
 import { useBusyNodes } from "@/lib/live";
 import { messagePreview, sendBody } from "@/lib/chat";
-import { recentConversations } from "@/lib/conversations";
+import { recentConversations, waitingRooms } from "@/lib/conversations";
+import { requestJump } from "@/lib/jump";
 import { ago } from "@/lib/text";
 import { toastError } from "@/lib/toast";
 import { AttachButton, AttachmentShelf, DropHint, pasteFiles, useAttachments, useFileDrop } from "@/components/chat/attachments";
@@ -36,7 +37,13 @@ export default function Home() {
   if (!boot.data) return <div className="flex h-full items-center justify-center text-muted"><Spinner /></div>;
   const { nodes, me } = boot.data;
   const chosen = nodes.find((node) => node.id === target) ?? nodes.find((node) => node.role === "manager") ?? nodes[0];
-  const waiting = activity.data?.approvals.length ?? 0;
+  // What waits for me, by the chat it waits in: each opens there, at the oldest.
+  const waits = waitingRooms(activity.data?.approvals, activity.data?.runs);
+  const waitingIn = boot.data.rooms.flatMap((room) => {
+    const row = waits.get(room.id);
+    return row ? [{ room, ...row }] : [];
+  });
+  const waiting = waitingIn.reduce((sum, row) => sum + row.count, 0);
   const recent = recentConversations(boot.data.rooms).filter(room => room.lastMessageAt).slice(0, 5);
 
   const files = attachments.files;
@@ -118,11 +125,28 @@ export default function Home() {
           </Link>
         ) : null}
 
-        {waiting ? (
-          <Link href="/needs-me" className="mx-auto flex max-w-2xl items-center gap-3 rounded-2xl border border-warn/40 bg-warn/5 px-4 py-3 text-sm hover:border-warn/70">
-            <ShieldQuestion className="text-warn" size={18} />
-            {waiting} thing{waiting === 1 ? "" : "s"} waiting for your approval
-          </Link>
+        {waitingIn.length ? (
+          <section aria-labelledby="waiting-title" className="mx-auto max-w-2xl rounded-2xl border border-warn/40 bg-warn/5 px-4 py-3 text-sm">
+            <p id="waiting-title" className="flex items-center gap-2 font-medium">
+              <ShieldQuestion className="shrink-0 text-warn" size={18} aria-hidden />
+              {waiting === 1 ? "Something waits for you" : `${waiting} things wait for you`} in {waitingIn.length === 1 ? "a chat" : `${waitingIn.length} chats`}
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {waitingIn.map(({ room, count, first }) => (
+                <li key={room.id} className="max-w-full">
+                  <Link
+                    href={`/r/${room.id}${first ? `#m-${first}` : ""}`}
+                    onClick={() => (first ? requestJump(room.id, first) : undefined)}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-warn/40 bg-panel px-2.5 py-1 text-xs hover:border-warn/70"
+                  >
+                    <span className="size-1.5 shrink-0 rounded-full bg-warn" aria-hidden />
+                    <span className="truncate">{room.title}</span>
+                    {count > 1 ? <span className="shrink-0 tabular-nums text-muted">· {count}</span> : null}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
         ) : null}
 
         <section>

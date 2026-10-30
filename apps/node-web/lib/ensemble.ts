@@ -1,14 +1,5 @@
-/** Pure helpers for what Node shows from Ensemble itself: Needs me, paired computers, connections. */
-import type { AgentDecision, ConnectorEntry, Device } from "./types";
-
-export const SOURCE_LABEL: Record<AgentDecision["source"], string> = {
-  cursor: "Cursor",
-  claude: "Claude Code",
-  copilot: "Copilot",
-  codex: "Codex",
-  ensemble: "Ensemble's agent",
-  other: "An agent",
-};
+/** Pure helpers for what Node shows from Ensemble itself: run approvals, paired computers, connections. */
+import type { ConnectorEntry, Device } from "./types";
 
 /** A run approval's preview, as one readable line or block. */
 export function previewText(preview: unknown, max = 400): string {

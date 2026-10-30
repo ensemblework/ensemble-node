@@ -112,7 +112,7 @@ body {
 .chat-room-row[aria-current="page"]::before { content: ""; position: absolute; left: 0; top: 25%; bottom: 25%; width: 2px; border-radius: 2px; background: rgb(var(--accent)); }
 .chat-message [role="toolbar"] { max-width: calc(100vw - 32px); flex-wrap: wrap; }
 .chat-composer:focus-within { box-shadow: 0 0 0 3px rgb(var(--accent) / .035); }
-.chat-shell[data-needs-me="true"] .chat-open-conversations::after { content: ""; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--accent)); }
+.chat-shell[data-needs-you="true"] .chat-open-conversations::after { content: ""; position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--warn)); }
 @keyframes chat-message-in {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }

@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * Answering Ensemble's Needs me from Node: a question or permission from an agent, or a run approval.
- * The Needs me page and a run card's inline panel both use these. The choices (allow once, for this
- * run, deny; options with the recommended one marked, and a typed answer) are adapted from T3 Code's
- * ComposerPendingApprovalActions and ComposerPendingUserInputPanel (MIT License, Copyright (c) 2026 T3 Tools Inc.).
+ * Answering a run's own questions from Node, on its run card: a question or permission from an agent,
+ * or a run approval. Ensemble keeps them (`/api/decisions`, `/api/approvals`), so the first answer
+ * counts wherever it is given. The choices (allow once, for this run, deny; options with the recommended
+ * one marked, and a typed answer) are adapted from T3 Code's ComposerPendingApprovalActions and
+ * ComposerPendingUserInputPanel (MIT License, Copyright (c) 2026 T3 Tools Inc.).
  */
 import { useState, type ReactNode } from "react";
 import { AlertTriangle, Check, Send, X } from "lucide-react";
@@ -24,7 +25,7 @@ function InEnsemble({ size }: { size: Size }) {
   );
 }
 
-/** What can be answered here for one question from Needs me, and the request it sends. */
+/** What can be answered here for one question from an agent, and the request it sends. */
 export function DecisionActions({ decision, size = "md" }: { decision: AgentDecision; size?: Size }) {
   const decide = useDecide();
   const view = decisionView(decision);
@@ -186,14 +187,14 @@ export function DecisionActions({ decision, size = "md" }: { decision: AgentDeci
   );
 }
 
-/** Approve or Reject for a run approval; `children` sit next to the buttons. */
-export function ApprovalActions({ approval, jobId, size = "md", children }: { approval: ApprovalRecord; jobId?: string; size?: Size; children?: ReactNode }) {
+/** Approve or Reject for a run approval; `children` sit next to the buttons. Its run card keeps a checkpoint of the answer. */
+export function ApprovalActions({ approval, jobId, runId, size = "md", children }: { approval: ApprovalRecord; jobId?: string; runId?: string; size?: Size; children?: ReactNode }) {
   const decide = useDecideApproval();
   const [error, setError] = useState<string | null>(null);
   const busy = decide.isPending ? decide.variables?.decision : null;
   const answer = (decision: "approved" | "rejected") => {
     setError(null);
-    decide.mutate({ id: approval.id, decision, jobId }, { onError: (failure) => setError(failure.message) });
+    decide.mutate({ id: approval.id, decision, jobId, runId: runId ?? approval.runId, title: approval.title }, { onError: (failure) => setError(failure.message) });
   };
   return (
     <div className="space-y-2">

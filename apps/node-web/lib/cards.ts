@@ -1,10 +1,12 @@
 /**
  * A node's owner-only cards (approval messages) in words: what the card asks and what its two answers
- * are called, the same in a conversation and in Needs me. Held writes, drafts, work on the computer
- * (starting or sending to a session, or handing one to another node), secrets and sign-ins; a proposed
- * node or crew; captures held for the owner to check before they are sent; and in rooms with other
- * people, a request for work or a review, a request the lead drafted for the owner to send, and a
- * question about sharing something private (Ensemble docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
+ * are called, the same in the conversation and in the Activity panel. Held writes, drafts, work on the
+ * computer (starting or sending to a session, or handing one to another node), secrets and sign-ins; a
+ * question from the owner's computer (a folder or a website used for the first time), a command to run
+ * as administrator; a proposed node or crew, or an existing node to bring into a crew; captures held
+ * for the owner to check before they are sent; and in rooms with other people, a request for work or a
+ * review, a request the lead drafted for the owner to send, and a question about sharing something
+ * private (Ensemble docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
  */
 
 type CardData = {
@@ -25,7 +27,7 @@ type CardData = {
 export type CardWords = {
   /** The card's title in the conversation. */
   title: string;
-  /** What the node wants, after its handle, in Needs me. */
+  /** What the node wants, after its handle, in lists of what waits for you (the Activity panel). */
   wants: string;
   approve: string;
   discard: string;
@@ -33,10 +35,41 @@ export type CardWords = {
 
 const text = (value: unknown, fallback: string) => (typeof value === "string" && value.trim() ? value.trim() : fallback);
 
-/** A card's title, Needs me line and answers. `handle` is the node's, `roomTitle` the conversation's. */
+/** What each capability of the owner's computer lets a node do (Ensemble's node/device-tool-decisions.ts). */
+const COMPUTER_VERBS: Record<string, string> = { run: "run commands", git: "read git", files: "change files", http: "call", browse: "browse", read: "share files" };
+
+/**
+ * What a node asked its owner's computer for, after "wants to" or "Allowed @x to": "browse walmart.com",
+ * "call api.example.com", "run commands in live-test". A website is the address itself; a folder is
+ * where the capability is used.
+ */
+export function computerAction(data: { capability?: unknown; label?: unknown; scope?: unknown; [key: string]: unknown } | null | undefined): string {
+  const capability = text(data?.capability, "run");
+  const label = text(data?.label, data?.scope === "origin" ? "a website" : "a folder");
+  if (data?.scope === "origin" || capability === "browse" || capability === "http") return `${capability === "http" ? "call" : "browse"} ${label}`;
+  return `${COMPUTER_VERBS[capability] ?? "use the computer"} in ${label}`;
+}
+
+/** A card's title, its line in a list of what waits for you, and its answers. `handle` is the node's, `roomTitle` the conversation's. */
 export function cardWords(data: CardData, handle: string, roomTitle: string): CardWords {
   const type = text(data?.type, "tools");
   switch (type) {
+    case "computer": {
+      const on = typeof data?.deviceName === "string" && data.deviceName.trim() ? ` on ${data.deviceName.trim()}` : "";
+      const what = `${computerAction(data)}${on}`;
+      return { title: `@${handle} wants to ${what}`, wants: `wants to ${what}`, approve: "Allow", discard: "Don't allow" };
+    }
+    case "sudo": {
+      const on = typeof data?.deviceName === "string" && data.deviceName.trim() ? ` on ${data.deviceName.trim()}` : "";
+      return { title: `@${handle} wants to run a command as administrator${on}`, wants: `wants to run a command as administrator${on}`, approve: "Run as administrator", discard: "Don't run" };
+    }
+    case "crew_add": {
+      const slug = text(data?.nodeSlug, "");
+      const who = slug ? `@${slug.replace(/^@/, "")}` : text(data?.nodeName, "another of your nodes");
+      // The crew is the conversation it asks in, or, asked from elsewhere (its own chat), the crew it leads.
+      const crew = text(data?.crewTitle, roomTitle);
+      return { title: `@${handle} wants to add ${who} to ${crew === roomTitle ? "this crew" : `“${crew}”`}`, wants: `wants to add ${who} to “${crew}”`, approve: "Approve", discard: "Not now" };
+    }
     case "post": {
       // A request the lead drafted in My crew: it reaches the room only when its owner sends it.
       if (data?.request) {

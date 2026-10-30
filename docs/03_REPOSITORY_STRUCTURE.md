@@ -9,27 +9,30 @@ ensemble-node/
 │   │   ├── login/               sign in / create account (email, providers, Turnstile)
 │   │   ├── welcome/             onboarding: verify, account, first node or crew, connect a computer (links to Ensemble)
 │   │   └── (app)/               signed-in shell (sidebar, activity panel, live stream, ⌘K search)
-│   │       ├── chat/            home: ask a node, requests and approvals banners, your nodes, recent conversations
+│   │       ├── chat/            home: ask a node, requests to join, the chats where something waits for you, your nodes, recent conversations
 │   │       ├── r/[roomId]/      a conversation: messages, cards, search, pins, filters, composer
 │   │       ├── n/[nodeId]/      a node: look, charter, model, files on my computer, shared-room rule, memory, pause, delete
 │   │       ├── new/             create a node, a crew (from suggestions and existing nodes) or a room (with requests to join)
 │   │       ├── requests/        requests to join rooms: accept with 1–3 nodes and a lead, or decline
 │   │       ├── search/          search every conversation
-│   │       ├── computers/       Computers & Needs me: paired computers, shared folders, Ensemble's Needs me
+│   │       ├── computers/       opens Settings → Computers
 │   │       ├── routines/        routines by node: pause, run now, edit, delete, runs and a run's card
 │   │       ├── sessions/        my agent sessions: who manages each, Hand to… / Give to…, a session's panel
 │   │       ├── connections/     connected apps, the same list as in Ensemble
 │   │       ├── activity/        approvals, runs, turns, computers, credits (mobile)
-│   │       └── settings/        account, credits, links to the pages above and to Ensemble, sign out
+│   │       └── settings/        account, credits, links to the pages above and to Ensemble, computers, browsing, sign out
 │   ├── components/
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
 │   │   │                        run card and its work log (run-card.tsx, work-log.tsx), the session parts of a run
 │   │   │                        card (session.tsx: settings, queue, controls), a worker's report (report.tsx),
-│   │   │                        evidence gallery and lightbox (evidence.tsx), captures held for the owner to check
+│   │   │                        evidence gallery, text previews and lightbox (evidence.tsx), every owner card's
+│   │   │                        frame and its checkpoint (owner-card.tsx), a question from the computer
+│   │   │                        (computer-card.tsx), a command to run as administrator (sudo-card.tsx), captures held for the owner to check
 │   │   │                        (held-captures.tsx), a run's live view (live-view.tsx), plan card (plan-card.tsx), helper
 │   │   │                        threads (helper-thread.tsx), the "Working on" strip (work-strip.tsx), rooms with
 │   │   │                        other people: their cards (room-cards.tsx: a request and its owner's card, a
-│   │   │                        disclosure, status cards, a node's proposal) and each person's own side
+│   │   │                        disclosure, status cards, a node's proposal, a lead asking to add a node to its
+│   │   │                        crew) and each person's own side
 │   │   │                        (room-people.tsx: the trust sheet, shareable items, away, a new request), the room's
 │   │   │                        work (room-board.tsx: the Board; room-work.tsx: the offer to join its space, the one
 │   │   │                        question when work starts, the lead's notes, the catch-up, results, decisions;
@@ -45,12 +48,11 @@ ensemble-node/
 │   │   ├── node-picker.tsx      my nodes as checkboxes with a Lead radio
 │   │   ├── email-chips.tsx      emails as chips
 │   │   ├── invites.tsx          the requests-to-join inbox
-│   │   ├── needs-me.tsx         Ensemble's Needs me: run approvals and agents' questions
 │   │   ├── secret-box.tsx       a node's request for a secret: password box encrypted for the computer, its route and key
 │   │   ├── login-box.tsx        a sign-in card: the saved login, signing in on the computer, a login typed and
 │   │   │                        encrypted for the computer, opening its browser here, Not now
 │   │   ├── takeover-view.tsx    controlling a tab of the computer's browser: the picture, input, Paste, I'm done
-│   │   ├── decision-answer.tsx  answering a Needs me card (shared by Needs me and run cards)
+│   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      Node signature faces, shape/colour/eyes and thinking state
 │   │   ├── model-logo.tsx       canonical local model/vendor and agent marks
@@ -71,6 +73,11 @@ ensemble-node/
 │   │   ├── seal.ts, secret.ts   the sealed box (WebCrypto; identical to Ensemble's shared-types seal.ts, checked
 │   │   │                        against the same seal-vectors.json) and the secret card's route, words and answer
 │   │   ├── login.ts             the sign-in card: how a typed login travels, sealed for the computer, and its words
+│   │   ├── sudo.ts              a command run as administrator: the password sealed for the computer, bound to the
+│   │   │                        card and the command's hash, and its words (tested)
+│   │   ├── checkpoints.ts       which owner cards are still open, each settled card's one line, a computer's answer (tested)
+│   │   ├── file-preview.ts      which files preview as text in the chat, their first lines, 200 KB at most (tested)
+│   │   ├── owner-settings.ts    the run profile a node's sessions use, and asking before a new website (tested)
 │   │   ├── takeover.ts, takeover-channel.ts
 │   │   │                        a takeover session (secret sealed for the computer, frames, numbered input, end)
 │   │   │                        and its channel (WebCrypto; identical to Ensemble's shared-types takeover.ts,
@@ -93,8 +100,8 @@ ensemble-node/
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        what a message sends and a retry sends again, the attachment shelf and pasted
 │   │   │                        files, who may open a file on a message,
-│   │   │                        model groups, crew drafts and unique names, connection status, how a Needs me
-│   │   │                        card is answered and which run it belongs to, a run's steps as a work log
+│   │   │                        model groups, crew drafts and unique names, connection status, how a run's
+│   │   │                        question is answered and which run it belongs to, a run's steps as a work log
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send
 │   └── public/
 │       ├── brand/              Ensemble mark
@@ -106,7 +113,7 @@ ensemble-node/
                                  actions/vercel-deploy (publish main on Vercel)
 ```
 
-`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work; `e2e/routines.mjs` for Routines; `e2e/rooms-v2.mjs` for rooms with other people; `e2e/rooms-v3.mjs` for the work of a room with other people; `e2e/needs-me.mjs` for Needs me; `e2e/sessions.mjs` for Sessions; `e2e/captures.mjs` for held captures, a run's live view, posters and what a computer can capture. Usage is in [05](05_UI_AND_UX.md#browser-regression).
+`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work; `e2e/routines.mjs` for Routines; `e2e/rooms-v2.mjs` for rooms with other people; `e2e/rooms-v3.mjs` for the work of a room with other people; `e2e/chat-cards.mjs` for the cards in the chat (a computer's question, a command as administrator, checkpoints, a node for a crew, the "needs you" marks, file previews and tall screenshots); `e2e/sessions.mjs` for Sessions; `e2e/captures.mjs` for held captures, a run's live view, posters and what a computer can capture. Usage is in [05](05_UI_AND_UX.md#browser-regression).
 
 ## Where a change belongs
 

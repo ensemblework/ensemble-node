@@ -9,7 +9,7 @@
  * with its mode, the lead's notes of what changed (Start, Decline for a proposed task, a contract's
  * diff), the catch-up digest, private lines when someone declined what I asked (and their note on my
  * request's card), a result drafted for the owner and posted into the room with its media, the offer to
- * join another room's space, and the mode question in Needs me. Never points at a hosted account or
+ * join another room's space, and the mode question on my card in another room. Never points at a hosted account or
  * calls a model. Usage is in docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
@@ -348,17 +348,6 @@ try {
     };
     const selected = () => page.evaluate(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent ?? "");
 
-    // Needs me: a proposed task asks how it runs before it is accepted.
-    await page.goto(`${WEB}/needs-me`);
-    const needs = page.getByRole("region", { name: /From your nodes/ });
-    await needs.getByText("Ben asks you for work", { exact: false }).or(needs.getByText("brings you Ben's request for work", { exact: false })).first().waitFor();
-    const needsModes = needs.getByRole("group", { name: "How should it run?" });
-    assert.ok(await needsModes.getByRole("radio", { name: /Private work, shared result/ }).isChecked(), "private work with a shared result is the usual");
-    await needs.getByRole("button", { name: "Accept", exact: true }).click();
-    await until(() => state.calls.some((call) => call.accept === "req-studio"), "the studio request to be accepted");
-    assert.deepEqual(state.calls.find((call) => call.accept === "req-studio").body, { mode: "private" });
-    await shot("needs-mode");
-
     // The Room: its own unread and marker; My crew's count is Ensemble's.
     await page.goto(`${WEB}/r/launch`);
     const roomTab = page.getByRole("tab", { name: /^Room/ });
@@ -490,6 +479,8 @@ try {
     await owner.getByText("A proposed task on the room's board").waitFor();
     await owner.getByRole("radio", { name: /Shared run/ }).check();
     await owner.getByRole("button", { name: "Accept", exact: true }).click();
+    // Accepted, the card folds into its checkpoint; opened, it says how it runs.
+    await owner.getByRole("button", { name: "Accepted Ben's request for work" }).click();
     await owner.getByText("Accepted", { exact: true }).waitFor();
     assert.deepEqual(state.calls.find((call) => call.accept === "req-work").body, { mode: "shared" });
     await timeline.evaluate((element) => element.scrollTo(0, element.scrollHeight));
@@ -541,6 +532,7 @@ try {
     await draft.getByRole("region", { name: "Media" }).locator("img").first().waitFor();
     await shot("result-draft");
     await draft.getByRole("button", { name: "Post", exact: true }).click();
+    await draft.getByRole("button", { name: "Posted the result in “Launch”" }).click();
     await draft.getByText("Posted", { exact: true }).waitFor();
     assert.equal(state.calls.find((call) => call.approval === "c-draft").body.decision, "approve");
     const result = post(state.message("launch", "c-result", "text", "Invoice download is ready.\n- ✓ Downloads a PDF\n- ✓ Works on a phone\nTask: “Invoice download”", { data: { type: "room_result", approvedBy: "me", missionId: "mission-9", taskId: "t-invoice", spaceId: "s-launch", outcome: "succeeded", requirements: [{ text: "Downloads a PDF", status: "accepted" }], files: 1, media: [{ evidenceId: "e-invoice", kind: "screenshot", name: "invoice.png", mime: "image/png", size: 48210 }], refs: [{ kind: "task", id: "t-invoice", spaceId: "s-launch", title: "Invoice download" }] }, createdAt: new Date().toISOString() }));
@@ -576,9 +568,20 @@ try {
     await page.waitForFunction(() => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent?.startsWith("My crew"));
     await timeline.locator("#m-c-plan-copy").waitFor();
 
-    // Another room's space: the offer to join it, then its Board.
+    // Another room: a proposed task on its board asks how it runs on my card, before it is accepted; then it folds into a checkpoint.
     await page.goto(`${WEB}/r/studio`);
     await page.getByRole("tab", { name: /^My crew/ }).click();
+    const studioCard = page.locator(".chat-timeline").locator("#m-s-owner");
+    await studioCard.getByText("Ben asks you for work").waitFor();
+    const cardModes = studioCard.getByRole("group", { name: "How should it run?" });
+    assert.ok(await cardModes.getByRole("radio", { name: /Private work, shared result/ }).isChecked(), "private work with a shared result is the usual");
+    await shot("card-mode");
+    await studioCard.getByRole("button", { name: "Accept", exact: true }).click();
+    await until(() => state.calls.some((call) => call.accept === "req-studio"), "the studio request to be accepted");
+    assert.deepEqual(state.calls.find((call) => call.accept === "req-studio").body, { mode: "private" });
+    await studioCard.getByRole("button", { name: "Accepted Ben's request for work" }).waitFor();
+
+    // Another room's space: the offer to join it, then its Board.
     const offer = page.locator(".chat-timeline").locator("#m-s-offer").getByRole("group", { name: "The room's space" });
     await offer.getByText("Join “Studio space”?").waitFor();
     assert.ok(await offer.getByText("Waiting for you").isVisible());

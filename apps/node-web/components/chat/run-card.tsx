@@ -13,7 +13,7 @@
  * ComposerPendingApprovalPanel (MIT License, Copyright (c) 2026 T3 Tools Inc.).
  */
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, CircleStop, ExternalLink, Hammer } from "lucide-react";
+import { ChevronRight, CircleStop, ExternalLink, Hammer, MonitorSmartphone } from "lucide-react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { approvalsForRun, decisionsForJob } from "@/lib/decisions";
 import { evidenceItems } from "@/lib/evidence";
@@ -33,6 +33,7 @@ import { RichText } from "./rich-text";
 import { SessionFooter, SessionPanel, sessionPanelShows, SettingsView, ToldDisclosure } from "./session";
 import { WorkLogView } from "./work-log";
 import { ModelLogo } from "../model-logo";
+import { TakeoverView } from "../takeover-view";
 
 const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "accent" | "muted"> = {
   succeeded: "ok",
@@ -188,6 +189,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const box = useRef<HTMLDivElement>(null);
   const onScreen = useOnScreen(box);
   const [open, setOpen] = useState(false);
+  const [controlling, setControlling] = useState(false);
   const job = useJob(jobId, { enabled: Boolean(jobId) && (onScreen || open), poll: !runEnded(data.status) && (onScreen || open) });
   const detail = job.data?.job;
   const status = runStatus(data.status, detail?.status);
@@ -245,6 +247,17 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
                 </span>
               ) : null}
               <Pill tone={pill.tone}>{pill.label}</Pill>
+              {owner && !ended && (status === "running" || status === "claimed") ? (
+                <button
+                  type="button"
+                  onClick={() => setControlling(true)}
+                  aria-label="Open the run's browser"
+                  title="Control the run's browser tab from here, encrypted end to end; the agent waits meanwhile"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-line px-2 text-xs text-muted transition hover:border-accent/50 hover:text-ink"
+                >
+                  <MonitorSmartphone size={13} /> Open browser
+                </button>
+              ) : null}
               {canStop ? (
                 <button
                   type="button"
@@ -284,6 +297,15 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
           {told && !sessionPanel ? <ToldDisclosure told={told} handles={ctx.handles} /> : null}
         </div>
       </div>
+
+      {controlling && jobId ? (
+        <TakeoverView
+          source={{ jobId }}
+          site={message.body}
+          computer={computer ?? "your computer"}
+          onClose={() => setControlling(false)}
+        />
+      ) : null}
 
       {quiet ? <p className="mt-2 text-[13px] text-muted">{quiet.note}</p> : queuedNote ? <p className="mt-2 text-[13px] text-muted">{queuedNote}</p> : null}
 

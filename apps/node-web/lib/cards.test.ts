@@ -18,6 +18,7 @@ test("each kind of card says what it asks and what its answers are called", () =
   assert.deepEqual(cardWords({ type: "disclosure", mode: "answer", asker: { name: "Ben" } }, "lead", "Launch"), { title: "Ben asked @lead something", wants: "asks before answering Ben", approve: "Answer", discard: "Don't answer" });
   assert.deepEqual(cardWords({ type: "media_preview", evidence: [{ id: "e1" }] }, "builder", "Lead"), { title: "@builder has a capture for you to check first", wants: "has a capture for you to check first", approve: "Send", discard: "Discard" });
   assert.equal(cardWords({ type: "media_preview", evidence: [{ id: "e1" }, { id: "e2" }, { id: "e3" }] }, "builder", "Lead").wants, "has 3 captures for you to check first");
+  assert.deepEqual(cardWords({ type: "login", origin: "https://ledger.example.com", computer: "Mira's laptop" }, "lead", "Lead"), { title: "@lead needs you to sign in to https://ledger.example.com on Mira's laptop", wants: "needs you to sign in to https://ledger.example.com on Mira's laptop", approve: "Sign in", discard: "Not now" });
   assert.equal(cardWords({ type: "tools" }, "lead", "Launch").title, "@lead wants to do this for you");
   assert.equal(cardWords(null, "lead", "Launch").approve, "Approve");
 });

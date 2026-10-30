@@ -15,6 +15,7 @@ import { ModeChoice } from "./chat/room-work";
 import { ApprovalActions, DecisionActions } from "./decision-answer";
 import { NodeAvatar } from "./node-avatar";
 import { SecretBox } from "./secret-box";
+import { LoginBox } from "./login-box";
 import { Button, External, Notice, Pill, Spinner } from "./ui";
 
 function Card({ children, tone = "warn" }: { children: React.ReactNode; tone?: "warn" | "line" }) {
@@ -93,7 +94,7 @@ function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: 
             <div className="mt-2">
               <HeldFiles card={card} />
             </div>
-          ) : (
+          ) : type === "login" ? null : (
             <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{type === "secret" ? `${String(card.data.name ?? "")}: ${card.body}` : card.body}</p>
           )}
           {type === "secret" ? (
@@ -101,20 +102,26 @@ function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: 
               <SecretBox message={card} nodeName={node?.name ?? "The node"} />
             </div>
           ) : null}
+          {type === "login" ? (
+            <div className="mt-3">
+              <LoginBox message={card} nodeName={node?.name ?? "The node"} />
+            </div>
+          ) : null}
           {modes ? (
             <div className="mt-2.5">
               <ModeChoice value={mode} onChange={setMode} name={`needs-mode-${card.id}`} />
             </div>
           ) : null}
-          {error && type !== "secret" ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
+          {error && type !== "secret" && type !== "login" ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
           <div className={`mt-3 flex flex-wrap items-center gap-2 ${type === "secret" ? "hidden" : ""}`}>
             {type === "media_preview" ? <HeldActions card={card} settle={settle} approve={words.approve} discard={words.discard} size="sm" /> : null}
-            {type === "post" || type === "media_preview" ? null : (
+            {/* A sign-in card is answered in its own box; held captures and drafts have their own answers. */}
+            {type === "post" || type === "media_preview" || type === "login" ? null : (
               <Button size="sm" busy={(settle.isPending && settle.variables?.decision === "approve") || decide.isPending} disabled={busy} onClick={approve}>
                 <Check size={14} /> {words.approve}
               </Button>
             )}
-            {type === "post" || type === "media_preview" ? null : (
+            {type === "post" || type === "media_preview" || type === "login" ? null : (
               <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={busy} onClick={() => settle.mutate({ messageId: card.id, decision: "discard" })}>
                 <CircleSlash size={14} /> {words.discard}
               </Button>

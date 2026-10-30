@@ -1,10 +1,10 @@
 /**
  * A node's owner-only cards (approval messages) in words: what the card asks and what its two answers
  * are called, the same in a conversation and in Needs me. Held writes, drafts, work on the computer
- * (starting or sending to a session, or handing one to another node) and secrets; a proposed node or
- * crew; captures held for the owner to check before they are sent; and in rooms with other people, a
- * request for work or a review, and a question about sharing something private (Ensemble docs/35
- * §6.1, §8.9, §8.16, §12.4, §12.6).
+ * (starting or sending to a session, or handing one to another node), secrets and sign-ins; a proposed
+ * node or crew; captures held for the owner to check before they are sent; and in rooms with other
+ * people, a request for work or a review, and a question about sharing something private (Ensemble
+ * docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
  */
 
 type CardData = {
@@ -51,6 +51,10 @@ export function cardWords(data: CardData, handle: string, roomTitle: string): Ca
     }
     case "secret":
       return { title: `@${handle} needs a secret: ${text(data?.name, "a value")}`, wants: "needs a secret", approve: "Save", discard: "Decline" };
+    case "login": {
+      const where = `${text(data?.origin, "a site")}${typeof data?.computer === "string" && data.computer ? ` on ${data.computer}` : ""}`;
+      return { title: `@${handle} needs you to sign in to ${where}`, wants: `needs you to sign in to ${where}`, approve: "Sign in", discard: "Not now" };
+    }
     case "node_proposal":
       return data?.action === "crew"
         ? { title: `@${handle} proposes a crew`, wants: "proposes a crew", approve: "Make it", discard: "Discard" }

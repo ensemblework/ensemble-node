@@ -2,8 +2,9 @@
  * A node's owner-only cards (approval messages) in words: what the card asks and what its two answers
  * are called, the same in a conversation and in Needs me. Held writes, drafts, work on the computer
  * (starting or sending to a session, or handing one to another node) and secrets; a proposed node or
- * crew; and in rooms with other people, a request for work or a review, and a question about sharing
- * something private (Ensemble docs/35 §6.1, §8.9, §12.4, §12.6).
+ * crew; captures held for the owner to check before they are sent; and in rooms with other people, a
+ * request for work or a review, and a question about sharing something private (Ensemble docs/35
+ * §6.1, §8.9, §8.16, §12.4, §12.6).
  */
 
 type CardData = {
@@ -52,6 +53,11 @@ export function cardWords(data: CardData, handle: string, roomTitle: string): Ca
       return data?.action === "crew"
         ? { title: `@${handle} proposes a crew`, wants: "proposes a crew", approve: "Make it", discard: "Discard" }
         : { title: `@${handle} proposes a new node`, wants: "proposes a new node", approve: "Make it", discard: "Discard" };
+    case "media_preview": {
+      const files = Array.isArray(data?.evidence) ? data.evidence.length : 0;
+      const what = files > 1 ? `${files} captures` : "a capture";
+      return { title: `@${handle} has ${what} for you to check first`, wants: `has ${what} for you to check first`, approve: "Send", discard: "Discard" };
+    }
     case "peer_request": {
       const from = text(data?.from?.name, "Someone");
       const what = data?.kind === "review" ? "a review" : "work";

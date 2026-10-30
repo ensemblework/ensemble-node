@@ -190,6 +190,8 @@ try {
       if (path === "/api/approvals") return json({ approvals: [] });
       if (path === "/api/devices") return json({ devices: [] });
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
+      // No computer sends a live view here (e2e/captures.mjs covers it).
+      if (path.startsWith("/api/node/live/")) return route.fulfill({ status: 204, headers: cors });
       const evidence = /^\/api\/node\/evidence\/([^/]+)$/.exec(path);
       if (evidence) {
         if (pictures[evidence[1]]) return route.fulfill({ status: 200, body: pictures[evidence[1]], headers: { ...cors, "content-type": "image/png", "x-content-type-options": "nosniff" } });

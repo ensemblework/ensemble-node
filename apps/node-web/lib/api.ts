@@ -1,6 +1,7 @@
+import { liveMeta } from "./captures";
 import { ENSEMBLE_API } from "./config";
-import { evidencePath } from "./evidence";
-import type { FileRecord, Message, PeerKind, PeerRequest, RequestCandidate, Routine, RoutineRun, SessionAction, SessionDetail, SessionSummary, ShareableItem, StatusCard, TrustSettings, TrustView } from "./types";
+import { evidenceErrorWords, evidencePath } from "./evidence";
+import type { CardEvidence, FileRecord, LiveFrame, Message, PeerKind, PeerRequest, RequestCandidate, Routine, RoutineRun, SessionAction, SessionDetail, SessionSummary, ShareableItem, StatusCard, TrustSettings, TrustView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -131,21 +132,58 @@ export async function fileOriginal(id: string, signal?: AbortSignal): Promise<Bl
 
 /**
  * A file a run attached (`GET /api/node/evidence/:id`): its owner reads it; anyone else only through the
- * message that shows it (`messageId`). Shown only when it is a safe picture (lib/evidence.ts).
+ * message that shows it (`messageId`). Shown only when it is a safe picture (lib/evidence.ts). A held
+ * file is its owner's preview, fetched from the computer that keeps it: that can take a while, and
+ * fails in words when the computer is offline (504), finds it too large (413) or keeps it (409).
  */
 export async function evidenceBlob(id: string, signal?: AbortSignal, messageId?: string | null): Promise<Blob> {
   let response: Response;
   try {
     response = await fetch(`${ENSEMBLE_API}${evidencePath(id, messageId)}`, { credentials: "include", signal });
-  } catch {
-    throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new ApiError(0, evidenceErrorWords(0));
   }
-  if (!response.ok) throw new ApiError(response.status, response.status === 404 ? "This file is not available any more." : `The file could not be read (${response.status}).`);
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: unknown };
+    throw new ApiError(response.status, evidenceErrorWords(response.status, typeof data.error === "string" ? data.error : null));
+  }
   return response.blob();
 }
 
 /** The address a video player streams a run's evidence from; the session cookie goes with it. */
 export const evidenceUrl = (id: string, messageId?: string | null): string => `${ENSEMBLE_API}${evidencePath(id, messageId)}`;
+
+/** A run's evidence or a node's own captures (`GET /api/node/evidence`), and the owner's answer on a held file. */
+export const evidence = {
+  ofJob: (jobId: string) => api<{ evidence: CardEvidence[] }>(`/api/node/evidence?jobId=${encodeURIComponent(jobId)}`).then((result) => result.evidence),
+  ofNode: (nodeId: string) => api<{ evidence: CardEvidence[] }>(`/api/node/evidence?nodeId=${encodeURIComponent(nodeId)}`).then((result) => result.evidence),
+  /** Send a held file (the computer uploads it, then it is usable like any evidence) or discard it on both sides. */
+  release: (id: string, decision: "approve" | "discard") => api<{ released: string[]; discarded: string[] }>(`/api/node/evidence/${encodeURIComponent(id)}/release`, { body: { decision } }),
+};
+
+/** The latest picture of a run's browser tab (`GET /api/node/live/:jobId`): a picture, why it is paused, or null when there is none. */
+export async function liveFrame(jobId: string, signal?: AbortSignal): Promise<LiveFrame | null> {
+  let response: Response;
+  try {
+    response = await fetch(`${ENSEMBLE_API}/api/node/live/${encodeURIComponent(jobId)}`, { credentials: "include", cache: "no-store", signal });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
+  }
+  const meta = liveMeta(response.headers);
+  if (response.status === 204) return meta.paused ? { ...meta, image: null } : null;
+  if (!response.ok) throw new ApiError(response.status, `The live view could not be read (${response.status}).`);
+  const blob = await response.blob();
+  if (!/^image\/jpe?g$/i.test(blob.type.split(";")[0]!.trim())) return null;
+  const image = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new ApiError(0, "The live view could not be read."));
+    reader.readAsDataURL(blob);
+  });
+  return { ...meta, image };
+}
 
 const sessionPath = (id: string) => `/api/node/sessions/${encodeURIComponent(id)}`;
 

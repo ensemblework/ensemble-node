@@ -74,6 +74,7 @@ try {
       if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "access-control-allow-origin": WEB, "access-control-allow-credentials": "true", "access-control-allow-methods": "GET, POST, PATCH, DELETE", "access-control-allow-headers": "content-type, accept" } });
       if (path === "/api/auth/me") return json({ user: state.boot.me });
       if (path === "/api/node/bootstrap") return json(state.boot);
+      if (path === "/api/node/evidence") return json({ evidence: [] });
       if (path === "/api/node/activity") return json({ approvals: [], runs: [], turns: [], computers: [], credits: null });
       if (path === "/api/decisions") return json({ decisions: [] });
       if (path === "/api/approvals") return json({ approvals: [] });

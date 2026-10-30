@@ -20,6 +20,7 @@ import { ToolIcon } from "../tool-icon";
 import { Button, External, Pill, Textarea } from "../ui";
 import { EvidenceGallery } from "./evidence";
 import { MessageFiles } from "./file-chips";
+import { HeldCapturesCard } from "./held-captures";
 import { HelperThreadChip } from "./helper-thread";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
@@ -144,6 +145,7 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
   if (message.data.type === "peer_request") return <RequestOwnerCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "disclosure") return <DisclosureCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "node_proposal") return <NodeProposalCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "media_preview") return <HeldCapturesCard message={message} ctx={ctx} node={node} />;
   return <HeldCard message={message} ctx={ctx} node={node} />;
 }
 

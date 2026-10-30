@@ -75,6 +75,8 @@ try {
       if (method === "OPTIONS") return route.fulfill({ status: 204, headers: { ...cors, "access-control-allow-methods": "GET, POST, PATCH, DELETE", "access-control-allow-headers": "content-type, accept" } });
       if (path === "/api/auth/me") return json({ user: state.boot.me });
       if (path === "/api/node/bootstrap") return json(state.boot);
+      // No computer sends a live view here (e2e/captures.mjs covers it).
+      if (path.startsWith("/api/node/live/")) return route.fulfill({ status: 204, headers: cors });
       if (path === "/api/node/activity") return json({ approvals: [], runs: [], turns: [], computers: [], credits: null, waitingTasks: [] });
       if (path === "/api/decisions") return json({ decisions: [] });
       if (path === "/api/approvals") return json({ approvals: [] });

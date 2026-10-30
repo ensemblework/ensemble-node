@@ -15,6 +15,8 @@ test("each kind of card says what it asks and what its answers are called", () =
   assert.equal(cardWords({ type: "peer_request", kind: "work", from: null }, "lead", "Launch").title, "Someone asks you for work");
   assert.deepEqual(cardWords({ type: "disclosure", mode: "share", asker: { name: "Ben" } }, "lead", "Launch"), { title: "May @lead share this with the room?", wants: "asks before sharing with Ben", approve: "Allow", discard: "Don't share" });
   assert.deepEqual(cardWords({ type: "disclosure", mode: "answer", asker: { name: "Ben" } }, "lead", "Launch"), { title: "Ben asked @lead something", wants: "asks before answering Ben", approve: "Answer", discard: "Don't answer" });
+  assert.deepEqual(cardWords({ type: "media_preview", evidence: [{ id: "e1" }] }, "builder", "Lead"), { title: "@builder has a capture for you to check first", wants: "has a capture for you to check first", approve: "Send", discard: "Discard" });
+  assert.equal(cardWords({ type: "media_preview", evidence: [{ id: "e1" }, { id: "e2" }, { id: "e3" }] }, "builder", "Lead").wants, "has 3 captures for you to check first");
   assert.equal(cardWords({ type: "tools" }, "lead", "Launch").title, "@lead wants to do this for you");
   assert.equal(cardWords(null, "lead", "Launch").approve, "Approve");
 });

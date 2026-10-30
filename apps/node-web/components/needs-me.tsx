@@ -9,6 +9,7 @@ import { nodesById, useActivity, useApprovals, useBootstrap, useDecisions, useSe
 import { requestJump } from "@/lib/jump";
 import { ago } from "@/lib/text";
 import type { AgentDecision, ApprovalRecord, Message, NodePublic, Room } from "@/lib/types";
+import { HeldActions, HeldFiles } from "./chat/held-captures";
 import { ApprovalActions, DecisionActions } from "./decision-answer";
 import { NodeAvatar } from "./node-avatar";
 import { SecretBox } from "./secret-box";
@@ -80,7 +81,13 @@ function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: 
             </span>
             <span className="mt-0.5 shrink-0 text-xs text-muted">{ago(card.createdAt)}</span>
           </div>
-          <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{type === "secret" ? `${String(card.data.name ?? "")}: ${card.body}` : card.body}</p>
+          {type === "media_preview" ? (
+            <div className="mt-2">
+              <HeldFiles card={card} />
+            </div>
+          ) : (
+            <p className="mt-1 line-clamp-6 whitespace-pre-wrap text-sm text-muted">{type === "secret" ? `${String(card.data.name ?? "")}: ${card.body}` : card.body}</p>
+          )}
           {type === "secret" ? (
             <div className="mt-3">
               <SecretBox message={card} nodeName={node?.name ?? "The node"} />
@@ -88,12 +95,13 @@ function NodeCardItem({ card, node, roomTitle, where }: { card: Message; node?: 
           ) : null}
           {error && type !== "secret" ? <p className="mt-1 text-sm text-danger">{error}</p> : null}
           <div className={`mt-3 flex flex-wrap items-center gap-2 ${type === "secret" ? "hidden" : ""}`}>
-            {type === "post" ? null : (
+            {type === "media_preview" ? <HeldActions card={card} settle={settle} approve={words.approve} discard={words.discard} size="sm" /> : null}
+            {type === "post" || type === "media_preview" ? null : (
               <Button size="sm" busy={settle.isPending && settle.variables?.decision === "approve"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "approve" })}>
                 <Check size={14} /> {words.approve}
               </Button>
             )}
-            {type === "post" ? null : (
+            {type === "post" || type === "media_preview" ? null : (
               <Button size="sm" tone="ghost" busy={settle.isPending && settle.variables?.decision === "discard"} disabled={settle.isPending} onClick={() => settle.mutate({ messageId: card.id, decision: "discard" })}>
                 <CircleSlash size={14} /> {words.discard}
               </Button>

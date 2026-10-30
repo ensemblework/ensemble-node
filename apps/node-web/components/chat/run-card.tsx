@@ -4,9 +4,9 @@
  * A coding run inside a conversation, and the session card of the agent session it belongs to. A
  * status line (engine, model, thinking level, computer, live time, Stop) with the settings asked for,
  * sent and reported, the latest progress, what the run asks you (answered right here), the session
- * (status, what it does now, its queue and controls: components/chat/session.tsx), the work log (read
- * from the job's run while it is open), the structured report, the evidence, the files it changed and
- * its summary.
+ * (status, what it does now, its queue and controls: components/chat/session.tsx), the live view of
+ * its browser tab while it works (owner only), the work log (read from the job's run while it is
+ * open), the structured report, the evidence, the files it changed and its summary.
  *
  * The status line and live timer are adapted from T3 Code's ThreadStatusLine, AgentElapsed and
  * WorkingTimer, the changed-file counts from its DiffStatLabel, and the inline approvals from its
@@ -26,6 +26,7 @@ import { elapsedSeconds, formatElapsed, runEnded, runFacts, runStatus, shortPath
 import { ApprovalActions, DecisionActions } from "../decision-answer";
 import { External, Pill, Spinner } from "../ui";
 import { EvidenceGallery, type RequirementLink } from "./evidence";
+import { LiveView } from "./live-view";
 import type { MessageContext } from "./message";
 import { ReportView } from "./report";
 import { RichText } from "./rich-text";
@@ -291,6 +292,9 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
           {progress}
         </p>
       ) : null}
+
+      {/* The agent's browser tab while it works: its owner's computer sends it, when there is one. */}
+      {owner && jobId && !ended && !quiet ? <LiveView jobId={jobId} enabled={onScreen && (status === "running" || status === "claimed")} /> : null}
 
       {asks.length || runApprovals.length ? <NeedsYou decisions={asks} approvals={runApprovals} jobId={jobId} /> : null}
 

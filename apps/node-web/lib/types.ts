@@ -223,9 +223,61 @@ export type SessionSummary = {
 export type SessionAction = { action: "queue" | "steer" | "replace" | "stop"; prompt?: string; title?: string; queued?: "keep" | "drop" };
 
 /** A file a run attached as evidence (`data.evidence` on a run card), read with `GET /api/node/evidence/:id`. */
-export type EvidenceItem = { id: string; kind: string; name: string; mime: string; size?: number | null; caption?: string | null; requirementId?: string | null; createdAt?: string | null };
-/** Evidence a message shows (`data.media`: node replies, plan reports, approved drafts, shared messages). */
-export type MediaItem = { evidenceId: string; kind: string; name: string; mime: string; caption?: string | null; size?: number | null };
+export type EvidenceItem = {
+  id: string;
+  kind: string;
+  name: string;
+  mime: string;
+  size?: number | null;
+  caption?: string | null;
+  requirementId?: string | null;
+  createdAt?: string | null;
+  /** Kept on the computer that made it (evidence upload is off there): listed, never opened here. */
+  local?: boolean;
+  /** Held for its owner's preview (a secret on screen, a desktop app's window, a site they see first): never shown inline. */
+  held?: boolean;
+  holdReason?: string | null;
+  /** A video's poster image, its own evidence id. */
+  poster?: string;
+  /** What capture measured. */
+  width?: number;
+  height?: number;
+  durationMs?: number;
+};
+/** Evidence a message shows (`data.media`: node replies, plan reports, approved drafts, shared messages). A video names its poster (`posterId`). */
+export type MediaItem = { evidenceId: string; kind: string; name: string; mime: string; caption?: string | null; size?: number | null; posterId?: string; width?: number; height?: number; durationMs?: number };
+/** A run's evidence or a node's own captures as Ensemble lists them (`GET /api/node/evidence?jobId=|nodeId=`, a run card's `data.evidence`). */
+export type CardEvidence = {
+  id: string;
+  kind: string;
+  name: string;
+  mime: string;
+  size: number;
+  caption?: string;
+  requirementId?: string;
+  createdAt: string;
+  local?: true;
+  held?: true;
+  holdReason?: string;
+  poster?: string;
+  preview?: string;
+  width?: number;
+  height?: number;
+  durationMs?: number;
+};
+
+/** The latest picture of a run's browser tab (`GET /api/node/live/:jobId`), or why there is none. */
+export type LiveFrame = {
+  /** The picture as a data URL; null when the view is paused or there is none. */
+  image: string | null;
+  at: string | null;
+  url: string | null;
+  title: string | null;
+  width: number | null;
+  height: number | null;
+  /** `sensitive`, `private_site` or `secret_on_screen`. */
+  paused: string | null;
+};
 
 /** `refs`: the records the call's result names (Ensemble's AssistantRef): ids for links, titles to show. */
 export type ToolChip = { id: string; name: string; state?: string; summary: string | null; href: string | null; refs?: EntityRef[] };
@@ -446,7 +498,18 @@ export type Device = {
   sealKey?: { kid: string; fingerprint: string } | null;
   /** The computer now reports a different key: nothing is sent to it until it is paired again. */
   sealKeyMismatch?: boolean;
+  /** What the computer reported on its last heartbeat; `browser` 1 and `capture` say it can browse and capture (docs/25 §10.3). */
+  capabilities?: DeviceCapabilities | null;
 };
+
+/** What a computer can capture, as it reports it: a Chromium for Ensemble, the video format, each target and whether setup would add more. */
+export type CaptureSummary = {
+  browser: boolean;
+  video: "mp4" | "webm" | null;
+  targets: Record<string, { screenshot: boolean; video: boolean; reason?: string }>;
+  setup: boolean;
+};
+export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; [key: string]: unknown };
 
 /** Ensemble's Needs me: a run's approval (`GET /api/approvals`). */
 export type ApprovalRecord = { id: string; runId: string; taskId: string | null; kind: string; title: string; preview: unknown; decision: string | null; requestedAt: string };

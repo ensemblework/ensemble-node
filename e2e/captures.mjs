@@ -1,9 +1,9 @@
 /**
  * Local, stateful browser fixture for browsing and capture on the owner's computer (Ensemble docs/35
- * §8.12–8.16, docs/25 §10): captures held for the owner to check first, in Needs me and in their
+ * §8.12–8.16, docs/25 §10): captures held for the owner to check first, on their card in the
  * conversation (why, previews fetched from the computer with clear words when it is offline or a file
  * is too large, a video's poster instead, one file sent and one discarded on their own, then the card
- * sent or discarded); a working run card's live view (a picture with its page, larger on a tap, where
+ * sent or discarded and folded into its checkpoint); a working run card's live view (a picture with its page, larger on a tap, where
  * Take over opens the takeover view for that very tab; paused while signing in, pointing to the run's
  * sign-in card once there is one; back again; nothing for a run whose computer sends none); run evidence with held
  * and kept files; a node's video with its poster, length and measured shape; a node's own captures in
@@ -173,6 +173,8 @@ try {
       if (path === "/api/devices") return json({ serverRunner: false, devices: state.devices });
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
       if (path === "/api/node/models") return json({ default: "gpt-5-mini", options: [] });
+      // The owner's own Ensemble settings: the run profile a node's sessions use, and Node's browsing rule.
+      if (path === "/api/settings") return json({ settings: { runProfiles: [], defaultRunProfileId: null, node: { askBeforeBrowsing: false } }, connectors: [] });
       if (/^\/api\/node\/nodes\/[^/]+\/memory$/.test(path)) return json({ memories: [] });
       if (path === "/api/node/routines") return json({ routines: [] });
       if (/^\/api\/node\/rooms\/[^/]+\/read$/.test(path)) return json({});
@@ -244,25 +246,25 @@ try {
       if (shots) await page.screenshot({ path: `${shots}/${name}-${width}.png`, fullPage: false });
     };
 
-    // Needs me: the held card in words, its files previewed from the computer; an offline computer says so.
-    await page.goto(`${WEB}/needs-me`);
-    const needs = page.getByRole("region", { name: /From your nodes/ });
-    await needs.getByText("@builder has 3 captures for you to check first").waitFor();
-    assert.ok(await needs.getByText("It shows one of your saved secrets.").isVisible(), "why, in the owner's words");
-    assert.ok(await needs.getByText("You asked to see captures of this site before they are sent.").isVisible());
-    assert.ok(await needs.getByText("A desktop app's window can't be checked for secrets, so you see it first.").isVisible(), "each file's reason too");
-    assert.ok(await needs.getByRole("button", { name: "Send", exact: true }).isVisible());
-    assert.ok(await needs.getByRole("button", { name: "Discard", exact: true }).isVisible());
-    assert.ok(await needs.getByRole("link", { name: "Open in Builder's chat" }).isVisible());
-    assert.ok(!state.fetched.length, "nothing is read from the computer before the owner asks");
-    await needs.getByRole("button", { name: "Preview keys.png" }).click();
-    await needs.getByText("Your computer did not answer in time: it may be offline or asleep. Try again when Ensemble runs there.").waitFor();
-    await fits("Needs me");
-    await shot("needs-held");
-
-    // The conversation: a working run with its live view and evidence; the held card; media with posters.
+    // The held card, in its conversation: why, in the owner's words; files previewed from the computer only when asked; an offline computer says so.
     await page.goto(`${WEB}/r/dm-builder`);
     const timeline = page.locator(".chat-timeline");
+    const held = timeline.locator("#m-card-held");
+    await held.getByText("@builder has 3 captures for you to check first").waitFor();
+    assert.ok(await held.getByText("It shows one of your saved secrets.").isVisible(), "why, in the owner's words");
+    assert.ok(await held.getByText("You asked to see captures of this site before they are sent.").isVisible());
+    assert.ok(await held.getByText("A desktop app's window can't be checked for secrets, so you see it first.").isVisible(), "each file's reason too");
+    assert.ok(await held.getByRole("button", { name: "Send", exact: true }).isVisible());
+    assert.ok(await held.getByRole("button", { name: "Discard", exact: true }).isVisible());
+    assert.ok(!state.fetched.some((id) => id.startsWith("h-")), "nothing held is read from the computer before the owner asks");
+    await held.getByRole("button", { name: "Preview keys.png" }).click();
+    await held.getByText("Your computer did not answer in time: it may be offline or asleep. Try again when Ensemble runs there.").waitFor();
+    await held.scrollIntoViewIfNeeded();
+    await fits("The held card");
+    await shot("held-offline");
+    await held.getByRole("button", { name: "Hide keys.png" }).click();
+
+    // The conversation: a working run with its live view and evidence; the held card; media with posters.
     const run = timeline.locator("#m-run1");
     await run.waitFor();
     await timeline.locator("#m-run2").scrollIntoViewIfNeeded();
@@ -356,12 +358,15 @@ try {
     await desk.getByLabel("Discarded").waitFor();
     assert.equal(dialogs.at(-1), "Discard this capture? It is deleted on your computer too.");
     assert.deepEqual(state.calls.filter((call) => call.release), [{ release: "h-shot", decision: "approve" }, { release: "h-desk", decision: "discard" }]);
+    // Settled, the card folds into its checkpoint, which opens back into the card.
     if (width === 390) {
       await card.getByRole("button", { name: "Send", exact: true }).click();
+      await card.getByRole("button", { name: "Sent 3 captures" }).click();
       await card.getByText("Sent: they are on the run's card now.").waitFor();
       assert.ok(await card.locator('[data-held="h-video"]').getByLabel("Sent").isVisible(), "the rest went with the card");
     } else {
       await card.getByRole("button", { name: "Discard", exact: true }).click();
+      await card.getByRole("button", { name: "Discarded 3 captures" }).click();
       await card.getByText("Discarded: deleted on your computer too.").waitFor();
       assert.equal(dialogs.at(-1), "Discard these captures? They are deleted on your computer too.");
     }

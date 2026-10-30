@@ -1,10 +1,10 @@
 /**
  * Local, stateful browser fixture for a sign-in card (Ensemble docs/35 §8.16.1): a node's tab on the
- * owner's computer waits for them to sign in. In the conversation and on Needs me, at phone and desktop
- * widths: the card's reasons and answers (the saved login, typing it here, Not now; no "sign in on the
- * computer" for a computer without a screen), a saved login that did not work, a login typed here and
- * sealed in this browser for the computer's key (the request carries no password or user name in the
- * clear, bound to the card, the sign-in and this site), the signed-in card, and Not now from Needs me.
+ * owner's computer waits for them to sign in. In the conversation, at phone and desktop widths: the
+ * card's reasons and answers (the saved login, typing it here, Not now; no "sign in on the computer"
+ * for a computer without a screen), a saved login that did not work, a login typed here and sealed in
+ * this browser for the computer's key (the request carries no password or user name in the clear, bound
+ * to the card, the sign-in and this site), the signed-in card folded into its checkpoint, and Not now.
  * Never points at a hosted account or calls a model. Usage is in docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
@@ -133,6 +133,10 @@ try {
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/login-card-${width}.png`, fullPage: true });
     await card.getByRole("button", { name: "Sign in on Mira's laptop" }).click();
+    // Signed in, the card folds into its checkpoint; opened, it says how.
+    const signedIn = card.getByRole("button", { name: "Signed in to ledger.example.com" });
+    await signedIn.waitFor();
+    await signedIn.click();
     await card.getByText(/Signed in to https:\/\/ledger\.example\.com on Mira's laptop with what you typed/).waitFor();
     const sent = state.calls.at(-1);
     assert.equal(sent.body.action, "typed");
@@ -144,21 +148,17 @@ try {
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/login-card-signed-in-${width}.png`, fullPage: true });
 
-    // On Needs me: the same card, answered there; Not now ends it.
+    // A new card: Not now ends it, and it folds into its checkpoint.
     const fresh = fixture();
     state.messages = fresh.messages;
-    await page.goto(`${WEB}/needs-me`);
-    const fromNodes = page.getByRole("region", { name: /From your nodes/ });
-    await fromNodes.getByRole("heading", { name: "From your nodes (1)" }).waitFor();
-    const item = fromNodes.getByRole("listitem").filter({ hasText: "needs you to sign in" });
-    assert.ok(await item.getByText(`@lead needs you to sign in to ${SITE}`).first().isVisible());
-    assert.ok(await item.getByRole("button", { name: "Use saved login" }).isVisible());
-    assert.equal(await item.getByRole("button", { name: "Approve" }).count(), 0, "no generic approve for a sign-in");
-    await fits();
-    if (shots) await page.screenshot({ path: `${shots}/login-needs-me-${width}.png`, fullPage: true });
-    await item.getByRole("button", { name: "Not now" }).click();
-    await page.getByText(/All caught up/).waitFor();
+    await page.reload();
+    await card.getByText(`@lead needs you to sign in to ${SITE} on Mira's laptop`).first().waitFor();
+    assert.equal(await card.getByRole("button", { name: "Approve" }).count(), 0, "no generic approve for a sign-in");
+    await card.getByRole("button", { name: "Not now" }).click();
+    await card.getByRole("button", { name: "Didn't sign in to ledger.example.com" }).waitFor();
     assert.deepEqual(state.calls.at(-1).body, { action: "decline" });
+    await fits();
+    if (shots) await page.screenshot({ path: `${shots}/login-card-not-now-${width}.png`, fullPage: true });
 
     assert.deepEqual(errors, [], "no page errors");
     assert.deepEqual([...new Set(unexpected)], [], "no unmocked API calls");

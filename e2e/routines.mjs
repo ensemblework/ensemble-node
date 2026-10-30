@@ -117,6 +117,8 @@ try {
       if (path === "/api/devices") return json({ devices: [] });
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
       if (path === "/api/node/models") return json({ default: "gpt-5-mini", options: [] });
+      // The owner's own Ensemble settings: the run profile a node's sessions use, and Node's browsing rule.
+      if (path === "/api/settings") return json({ settings: { runProfiles: [], defaultRunProfileId: null, node: { askBeforeBrowsing: false } }, connectors: [] });
       if (/^\/api\/node\/nodes\/[^/]+\/memory$/.test(path)) return json({ memories: [] });
       if (/^\/api\/node\/rooms\/[^/]+\/read$/.test(path)) return json({});
       const messages = /^\/api\/node\/rooms\/([^/]+)\/messages$/.exec(path);

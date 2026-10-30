@@ -102,7 +102,7 @@ export function observedMissing(settings: RunSettings | null | undefined): boole
   return KEYS.every((key) => observed[key] === undefined || observed[key] === null || observed[key] === NOT_REPORTED);
 }
 
-// A session's state is Ensemble's (`working`, `waiting` on Needs me, `queued`, `idle`); older cards carry its run's status.
+// A session's state is Ensemble's (`working`, `waiting` for an answer, `queued`, `idle`); older cards carry its run's status.
 const STATUS: Record<string, { label: string; tone: "muted" | "accent" | "ok" | "warn" | "danger" }> = {
   working: { label: "Working", tone: "accent" },
   waiting: { label: "Needs you", tone: "warn" },

@@ -206,6 +206,8 @@ try {
     await view.getByRole("button", { name: "I'm done" }).click();
     await view.waitFor({ state: "detached" });
     assert.equal(state.ended, "done");
+    // Signed in, the card folds into its checkpoint; opened, it says how.
+    await card.getByRole("button", { name: "Signed in to bank.example.com" }).click();
     await card.getByText(/Signed in to https:\/\/bank\.example\.com on Studio from here, in its browser/).waitFor();
     if (shots) await page.screenshot({ path: `${shots}/takeover-done-${width}.png` });
 

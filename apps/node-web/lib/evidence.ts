@@ -1,8 +1,9 @@
 /**
  * Files a run attached as evidence (screenshots, videos, traces, reports, logs: `data.evidence` on a
  * run card) and media a node sends with a message (`data.media`), and how each shows. Only still
- * pictures in formats a browser cannot run show inline, and videos play in a player; everything
- * else, and every active format (HTML, SVG, XML, scripts, PDF), is a download, whatever its kind says.
+ * pictures in formats a browser cannot run show inline, and videos play in a player; text files
+ * (Markdown, plain text, logs, CSV, JSON) show a preview (lib/file-preview.ts); everything else, and
+ * every active format (HTML, SVG, XML, scripts, PDF), is a download, whatever its kind says.
  * A file kept on the computer (upload off there) or held for its owner's preview is listed, never
  * opened inline (Ensemble docs/35 §8.12, §8.16).
  */
@@ -110,6 +111,16 @@ export function mediaFrame(item: Pick<EvidenceItem, "width" | "height">, box: { 
   const height = positive(item.height);
   if (!width || !height) return null;
   return { aspectRatio: `${width} / ${height}`, maxWidth: Math.round(Math.min(box.maxWidth, (box.maxHeight * width) / height, width)) };
+}
+
+/** A picture this much taller than it is wide (a full-page capture) shows from its top, cropped, and scrolls when opened. */
+export const TALL_RATIO = 2.2;
+
+/** Whether a picture is a tall one: by what capture measured, or by the picture itself once it loaded. */
+export function isTall(size: { width?: number | null; height?: number | null }): boolean {
+  const width = positive(size.width);
+  const height = positive(size.height);
+  return Boolean(width && height && height / width >= TALL_RATIO);
 }
 
 /**

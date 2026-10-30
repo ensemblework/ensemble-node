@@ -6,8 +6,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Download, Ellipsis, Handshake, KanbanSquare, Lock, MessagesSquare, Pause, Pin, Search, Settings2, ShieldCheck, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { messageFiles } from "@/lib/attachments";
-import { dayKey, dayLabel, firstUnread, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
+import { dayKey, dayLabel, firstUnread, inTimeline, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
 import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, updateMessages, useBootstrap, useMessages, usePlan, useRoomRequests, useRoomSpace, useSend, useShareToRoom, type Author } from "@/lib/hooks";
+import { cardOpen } from "@/lib/checkpoints";
 import { clearJump, useJump } from "@/lib/jump";
 import { useLiveRoom } from "@/lib/live";
 import { isPeopleRoom, liveTabOf, sharedCopy, tabMarker, tabOf, tabUnreadOf, type RoomTab } from "@/lib/rooms";
@@ -153,8 +154,8 @@ export function RoomView({ roomId }: { roomId: string }) {
   }, [boot.data, room, client]);
 
   const all = messages.data ?? [];
-  // Cards of plan steps show inside their plan's card, not in the timeline; a room with other people shows one tab at a time.
-  const loaded = useMemo(() => all.filter((row) => !row.planId && (!isPeople || tabOf(row) === tab)), [all, isPeople, tab]);
+  // Run cards of plan steps show inside their plan's card, not in the timeline; a room with other people shows one tab at a time.
+  const loaded = useMemo(() => all.filter((row) => inTimeline(row) && (!isPeople || tabOf(row) === tab)), [all, isPeople, tab]);
   const inPlan = useMemo(() => {
     const byPlan = new Map<string, Message[]>();
     for (const row of all) if (row.planId) byPlan.set(row.planId, [...(byPlan.get(row.planId) ?? []), row]);
@@ -163,7 +164,7 @@ export function RoomView({ roomId }: { roomId: string }) {
   const list = filter === "mentions" ? loaded.filter((row) => mentionsMe(row, meId)) : loaded;
   const nodes = useMemo(() => nodesById(boot.data, room), [boot.data, room]);
   const whole = everything.data ?? all;
-  const timeline = useMemo(() => whole.filter((row) => !row.planId), [whole]);
+  const timeline = useMemo(() => whole.filter(inTimeline), [whole]);
   // Each session's newest card here (step runs inside plan cards too): it keeps the session's line once its run ended.
   const sessionCards = useMemo(() => newestSessionCards(whole), [whole]);
   // Each tab's unread as Ensemble counts it, and the newest message the shown tab has.
@@ -493,11 +494,12 @@ export function RoomView({ roomId }: { roomId: string }) {
   const suggest = (text: string) => send.mutate({ body: text, private: isPeople && tab === "crew", clientId: crypto.randomUUID() });
   const filterInfo = FILTERS.find((row) => row.id === filter)!;
 
+  // A checkpoint (a card that was answered) sits under the node's previous message like a reply of its own.
   const grouped = (message: Message, previous: Message | undefined) =>
     Boolean(
       previous &&
         previous.kind !== "status" &&
-        message.kind === "text" &&
+        (message.kind === "text" || (message.kind === "approval" && !cardOpen(message.data))) &&
         !message.data?.replyTo &&
         previous.authorKind === message.authorKind &&
         previous.authorNodeId === message.authorNodeId &&
@@ -773,12 +775,24 @@ export function RoomView({ roomId }: { roomId: string }) {
             ? liveHere.map((row) => {
                 const node = ctx.nodes.get(row.nodeId);
                 return (
-                  <div key={row.nodeId} className="mt-4 flex gap-3">
-                    <NodeAvatar node={node} size={32} thinking />
+                  <div key={row.nodeId} className="mt-4 flex gap-3" data-live-row={row.waiting ? "waiting" : "thinking"}>
+                    <NodeAvatar node={node} size={32} thinking={!row.waiting} />
                     <div className="min-w-0 flex-1">
                       <div className="mb-0.5 text-sm">
-                        <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="ml-1 text-xs text-muted">{row.text ? "Writing…" : "Thinking…"}</span>
+                        <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="ml-1 text-xs text-muted">{row.waiting ? "" : row.text ? "Writing…" : "Thinking…"}</span>
                       </div>
+                      {/* Its call waits for the owner's answer on a card: it goes on by itself once answered. */}
+                      {row.waiting ? (
+                        <p className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-warn" role="status">
+                          <span className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-pulse" aria-hidden />
+                          Waiting for your answer, then it goes on.
+                          {row.waiting.cardId ? (
+                            <button type="button" onClick={() => void jumpTo(row.waiting!.cardId!)} className="font-medium text-accent hover:underline">
+                              Go to the card
+                            </button>
+                          ) : null}
+                        </p>
+                      ) : null}
                       {row.tools.length ? (
                         <div className="mb-2 flex flex-wrap gap-1.5">
                           {row.tools.slice(-2).map((tool, at) => (
@@ -794,7 +808,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                         <div className="opacity-80">
                           <RichText text={row.text} handles={ctx.handles} refs={row.refs ?? []} showIds={row.showIds === true} streaming />
                         </div>
-                      ) : (
+                      ) : row.waiting ? null : (
                         <span className="inline-flex gap-1 py-2">
                           {[0, 1, 2].map((dot) => (
                             <span key={dot} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" style={{ animationDelay: `${dot * 150}ms` }} />

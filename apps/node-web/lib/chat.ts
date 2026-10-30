@@ -17,6 +17,13 @@ export function matchesAuthor(message: Pick<Message, "authorKind">, author: "all
   return true;
 }
 
+/**
+ * Whether a message shows in the conversation's timeline. A plan step's run card shows inside its plan's
+ * card instead; a question to its owner (an approval card) always shows in the chat, plan step or not,
+ * so it can be answered where the node is talking.
+ */
+export const inTimeline = (message: Pick<Message, "planId" | "kind">): boolean => !message.planId || message.kind === "approval";
+
 export function mentionsMe(message: Pick<Message, "mentions">, meId: string): boolean {
   return (message.mentions ?? []).some((row) => row.kind === "human" && row.id === meId);
 }

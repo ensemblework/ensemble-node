@@ -3,15 +3,49 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, Inbox, LogOut, Plug, Repeat, Search, ShieldQuestion, SquareTerminal } from "lucide-react";
+import { ChevronRight, Globe, Inbox, LogOut, Plug, Repeat, Search, SquareTerminal } from "lucide-react";
 import { api } from "@/lib/api";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { liveDevices } from "@/lib/ensemble";
-import { useBootstrap, useDevices } from "@/lib/hooks";
+import { useBootstrap, useDevices, useOwnerSettings, useSaveOwnerSettings } from "@/lib/hooks";
+import { askBeforeBrowsing } from "@/lib/owner-settings";
+import { toast, toastError } from "@/lib/toast";
 import { ComputerList, DeviceList, PairComputer } from "@/components/connect-computer";
 import { CreditsMeter } from "@/components/credits";
 import { PersonAvatar } from "@/components/node-avatar";
-import { Button, External, InfoTip, Spinner } from "@/components/ui";
+import { Button, External, InfoTip, Spinner, Switch } from "@/components/ui";
+
+/**
+ * Whether a node asks before it opens a website for the first time (Ensemble's `node.askBeforeBrowsing`,
+ * off by default): public pages open without asking, sign-ins always ask on their card.
+ */
+function BrowsingSetting() {
+  const settings = useOwnerSettings();
+  const save = useSaveOwnerSettings();
+  const value = askBeforeBrowsing(settings.data);
+  if (settings.isLoading) return <Spinner className="h-4 w-4 text-muted" />;
+  if (settings.error) return <p className="text-sm text-danger">{settings.error.message}</p>;
+  const change = (next: boolean) =>
+    save.mutate(
+      { node: { askBeforeBrowsing: next } },
+      {
+        onSuccess: (saved) => {
+          if (askBeforeBrowsing(saved) !== next) toastError(new Error("Ensemble did not keep this setting. Update Ensemble, then try again."));
+          else toast(next ? "Saved: your nodes ask before opening a new website." : "Saved: your nodes open public websites without asking.", "ok");
+        },
+        onError: toastError,
+      },
+    );
+  return (
+    <Switch
+      label="Ask before a node opens a new website"
+      hint={value === null ? "Your Ensemble does not offer this yet." : value ? "On: the first visit to each new website asks you in the chat, on a card." : "Off: your nodes open and read public websites without asking. Signing in to a site always asks."}
+      checked={value === true}
+      disabled={value === null || save.isPending}
+      onChange={change}
+    />
+  );
+}
 
 export default function SettingsPage() {
   const boot = useBootstrap();
@@ -33,7 +67,6 @@ export default function SettingsPage() {
   };
   const list = liveDevices(devices.data ?? []);
   const places: Array<[string, string, typeof Plug, string]> = [
-    ["/needs-me", "Needs me", ShieldQuestion, "What your nodes and agents ask you, the same list as in Ensemble"],
     ["/routines", "Routines", Repeat, "Work your nodes do on a schedule, on a change or when a webhook calls"],
     ["/sessions", "Sessions", SquareTerminal, "Your coding agents' sessions, and which node manages each"],
     ["/connections", "Connections", Plug, "The apps your nodes can read, the same as in Ensemble"],
@@ -97,6 +130,12 @@ export default function SettingsPage() {
             <DeviceList devices={list} />
           )}
           <PairComputer paired={list.length > 0 || computers.length > 0} />
+          <div className="rounded-2xl border border-line bg-panel p-5">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold">
+              <Globe size={16} className="text-accent" aria-hidden /> Browsing
+            </h3>
+            <BrowsingSetting />
+          </div>
         </section>
 
         <section className="space-y-2 rounded-2xl border border-line bg-panel p-5 text-sm">
@@ -108,7 +147,6 @@ export default function SettingsPage() {
                 ["Assistant and write policy", ENSEMBLE_LINKS.assistant],
                 ["Run profiles", ENSEMBLE_LINKS.runProfiles],
                 ["Models and API keys", ENSEMBLE_LINKS.models],
-                ["Needs me", ENSEMBLE_LINKS.needsMe],
                 ["Board", ENSEMBLE_LINKS.board],
               ] as const
             ).map(([label, href]) => (

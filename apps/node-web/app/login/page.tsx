@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Wordmark } from "@/components/brand";
 import { Turnstile } from "@/components/turnstile";
 import { Button, External, Field, Input, Notice } from "@/components/ui";
 import { api, oauthStartUrl } from "@/lib/api";
 import { ENSEMBLE_LINKS } from "@/lib/config";
-import { keys, useAuthStatus } from "@/lib/hooks";
+import { keys, useAuthStatus, useMe } from "@/lib/hooks";
+import { rememberNext, safeNext, takeNext } from "@/lib/next-path";
 
 const PROVIDER_LABEL: Record<string, string> = { google: "Google", microsoft: "Microsoft", github: "GitHub" };
 
@@ -44,6 +45,7 @@ function LoginForm() {
   const router = useRouter();
   const client = useQueryClient();
   const status = useAuthStatus();
+  const me = useMe();
   const [mode, setMode] = useState<"signin" | "signup">(params.get("mode") === "signup" ? "signup" : "signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -52,6 +54,16 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(params.get("error"));
   const [busy, setBusy] = useState(false);
   const onToken = useCallback((value: string | null) => setToken(value), []);
+  // Where to go once signed in: the page that sent here (a card's link on a phone), else the chats.
+  const next = safeNext(params.get("next"));
+  useEffect(() => {
+    if (next) rememberNext(next);
+  }, [next]);
+  // Already signed in (back from a provider, or a second tab): on to it. A form sent here goes on by itself.
+  const sent = useRef(false);
+  useEffect(() => {
+    if (me.data && !sent.current) router.replace(takeNext() ?? next ?? "/chat");
+  }, [me.data, next, router]);
   const siteKey = status.data?.turnstileSiteKey ?? null;
   const signupOpen = status.data ? status.data.signup !== "closed" && status.data.emailSignupAvailable : true;
 
@@ -59,11 +71,13 @@ function LoginForm() {
     event.preventDefault();
     setError(null);
     setBusy(true);
+    sent.current = true;
     try {
       if (mode === "signin") {
         await api("/api/auth/login", { body: { email, password } });
+        takeNext();
         await client.invalidateQueries({ queryKey: keys.me });
-        router.replace("/chat");
+        router.replace(next ?? "/chat");
       } else {
         if (siteKey && !token) throw new Error("Complete the check above first.");
         await api("/api/auth/signup", { body: { name, email, password, ...(token ? { turnstileToken: token } : {}) } });
@@ -71,6 +85,7 @@ function LoginForm() {
         router.replace("/welcome");
       }
     } catch (failure) {
+      sent.current = false;
       setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
       setBusy(false);

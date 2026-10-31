@@ -8,7 +8,7 @@ import { ENSEMBLE_APP } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, TOOL_LABEL } from "@/lib/text";
 import { formatEntityText, messageRefs, readableBody } from "@/lib/entity-text";
-import { loginBadge } from "@/lib/login";
+import { loginBadge, loginCommand } from "@/lib/login";
 import { mediaItems } from "@/lib/evidence";
 import { canShare, sharedLabel, type RoomTab } from "@/lib/rooms";
 import type { HelperThread } from "@/lib/threads";
@@ -23,8 +23,10 @@ import { Button, External, Textarea } from "../ui";
 import { EvidenceGallery } from "./evidence";
 import { MessageFiles } from "./file-chips";
 import { ComputerCard } from "./computer-card";
+import { DeviceCodeCard } from "./device-code-card";
 import { HeldCapturesCard } from "./held-captures";
 import { HelperThreadChip } from "./helper-thread";
+import { LiveCard } from "./live-card";
 import { CardCheckpoint, OwnerCard } from "./owner-card";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
@@ -185,6 +187,8 @@ function ApprovalBody({ message, ctx, node }: { message: Message; ctx: MessageCo
   if (message.data.type === "disclosure") return <DisclosureCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "node_proposal") return <NodeProposalCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "media_preview") return <HeldCapturesCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "device_code") return <DeviceCodeCard message={message} />;
+  if (message.data.type === "live") return <LiveCard message={message} handle={node?.slug ?? "node"} />;
   return <HeldCard message={message} ctx={ctx} node={node} />;
 }
 
@@ -201,8 +205,18 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
   const handedTo = handOver && typeof data.input?.to === "string" ? `@${data.input.to.replace(/^@/, "")}` : "The node";
   const pill = handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : data.type === "login" ? loginBadge(data) : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
   const error = settle.error?.message ?? (typeof data.error === "string" ? data.error : null);
+  // A command's sign-in names its command as code: "az login on Studio needs you to sign in to Microsoft".
+  const command = data.type === "login" ? loginCommand(data as { source?: string; command?: string }) : null;
+  const title = command && words.title.startsWith(command) ? (
+    <>
+      <code className="font-mono">{command}</code>
+      {words.title.slice(command.length)}
+    </>
+  ) : (
+    words.title
+  );
   return (
-    <OwnerCard title={words.title} state={pill}>
+    <OwnerCard title={title} state={pill}>
       {data.type === "secret" ? (
         <div className="space-y-3">
           <p className="text-sm">{message.body}</p>
@@ -679,6 +693,9 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
             </div>
           ) : deleted ? (
             <Deleted />
+          ) : message.data.type === "device_code" || message.data.type === "live" ? (
+            // Owner-only cards that ask nothing to approve: a device code, a live session.
+            <ApprovalCard message={message} ctx={ctx} node={node} />
           ) : message.data.type === "digest" ? (
             <DigestCard message={message} ctx={ctx} />
           ) : message.data.type === "room_result" ? (

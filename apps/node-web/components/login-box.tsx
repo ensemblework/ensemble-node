@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CircleSlash, Copy, KeyRound, Lock, LogIn, Monitor, MonitorSmartphone, QrCode as QrIcon, ShieldAlert, ShieldCheck, Smartphone } from "lucide-react";
+import { Check, CircleSlash, Copy, KeyRound, Lock, LogIn, Monitor, MonitorSmartphone, QrCode as QrIcon, ShieldAlert, ShieldCheck, Smartphone, SquareTerminal } from "lucide-react";
 import { api, messageById } from "@/lib/api";
 import { CLI_COMMAND } from "@/lib/config";
 import { keys, putMessage } from "@/lib/hooks";
@@ -13,13 +13,16 @@ import {
   codeAnswer,
   codeHintText,
   codeInputMode,
+  loginCommand,
   loginFingerprint,
   loginOpen,
   loginOutcomeText,
+  loginProvider,
   loginPurpose,
   loginReasonText,
   loginRouteText,
   loginSite,
+  remoteAsked,
   remoteDoneText,
   typedLoginAnswer,
   type LoginAnswer,
@@ -28,10 +31,11 @@ import {
 } from "@/lib/login";
 import { toast } from "@/lib/toast";
 import type { Message } from "@/lib/types";
+import { Countdown, useTimeLeft } from "./countdown";
 import { TakeoverView, type RemoteSettled } from "./takeover-view";
 import { Button, Spinner } from "./ui";
 
-const QrCode = dynamic(() => import("./qr-code"), { ssr: false, loading: () => <span className="block h-[168px] w-[168px] shrink-0 animate-pulse rounded-lg bg-raised" aria-hidden /> });
+const QrCode = dynamic(() => import("./qr-code"), { ssr: false, loading: () => <span className="block h-[200px] w-[200px] shrink-0 animate-pulse rounded-lg bg-raised" aria-hidden /> });
 
 type Answered = { message: Message; result: { status: string; message?: string } };
 
@@ -84,7 +88,18 @@ export function LoginBox({ message, nodeName, handle }: { message: Message; node
   });
   const computer = data.computer ?? "your computer";
   const site = loginSite(data.origin);
-  const link = typeof window === "undefined" ? "" : cardLink(window.location.origin, message.roomId, message.id);
+  const link = typeof window === "undefined" ? "" : cardLink(window.location.origin, message.id);
+  const command = loginCommand(data);
+  const left = useTimeLeft(data.expiresAt ?? null, open);
+  // Opened from the card's QR code (`/c/‹card›` → `?remote=1#m-‹card›`): its remote view opens at once, once.
+  useEffect(() => {
+    if (!open || !data.takeover || !remoteAsked(window.location.search, window.location.hash, message.id)) return;
+    const params = new URLSearchParams(window.location.search);
+    params.delete("remote");
+    const rest = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`);
+    setControlling(true);
+  }, [open, data.takeover, message.id]);
   // Once the card is settled, an open remote view says so and closes itself when it worked.
   const doneText = remoteDoneText(data, handle);
   const settledText = open ? null : (doneText ?? loginOutcomeText(data));
@@ -167,11 +182,22 @@ export function LoginBox({ message, nodeName, handle }: { message: Message; node
 
   return (
     <>
-      <div className="space-y-2.5" data-login-card={status} data-login-purpose={check ? "human_check" : "sign_in"}>
-        <p className="text-xs text-muted">
-          On {computer}
-          {reason ? ` · ${reason}` : ""}
-        </p>
+      <div className="space-y-2.5" data-login-card={status} data-login-purpose={check ? "human_check" : "sign_in"} data-login-source={command ? "cli" : "browser"}>
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+          <p className="text-xs text-muted">
+            On {computer}
+            {reason ? ` · ${reason}` : ""}
+          </p>
+          <Countdown left={left} what={check ? "to do the check" : "to sign in"} />
+        </div>
+        {command ? (
+          <p className="flex items-start gap-1.5 rounded-lg bg-bg/70 px-2.5 py-2 text-xs text-muted">
+            <SquareTerminal size={13} className="mt-0.5 shrink-0 text-accent" aria-hidden />
+            <span>
+              <code className="font-mono text-ink">{command}</code> opened {loginProvider(data.origin)}&apos;s sign-in page in the sign-in browser on {computer}. Sign in there{data.takeover ? ", here or on your phone" : ""}: the command gets the result on {computer} and carries on.
+            </span>
+          </p>
+        ) : null}
         {needsCode ? (
           <form
             className="space-y-2 rounded-xl border border-warn/40 bg-bg/70 p-3"
@@ -232,7 +258,7 @@ export function LoginBox({ message, nodeName, handle }: { message: Message; node
                 <div className="min-w-0 flex-1 basis-48 space-y-1.5">
                   <p className="text-sm font-medium">Scan it with your phone&apos;s camera</p>
                   <p className="text-xs text-muted">
-                    It opens this card on your phone (signed in to Ensemble Node). Tap {remoteLabel} there: the page comes from {computer}, and {nodeName} carries on by itself once you&apos;re through.
+                    It opens this card on your phone with the page from {computer} ready to {check ? "do the check" : "sign in"}; not signed in to Ensemble Node there yet, it asks first and comes back here. {nodeName} carries on by itself once you&apos;re through.
                   </p>
                   <p className="break-all font-mono text-[11px] text-muted">{link}</p>
                   <button

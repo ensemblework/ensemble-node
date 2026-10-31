@@ -22,6 +22,8 @@ test("without a known name, the type decides; with neither, it is a file", () =>
   assert.deepEqual(fileType({ mime: "application/pdf", name: "download" }), { family: "pdf", label: "PDF" });
   assert.deepEqual(fileType({ mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", name: "x" }), { family: "document", label: "Word document" });
   assert.deepEqual(fileType({ mime: "application/vnd.api+json", name: "x" }), { family: "data", label: "JSON" });
+  assert.deepEqual(fileType({ mime: "application/x-xz", name: "dump" }), { family: "archive", label: "XZ archive" });
+  assert.deepEqual(fileType({ mime: "application/java-archive", name: "tool.jar" }), { family: "archive", label: "Java archive" });
   assert.deepEqual(fileType({ mime: "audio/flac; rate=44100", name: "take" }), { family: "audio", label: "Audio" });
   assert.deepEqual(fileType({ mime: "text/plain", name: "notes.weird" }), { family: "text", label: "Text" });
   assert.deepEqual(fileType({ mime: "application/octet-stream", name: "blob.dat" }), { family: "other", label: "File" });

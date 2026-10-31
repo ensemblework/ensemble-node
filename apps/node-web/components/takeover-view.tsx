@@ -319,7 +319,9 @@ export function TakeoverView({
       setInfo(await current.extend());
       setExtend({ busy: false, supported: true, error: null });
     } catch (error) {
-      setExtend(unsupported(error) ? { busy: false, supported: false, error: "This Ensemble cannot add time yet: open it again when it ends." } : { busy: false, supported: false, error: error instanceof Error ? error.message : String(error) });
+      // A lost connection may be tried again; a missing route (an older Ensemble) or a refusal (its hour is up) hides the button.
+      const words = unsupported(error) ? "This Ensemble cannot add time yet: open it again when it ends." : error instanceof Error ? error.message : String(error);
+      setExtend({ busy: false, supported: retryable(error), error: words });
     }
   };
 

@@ -68,7 +68,11 @@ test("keys on the terminal: letters as they are, named keys and Ctrl+letters by 
   assert.deepEqual(terminalKey({ key: "F5" }), { t: "tty-key", key: "F5" });
   assert.deepEqual(terminalKey({ key: "c", ctrlKey: true }), { t: "tty-key", key: "Ctrl+C" });
   assert.deepEqual(terminalKey({ key: "[", ctrlKey: true }), { t: "tty-key", key: "Escape" });
-  assert.deepEqual(terminalKey({ key: "b", altKey: true }), { t: "tty", text: "\u001bb" });
+  assert.deepEqual(terminalKey({ key: "b", code: "KeyB", altKey: true }), { t: "tty", text: "\u001bb" });
+  assert.deepEqual(terminalKey({ key: "[", code: "Digit8", ctrlKey: true, altKey: true }), { t: "tty", text: "[" }, "AltGr+8 on a German keyboard (Windows: Ctrl and Alt)");
+  assert.deepEqual(terminalKey({ key: "@", code: "KeyQ", getModifierState: (name) => name === "AltGraph" }), { t: "tty", text: "@" }, "AltGr on Linux");
+  assert.deepEqual(terminalKey({ key: "@", code: "KeyL", altKey: true }), { t: "tty", text: "@" }, "Option+L on a German Mac");
+  assert.deepEqual(terminalKey({ key: "C", code: "KeyC", ctrlKey: true }), { t: "tty-key", key: "Ctrl+C" }, "with Shift too");
   assert.equal(terminalKey({ key: "v", metaKey: true }), null, "paste is the page's");
   assert.equal(terminalKey({ key: "Shift" }), null);
   assert.equal(terminalKey({ key: "a", isComposing: true }), null);

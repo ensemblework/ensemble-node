@@ -60,10 +60,12 @@ function LoginForm() {
     if (next) rememberNext(next);
   }, [next]);
   // Already signed in (back from a provider, or a second tab): on to it. A form sent here goes on by itself.
+  // Only when the latest check succeeded and none is under way: a session that just expired keeps its old answer beside the 401.
   const sent = useRef(false);
+  const signedIn = me.isSuccess && !me.isFetching;
   useEffect(() => {
-    if (me.data && !sent.current) router.replace(takeNext() ?? next ?? "/chat");
-  }, [me.data, next, router]);
+    if (signedIn && !sent.current) router.replace(takeNext() ?? next ?? "/chat");
+  }, [signedIn, next, router]);
   const siteKey = status.data?.turnstileSiteKey ?? null;
   const signupOpen = status.data ? status.data.signup !== "closed" && status.data.emailSignupAvailable : true;
 

@@ -163,12 +163,16 @@ const NAMED: Record<string, string> = {
   Delete: "Delete",
 };
 
-type KeyLike = { key: string; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean; isComposing?: boolean };
+type KeyLike = { key: string; code?: string; ctrlKey?: boolean; altKey?: boolean; metaKey?: boolean; isComposing?: boolean; getModifierState?: (key: string) => boolean };
+
+/** The character a key's position gives without modifiers, where every layout agrees: letters and digits. */
+const plainOf = (code: string | undefined): string | null => /^Key([A-Z])$/.exec(code ?? "")?.[1]!.toLowerCase() ?? /^Digit(\d)$/.exec(code ?? "")?.[1] ?? null;
 
 /**
  * A key pressed on the terminal, as the computer takes it: letters and symbols as they are, named keys
- * (Enter, arrows, F1–F12…) and Ctrl+A…Z by name, Alt+x as Esc then x. Keys this page keeps (⌘ shortcuts
- * such as copy and paste, a keyboard still composing) give null.
+ * (Enter, arrows, F1–F12…) and Ctrl+A…Z by name, Alt+x as Esc then x. A character made with AltGr
+ * (Windows reports Ctrl and Alt) or with Option on a Mac ("@" on a German keyboard) is typed as it is.
+ * Keys this page keeps (⌘ shortcuts such as copy and paste, a keyboard still composing) give null.
  */
 export function terminalKey(event: KeyLike): TerminalInput | null {
   const key = event.key;
@@ -176,13 +180,19 @@ export function terminalKey(event: KeyLike): TerminalInput | null {
   if (event.metaKey) return null;
   if (NAMED[key]) return { t: "tty-key", key: NAMED[key]! };
   if (/^F([1-9]|1[0-2])$/.test(key)) return { t: "tty-key", key };
+  const single = Array.from(key).length === 1;
+  const altGraph = Boolean(event.getModifierState?.("AltGraph")) || Boolean(event.ctrlKey && event.altKey);
+  if (single && altGraph) return { t: "tty", text: key };
   if (event.ctrlKey) {
     if (/^[a-z]$/i.test(key)) return { t: "tty-key", key: `Ctrl+${key.toUpperCase()}` };
     if (key === "[") return { t: "tty-key", key: "Escape" };
     return null;
   }
-  if (Array.from(key).length !== 1) return null;
-  return { t: "tty", text: event.altKey ? `\u001b${key}` : key };
+  if (!single) return null;
+  // Alt with the key's own character is Meta (Esc first, as terminals send it); Alt that made another character typed that one.
+  const plain = plainOf(event.code);
+  if (event.altKey && (plain === null || key.toLowerCase() === plain)) return { t: "tty", text: `\u001b${key}` };
+  return { t: "tty", text: key };
 }
 
 /** What the phone's box sends as it changes: a Backspace for each character that went, then the new text. */

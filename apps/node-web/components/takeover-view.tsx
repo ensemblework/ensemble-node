@@ -110,7 +110,8 @@ export function TakeoverView({
     const timer = setTimeout(() => void (async () => {
       if (control.signal.aborted) return;
       try {
-        await current.open(window.location.origin);
+        const info = await current.open(window.location.origin);
+        if (info.note) setNote(info.note);
       } catch (error) {
         if (!control.signal.aborted) setPhase({ kind: "error", text: error instanceof Error ? error.message : String(error) });
         return;

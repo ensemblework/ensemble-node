@@ -24,6 +24,8 @@ export type TakeoverInfo = {
   loginCardId: string | null;
   sealKey?: SealKeyInfo;
   reason?: string;
+  /** Why the computer shows its node's own tab, not the clean sign-in browser (it could not start there). */
+  note?: string;
 };
 
 export type InputEvent =
@@ -295,8 +297,8 @@ export class TakeoverSession {
     try {
       const box = await sealFor(created.takeover.sealKey, { purpose: "takeover", deviceId: created.takeover.computer.id, decisionId: created.takeover.id, name: created.takeover.tab, origin }, { k: channelBase64Url(secret) }, { ttlMs: 2 * 60_000 });
       this.keys = await takeoverKeys(secret, created.takeover.id);
-      const started = await this.api<{ takeover: TakeoverInfo }>(`/api/node/takeovers/${created.takeover.id}/start`, { body: { sealed: box.sealed }, headers: this.headers() });
-      this.info = { ...created.takeover, ...started.takeover, sealKey: created.takeover.sealKey };
+      const started = await this.api<{ takeover: TakeoverInfo; note?: string }>(`/api/node/takeovers/${created.takeover.id}/start`, { body: { sealed: box.sealed }, headers: this.headers() });
+      this.info = { ...created.takeover, ...started.takeover, sealKey: created.takeover.sealKey, ...(started.note ? { note: started.note } : {}) };
     } finally {
       secret.fill(0);
     }

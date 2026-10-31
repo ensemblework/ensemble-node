@@ -94,7 +94,7 @@ export default function Home() {
               />
               <div className="flex items-center justify-between gap-2 px-1">
                 <div className="flex min-w-0 items-center gap-2">
-                  <AttachButton attachments={attachments} hint={`${chosen.name} reads what you attach: the text of documents, and pictures when its model can see images.`} disabled={!me.verified} />
+                  <AttachButton attachments={attachments} hint={`${chosen.name} reads what you attach: the text of documents and code, and pictures when its model can see images. Ask it to save a file on your computer.`} disabled={!me.verified} />
                   <NodeAvatar node={chosen} size={26} thinking={busy.has(chosen.id)} />
                   <select aria-label="Chat with" value={chosen.id} onChange={event => setTarget(event.target.value)} className="min-w-0 max-w-[12rem] rounded-lg bg-panel py-1 pr-1 text-sm text-ink outline-none">{nodes.map(node => <option key={node.id} value={node.id}>{node.name}</option>)}</select>
                 </div>

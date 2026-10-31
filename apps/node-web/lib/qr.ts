@@ -333,3 +333,42 @@ export function qrPath(code: Pick<QrCode, "size" | "dark">, quiet = 4): string {
   }
   return parts.join("");
 }
+
+/** The quiet zone the standard asks for: four light modules on every side. */
+export const QR_QUIET = 4;
+
+/**
+ * How large a code is drawn so phones read it from a screen: a whole number of the screen's pixels per
+ * module (every module the same size, edges sharp), and at least `minCss` CSS pixels across, quiet
+ * zone included. `dpr` is the screen's device pixel ratio.
+ */
+export function qrScale(size: number, minCss: number, dpr: number): { modulePx: number; devicePx: number; cssSize: number } {
+  const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+  const side = size + QR_QUIET * 2;
+  const modulePx = Math.max(1, Math.ceil((minCss * ratio) / side));
+  return { modulePx, devicePx: side * modulePx, cssSize: (side * modulePx) / ratio };
+}
+
+/**
+ * The code as RGBA pixels, `modulePx` per module: dark modules black on white, with the quiet zone,
+ * whatever the page's theme (a phone's camera reads dark on light, not the reverse).
+ */
+export function qrPixels(code: Pick<QrCode, "size" | "dark">, modulePx: number): { width: number; data: Uint8ClampedArray<ArrayBuffer> } {
+  const width = (code.size + QR_QUIET * 2) * modulePx;
+  const data = new Uint8ClampedArray(new ArrayBuffer(width * width * 4)).fill(255);
+  for (let y = 0; y < code.size; y += 1) {
+    for (let x = 0; x < code.size; x += 1) {
+      if (!code.dark[y * code.size + x]) continue;
+      for (let dy = 0; dy < modulePx; dy += 1) {
+        const row = ((y + QR_QUIET) * modulePx + dy) * width;
+        for (let dx = 0; dx < modulePx; dx += 1) {
+          const at = (row + (x + QR_QUIET) * modulePx + dx) * 4;
+          data[at] = 0;
+          data[at + 1] = 0;
+          data[at + 2] = 0;
+        }
+      }
+    }
+  }
+  return { width, data };
+}

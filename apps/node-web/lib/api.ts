@@ -36,8 +36,29 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return data as T;
 }
 
-/** Downloads a file from Ensemble's API with the session cookie, and saves it in the browser. */
-export async function download(path: string, fallbackName: string): Promise<void> {
+/** A response's body as a blob, saying how much has come (0–100) when its size is known. */
+async function blobWithProgress(response: Response, onProgress: (percent: number) => void, expected?: number | null): Promise<Blob> {
+  const total = Number(response.headers.get("content-length")) || expected || 0;
+  const reader = response.body?.getReader();
+  if (!reader || !total) return response.blob();
+  const chunks: BlobPart[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value as Uint8Array<ArrayBuffer>);
+    received += value.length;
+    onProgress(Math.min(99, Math.floor((received * 100) / total)));
+  }
+  onProgress(100);
+  return new Blob(chunks, { type: response.headers.get("content-type") ?? "" });
+}
+
+/**
+ * Downloads a file from Ensemble's API with the session cookie, and saves it in the browser. With
+ * `onProgress`, a large file says how much has come (its `expected` size when the server does not say).
+ */
+export async function download(path: string, fallbackName: string, onProgress?: (percent: number) => void, expected?: number | null): Promise<void> {
   let response: Response;
   try {
     response = await fetch(`${ENSEMBLE_API}${path}`, { credentials: "include" });
@@ -49,7 +70,13 @@ export async function download(path: string, fallbackName: string): Promise<void
     throw new ApiError(response.status, data.error ?? `Something went wrong (${response.status}).`);
   }
   const name = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
-  const url = URL.createObjectURL(await response.blob());
+  let blob: Blob;
+  try {
+    blob = onProgress ? await blobWithProgress(response, onProgress, expected) : await response.blob();
+  } catch {
+    throw new ApiError(0, "The download stopped before the whole file came. Check your connection and try again.");
+  }
+  const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
   link.download = name;

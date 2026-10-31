@@ -61,3 +61,16 @@ export function workBoard(messages: readonly Message[], meId: string, ownerOf: (
   }
   return items.sort((a, b) => b.seq - a.seq).map(({ seq: _seq, ...item }) => item);
 }
+
+/**
+ * The Ensemble task a node's message is about (`data.task`: a task assigned to it, Ensemble docs/35),
+ * with its due day in words ("3 Nov"), or null. The message keeps the task as it was then, so it says
+ * nothing of its status, which may have changed since.
+ */
+export function messageTask(data: Record<string, unknown> | null | undefined, timeZone?: string): { id: string; title: string; due: string | null } | null {
+  const task = data?.task as { id?: unknown; title?: unknown; due?: unknown; dueAt?: unknown } | null | undefined;
+  if (!task || typeof task.id !== "string" || !task.id || typeof task.title !== "string" || !task.title.trim()) return null;
+  const raw = typeof task.due === "string" ? task.due : typeof task.dueAt === "string" ? task.dueAt : null;
+  const at = raw ? Date.parse(raw) : NaN;
+  return { id: task.id, title: task.title.trim(), due: Number.isFinite(at) ? new Intl.DateTimeFormat("en-GB", { timeZone, day: "numeric", month: "short" }).format(at) : null };
+}

@@ -7,6 +7,7 @@ import { isCancelled, uploadFile } from "@/lib/api";
 import {
   addAttachments,
   attachNotice,
+  attachProblem,
   canShowPicture,
   failUpload,
   fileAttachment,
@@ -98,7 +99,8 @@ export function useAttachments() {
       if (!file) return;
       const limit = await fileLimit(client);
       if (!current.current.some((row) => row.key === key && row.status === "uploading")) return;
-      if (limit && file.size > limit) return commit((list) => failUpload(list, key, `Files can be up to ${sizeLabel(limit)} here.`));
+      const problem = attachProblem(file, limit);
+      if (problem) return commit((list) => failUpload(list, key, problem, false));
       const upload = uploadFile(file, (percent) => commit((list) => setProgress(list, key, percent)));
       uploads.current.set(key, upload);
       try {

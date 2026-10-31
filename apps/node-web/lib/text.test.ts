@@ -61,3 +61,14 @@ test("Markdown links keep their label; rooms open here, Ensemble paths in Ensemb
   assert.deepEqual(linkTarget("/tasks/1", "https://app.example.test"), { href: "https://app.example.test/tasks/1", here: false });
   assert.deepEqual(linkTarget("https://x.dev", "https://app.example.test"), { href: "https://x.dev", here: false });
 });
+
+test("a record's ensemble:// link opens the record: in Ensemble, or a room here", () => {
+  const APP = "https://app.example.test";
+  assert.deepEqual(pieces("Took [Fix login](ensemble://task/t-1) on.", new Set()), [{ text: "Took " }, { text: "Fix login", link: "ensemble://task/t-1" }, { text: " on." }]);
+  assert.deepEqual(linkTarget("ensemble://task/t-1", APP), { href: `${APP}/tasks/t-1`, here: false });
+  assert.deepEqual(linkTarget("ensemble://tasks/t%201", APP), { href: `${APP}/tasks/t%201`, here: false });
+  assert.deepEqual(linkTarget("ensemble://room/r-2", APP), { href: "/r/r-2", here: true });
+  assert.deepEqual(linkTarget("ensemble://board/b-3", APP), { href: `${APP}/board?board=b-3`, here: false }, "a custom board");
+  assert.deepEqual(linkTarget("ensemble://spaceship/x", APP), { href: APP, here: false }, "an unknown kind opens Ensemble");
+  assert.deepEqual(pieces("[x](ensemble:alert(1))", new Set()), [{ text: "[x](ensemble:alert(1))" }], "only a record's address is a link");
+});

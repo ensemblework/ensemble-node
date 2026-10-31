@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, ClipboardPaste, CornerDownLeft, Delete, Eye, EyeOff, Lock, MonitorSmartphone, Square, WifiOff, X } from "lucide-react";
+import { Check, ClipboardPaste, CornerDownLeft, Delete, Eye, EyeOff, Hand, Lock, MonitorSmartphone, MousePointerClick, Plus, Square, SquareTerminal, WifiOff, X } from "lucide-react";
 import { api } from "@/lib/api";
-import { endedText, fitFrame, HOLD_MS, keyEvent, keyPress, pageLabel, pointOnFrame, reconnectDelay, retryable, TakeoverSession, TouchGesture, typingEvents, type InputEvent, type PageInfo, type TakeoverSource } from "@/lib/takeover";
+import { canExtend } from "@/lib/countdown";
+import { endedText, fitFrame, HOLD_MS, keyEvent, keyPress, pageLabel, pointOnFrame, reconnectDelay, retryable, takeoverControls, takeoverKind, TakeoverSession, TouchGesture, typingEvents, unsupported, type InputEvent, type NextFrame, type PageInfo, type TakeoverInfo, type TakeoverKind, type TakeoverSource } from "@/lib/takeover";
+import type { TerminalScreen } from "@/lib/terminal";
 import type { Message } from "@/lib/types";
+import { Countdown, useTimeLeft } from "./countdown";
+import { TerminalKeys, TerminalStage } from "./terminal-view";
 import { Button, Spinner } from "./ui";
 
 type Phase = { kind: "opening" } | { kind: "live" } | { kind: "reconnecting"; offline: boolean } | { kind: "ending" } | { kind: "ended"; text: string; done: boolean } | { kind: "error"; text: string };
@@ -37,18 +41,23 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 /**
  * The remote view: a page on the owner's computer, shown and controlled from this browser, on a phone
  * as on a laptop (lib/takeover.ts, Ensemble docs/35 §8.16.2). For a sign-in or a human check it is a
- * clean browser on the computer; for a run, the run's tab. The picture fits the width; a tap clicks, a
- * drag scrolls and a finger kept still presses and holds ("Press and hold" checks); the mouse, the wheel
- * and the keyboard work as usual. A box types into the page as you type, with Enter, Tab, Backspace,
- * Esc and Paste. The header names the site shown ("accounts.google.com — popup"). I'm done asks the
- * computer to check; Stop ends it. When the card it was opened for is settled the view says so and
- * closes itself; a lost connection is tried again. Everything is encrypted between this page and the
- * computer; while it lasts, no node or model sees the page.
+ * clean browser on the computer; for a run, the run's tab; for a live card, the node's terminal or
+ * browser, live (the node keeps using it). The picture fits the width; a tap clicks, a drag scrolls and
+ * a finger kept still presses and holds ("Press and hold" checks); the mouse, the wheel and the keyboard
+ * work as usual. A box types into the page as you type, each key at once, with Enter, Tab, Backspace,
+ * Esc and Paste. The header names the site shown ("accounts.google.com — popup") and the time left,
+ * with "+15 min" in its last five minutes. A live browser starts watched: Take control to click and
+ * type (the node waits on that tab), Hand back to let it go on. A terminal shows its screen and types
+ * into the shell. I'm done asks the computer to check a sign-in; Stop ends it. When the card it was
+ * opened for is settled the view says so and closes itself; a lost connection is tried again.
+ * Everything is encrypted between this page and the computer; while a sign-in lasts, no node or model
+ * sees the page.
  */
 export function TakeoverView({
   source,
   site,
   computer,
+  kind: expected = "browser",
   settled = null,
   onEnded,
   onClose,
@@ -56,6 +65,8 @@ export function TakeoverView({
   source: TakeoverSource;
   site: string;
   computer: string;
+  /** What a live card says it shows, until the computer says. */
+  kind?: TakeoverKind;
   settled?: RemoteSettled | null;
   /** The takeover ended without this page ending it (the computer finished it, its time ran out): the card may have changed. */
   onEnded?: (reason: string) => void;
@@ -68,25 +79,43 @@ export function TakeoverView({
   const size = useRef({ width: 0, height: 0 });
   const touch = useRef<{ id: number; gesture: TouchGesture; timer: ReturnType<typeof setTimeout> | null } | null>(null);
   const typedRef = useRef("");
+  const box = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "opening" });
   const [page, setPage] = useState<PageInfo | null>(null);
   const [frame, setFrame] = useState<{ width: number; height: number } | null>(null);
   const [room, setRoom] = useState<{ width: number; height: number } | null>(null);
-  const [typed, setTyped] = useState("");
   const [hidden, setHidden] = useState(false);
   const [holding, setHolding] = useState<{ x: number; y: number } | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [coarse, setCoarse] = useState(false);
   const [viewport, setViewport] = useState<{ top: number; height: number } | null>(null);
+  const [info, setInfo] = useState<TakeoverInfo | null>(null);
+  const [screen, setScreen] = useState<TerminalScreen | null>(null);
+  const [pending, setPending] = useState(0);
+  const [extend, setExtend] = useState<{ busy: boolean; supported: boolean; error: string | null }>({ busy: false, supported: true, error: null });
+  const [switching, setSwitching] = useState(false);
+  /** Keys typed on the picture itself, shown at once while the page catches up. */
+  const [echo, setEcho] = useState("");
 
-  const send = useCallback((events: InputEvent[]) => session.current?.send(events), []);
+  const live = "liveCardId" in source;
+  const kind = takeoverKind(info, expected);
+  const terminal = kind === "terminal";
+  // A live browser starts watched (until the computer says otherwise); a terminal is the owner's shell, so it always types.
+  const controls = terminal || (live ? info !== null && takeoverControls(info) : takeoverControls(info));
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
+  const send = useCallback((events: InputEvent[]) => {
+    if (controlsRef.current) session.current?.send(events);
+  }, []);
   const press = useCallback((key: string) => send(keyPress(key)), [send]);
-  const opened = useRef({ source, computer, onEnded });
+  const opened = useRef({ source, computer, onEnded, kind: expected });
   opened.current.onEnded = onEnded;
+  const left = useTimeLeft(info?.endsAt ?? null, Boolean(info?.endsAt));
 
+  // The box is the browser's own (not redrawn by React on each key), so what is typed shows at once.
   const clearTyped = () => {
     typedRef.current = "";
-    setTyped("");
+    if (box.current) box.current.value = "";
   };
 
   /** A finger still down lets the mouse go: before the view ends, so the computer gets it. */
@@ -106,12 +135,29 @@ export function TakeoverView({
     const current = new TakeoverSession(api, opened.current.source);
     const name = opened.current.computer;
     session.current = current;
+    // Only whether something is still on its way: the view does not draw again for every key.
+    current.onPending = (count) => setPending(count > 0 ? 1 : 0);
+    /** One frames request, cut off when the view closes or it takes far longer than the server waits. */
+    const fetchNext = (): Promise<{ next: NextFrame } | { error: unknown }> => {
+      const request = new AbortController();
+      const cut = () => request.abort();
+      control.signal.addEventListener("abort", cut);
+      const slow = setTimeout(cut, FRAMES_TIMEOUT_MS);
+      return current.next(request.signal).then(
+        (next) => ({ next }),
+        (error: unknown) => ({ error }),
+      ).finally(() => {
+        clearTimeout(slow);
+        control.signal.removeEventListener("abort", cut);
+      });
+    };
     // Opened on the next tick, so a mount React undoes at once never opens one.
     const timer = setTimeout(() => void (async () => {
       if (control.signal.aborted) return;
       try {
-        const info = await current.open(window.location.origin);
-        if (info.note) setNote(info.note);
+        const started = await current.open(window.location.origin);
+        setInfo(started);
+        if (started.note) setNote(started.note);
       } catch (error) {
         if (!control.signal.aborted) setPhase({ kind: "error", text: error instanceof Error ? error.message : String(error) });
         return;
@@ -121,18 +167,16 @@ export function TakeoverView({
         return;
       }
       setPhase((now) => (now.kind === "opening" ? { kind: "live" } : now));
-      canvas.current?.focus({ preventScroll: true });
+      // Keys go to the picture or the terminal straight away, once it shows.
+      const startedKind = takeoverKind(current.info, opened.current.kind);
+      setTimeout(() => (startedKind === "terminal" ? stage.current?.querySelector<HTMLElement>("[data-terminal-screen]") : canvas.current)?.focus({ preventScroll: true }), 50);
       let attempt = 0;
+      let ahead = fetchNext();
       while (!control.signal.aborted) {
-        const request = new AbortController();
-        const cut = () => request.abort();
-        control.signal.addEventListener("abort", cut);
-        const slow = setTimeout(cut, FRAMES_TIMEOUT_MS);
-        let next: Awaited<ReturnType<TakeoverSession["next"]>>;
-        try {
-          next = await current.next(request.signal);
-        } catch (error) {
-          if (control.signal.aborted) return;
+        const answer = await ahead;
+        if (control.signal.aborted) return;
+        if ("error" in answer) {
+          const error = answer.error;
           if (!retryable(error) || attempt >= MAX_RECONNECTS) {
             setPhase({ kind: "error", text: retryable(error) ? "The connection to your computer was lost. Open it again." : error instanceof Error ? error.message : String(error) });
             return;
@@ -140,11 +184,10 @@ export function TakeoverView({
           setPhase((now) => (now.kind === "live" || now.kind === "reconnecting" ? { kind: "reconnecting", offline: typeof navigator !== "undefined" && navigator.onLine === false } : now));
           await pause(reconnectDelay(attempt), control.signal);
           attempt += 1;
+          ahead = fetchNext();
           continue;
-        } finally {
-          clearTimeout(slow);
-          control.signal.removeEventListener("abort", cut);
         }
+        const next = answer.next;
         if (attempt) {
           attempt = 0;
           setPhase((now) => (now.kind === "reconnecting" ? { kind: "live" } : now));
@@ -155,7 +198,17 @@ export function TakeoverView({
           opened.current.onEnded?.(reason);
           return;
         }
-        if (next.page) setPage(next.page);
+        // Asked for the next frame at once, while this one is drawn: the line to the computer is never idle.
+        ahead = fetchNext();
+        if (next.terminal) {
+          setScreen(next.terminal);
+          setEcho("");
+          continue;
+        }
+        if (next.page) {
+          const shownPage = next.page;
+          setPage((now) => (now && now.url === shownPage.url && now.title === shownPage.title && now.popup === shownPage.popup ? now : shownPage));
+        }
         const shown = next.frame;
         if (!shown || !canvas.current) continue;
         let bitmap: ImageBitmap;
@@ -172,6 +225,7 @@ export function TakeoverView({
         }
         target.getContext("2d")?.drawImage(bitmap, 0, 0);
         bitmap.close();
+        setEcho("");
         // The page's size for pointer and scroll mapping; the picture's own for its shape on screen.
         size.current = { width: shown.width || target.width, height: shown.height || target.height };
         const drawn = { width: target.width, height: target.height };
@@ -181,6 +235,7 @@ export function TakeoverView({
     return () => {
       clearTimeout(timer);
       control.abort();
+      current.onPending = null;
       releaseRef.current(current);
       // Leaving the view stops it: nobody controls the page from a view that is gone.
       if (session.current === current && current.info) void current.end(false).catch(() => undefined);
@@ -255,6 +310,39 @@ export function TakeoverView({
     }
   };
 
+  /** "+15 min": more time from the server; an older one has no such route, so the button goes. */
+  const addTime = async () => {
+    const current = session.current;
+    if (!current?.info) return;
+    setExtend((now) => ({ ...now, busy: true, error: null }));
+    try {
+      setInfo(await current.extend());
+      setExtend({ busy: false, supported: true, error: null });
+    } catch (error) {
+      // A lost connection may be tried again; a missing route (an older Ensemble) or a refusal (its hour is up) hides the button.
+      const words = unsupported(error) ? "This Ensemble cannot add time yet: open it again when it ends." : error instanceof Error ? error.message : String(error);
+      setExtend({ busy: false, supported: retryable(error), error: words });
+    }
+  };
+
+  /** Take control of a live browser, or hand it back to the node. */
+  const setControl = async (on: boolean) => {
+    const current = session.current;
+    if (!current?.info) return;
+    setSwitching(true);
+    setNote(null);
+    try {
+      if (!on) releaseHold(current);
+      setInfo(await current.control(on));
+      if (on) canvas.current?.focus({ preventScroll: true });
+      else clearTyped();
+    } catch (error) {
+      setNote(unsupported(error) ? "This Ensemble cannot hand over control of a live browser yet." : error instanceof Error ? error.message : String(error));
+    } finally {
+      setSwitching(false);
+    }
+  };
+
   const at = (event: { clientX: number; clientY: number }) => (canvas.current ? pointOnFrame(event.clientX, event.clientY, canvas.current.getBoundingClientRect(), size.current) : null);
   const onStage = (event: { clientX: number; clientY: number }) => {
     const box = stage.current?.getBoundingClientRect();
@@ -271,27 +359,42 @@ export function TakeoverView({
     }
   };
 
-  const live = phase.kind === "live" || phase.kind === "reconnecting";
+  const active = phase.kind === "live" || phase.kind === "reconnecting";
+  const typing = active && controls;
   const shown = phase.kind === "live" || phase.kind === "reconnecting" || phase.kind === "ending";
   const fitted = frame && room ? fitFrame(frame, room) : null;
-  const label = pageLabel(page) ?? site;
+  const label = terminal ? `Live terminal on ${computer}` : (pageLabel(page) ?? site);
+  const subtitle = terminal ? [screen?.title, `on ${computer}`] : [page?.title, `on ${computer}`];
+  const watching = live && !terminal && !controls;
   const view = (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={`Remote view: ${site} on ${computer}`}
+      aria-label={terminal ? `Live terminal on ${computer}` : `${live ? "Live browser" : "Remote view"}: ${site} on ${computer}`}
       className="fixed inset-x-0 top-0 z-50 flex h-[100dvh] flex-col bg-bg"
       style={viewport ? { top: viewport.top, height: viewport.height } : undefined}
       data-takeover={phase.kind}
+      data-takeover-kind={kind}
+      data-takeover-mode={controls ? "control" : "watch"}
     >
       <header className="flex items-center gap-2 border-b border-line px-3 py-2">
-        <MonitorSmartphone size={16} className="shrink-0 text-accent" aria-hidden />
+        {terminal ? <SquareTerminal size={16} className="shrink-0 text-accent" aria-hidden /> : <MonitorSmartphone size={16} className="shrink-0 text-accent" aria-hidden />}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" data-remote-site>
             {label}
           </p>
-          <p className="truncate text-xs text-muted">{[page?.title, `on ${computer}`].filter(Boolean).join(" · ")}</p>
+          <p className="truncate text-xs text-muted">{subtitle.filter(Boolean).join(" · ")}</p>
         </div>
+        {active && left !== null ? (
+          <span className="flex shrink-0 items-center gap-1.5">
+            <Countdown left={left} what="in this view" />
+            {canExtend(left, extend.supported) ? (
+              <Button size="sm" tone="ghost" busy={extend.busy} onClick={() => void addTime()} title="Keep it open 15 minutes more">
+                <Plus size={13} /> 15 min
+              </Button>
+            ) : null}
+          </span>
+        ) : null}
         <Button size="sm" tone="quiet" aria-label="Close" onClick={() => void finish(false)} disabled={phase.kind === "ending"}>
           <X size={16} />
         </Button>
@@ -299,19 +402,25 @@ export function TakeoverView({
       <div ref={stage} className="relative flex min-h-0 flex-1 items-start justify-center overflow-hidden">
         {phase.kind === "opening" ? (
           <p className="mt-16 flex items-center gap-2 px-4 text-sm text-muted">
-            <Spinner className="h-4 w-4" /> Opening {site} on {computer}…
+            <Spinner className="h-4 w-4" /> Opening {terminal ? "the terminal" : site} on {computer}…
           </p>
+        ) : null}
+        {terminal && shown ? <TerminalStage screen={screen} computer={computer} onInput={send} dimmed={phase.kind === "reconnecting"} /> : null}
+        {echo && !terminal && shown ? (
+          <span className="pointer-events-none absolute bottom-2 left-1/2 max-w-[90%] -translate-x-1/2 truncate rounded-full border border-line bg-panel/90 px-3 py-1 font-mono text-xs text-ink shadow" data-remote-echo aria-hidden>
+            {hidden ? "•".repeat(Math.min(echo.length, 24)) : echo.slice(-32)}
+          </span>
         ) : null}
         <canvas
           ref={canvas}
           tabIndex={0}
           aria-label={`The page on ${computer}. Click, type and scroll here.`}
-          className={`block touch-none select-none bg-panel outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 ${shown ? "" : "hidden"} ${phase.kind === "reconnecting" ? "opacity-60" : ""}`}
+          className={`block touch-none select-none bg-panel outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60 ${shown && !terminal ? "" : "hidden"} ${phase.kind === "reconnecting" ? "opacity-60" : ""} ${watching ? "cursor-default" : ""}`}
           style={{ width: fitted ? `${fitted.width}px` : "100%", height: fitted ? `${fitted.height}px` : "auto", WebkitTouchCallout: "none", WebkitUserSelect: "none" }}
           onContextMenu={(event) => event.preventDefault()}
           onPointerDown={(event) => {
             const point = at(event);
-            if (!point || !live) return;
+            if (!point || !typing) return;
             if (event.pointerType === "touch") {
               if (touch.current) return;
               const box = event.currentTarget.getBoundingClientRect();
@@ -373,12 +482,16 @@ export function TakeoverView({
             setHolding(null);
           }}
           onKeyDown={(event) => {
+            if (!typing) return;
             const key = keyEvent("down", event.nativeEvent);
             if (!key) return;
             event.preventDefault();
             send([key]);
+            if (key.t === "key" && key.key.length === 1 && !event.ctrlKey && !event.metaKey) setEcho((now) => (now + key.key).slice(-64));
+            else if (key.t === "key" && key.key === "Backspace") setEcho((now) => now.slice(0, -1));
           }}
           onKeyUp={(event) => {
+            if (!typing) return;
             const key = keyEvent("up", event.nativeEvent);
             if (!key) return;
             event.preventDefault();
@@ -412,79 +525,122 @@ export function TakeoverView({
         ) : null}
       </div>
       <footer className="space-y-2 border-t border-line px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2">
-        <p className="text-[11px] text-muted">
-          {holding ? "Holding: lift your finger to let go." : coarse ? "Tap to click · drag to scroll · keep your finger down to press and hold" : "Click, scroll and type on the page, or type in the box."}
-        </p>
-        <div className="flex items-center gap-2">
-          <input
-            value={typed}
-            type={hidden ? "password" : "text"}
-            onChange={(event) => {
-              const next = event.target.value;
-              send(typingEvents(typedRef.current, next));
-              typedRef.current = next;
-              setTyped(next);
-            }}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
-              if (event.key === "Enter" || event.key === "Tab") {
-                event.preventDefault();
-                press(event.key);
-                clearTyped();
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                press("Escape");
-              } else if (event.key === "Backspace" && !typedRef.current) {
-                press("Backspace");
-              }
-            }}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            enterKeyHint="go"
-            data-1p-ignore
-            data-lpignore="true"
-            aria-label="Type into the page"
-            placeholder="Type here: it goes into the page"
-            disabled={!live}
-            className="min-w-0 flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent sm:text-sm"
+        <p className="flex items-center gap-1.5 text-[11px] text-muted">
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${pending > 0 ? "bg-accent motion-safe:animate-pulse" : "bg-ok"}`}
+            title={pending > 0 ? "Sending what you typed…" : "Everything you typed has gone"}
+            data-remote-sent={pending > 0 ? "sending" : "sent"}
+            aria-hidden
           />
-          <Button size="sm" tone="ghost" aria-label={hidden ? "Show what you type" : "Hide what you type"} title={hidden ? "Show what you type" : "Hide what you type (for passwords)"} aria-pressed={hidden} onClick={() => setHidden(!hidden)}>
-            {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-          </Button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Keys">
-            <Button size="sm" tone="ghost" disabled={!live} aria-label="Enter key" title="Enter" onClick={() => press("Enter")}>
-              <CornerDownLeft size={14} /> Enter
-            </Button>
-            <Button size="sm" tone="ghost" disabled={!live} aria-label="Tab key" onClick={() => press("Tab")}>
-              Tab
-            </Button>
-            <Button size="sm" tone="ghost" disabled={!live} aria-label="Backspace key" title="Backspace" onClick={() => press("Backspace")}>
-              <Delete size={14} />
-            </Button>
-            <Button size="sm" tone="ghost" disabled={!live} aria-label="Escape key" onClick={() => press("Escape")}>
-              Esc
-            </Button>
-            <Button size="sm" tone="ghost" disabled={!live} onClick={() => void paste()}>
-              <ClipboardPaste size={14} /> Paste
+          <span className="min-w-0">
+            {watching
+              ? "Watching live. Take control to click and type."
+              : terminal
+                ? "Type on the terminal, or in the box. It goes to the shell as you type."
+                : holding
+                  ? "Holding: lift your finger to let go."
+                  : coarse
+                    ? "Tap to click · drag to scroll · keep your finger down to press and hold"
+                    : "Click, scroll and type on the page, or type in the box."}
+          </span>
+        </p>
+        {terminal ? <TerminalKeys onInput={send} disabled={!active} stage={stage} /> : watching ? null : (
+          <div className="flex items-center gap-2">
+            <input
+              ref={box}
+              defaultValue=""
+              type={hidden ? "password" : "text"}
+              onChange={(event) => {
+                const next = event.target.value;
+                send(typingEvents(typedRef.current, next));
+                typedRef.current = next;
+              }}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
+                if (event.key === "Enter" || event.key === "Tab") {
+                  event.preventDefault();
+                  press(event.key);
+                  clearTyped();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  press("Escape");
+                } else if (event.key === "Backspace" && !typedRef.current) {
+                  press("Backspace");
+                }
+              }}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              enterKeyHint="go"
+              data-1p-ignore
+              data-lpignore="true"
+              aria-label="Type into the page"
+              placeholder="Type here: it goes into the page"
+              disabled={!typing}
+              className="min-w-0 flex-1 rounded-lg border border-line bg-panel px-3 py-2 text-base outline-none focus:border-accent sm:text-sm"
+            />
+            <Button size="sm" tone="ghost" aria-label={hidden ? "Show what you type" : "Hide what you type"} title={hidden ? "Show what you type" : "Hide what you type (for passwords)"} aria-pressed={hidden} onClick={() => setHidden(!hidden)}>
+              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
             </Button>
           </div>
-          <span className="ml-auto flex items-center gap-2">
-            <Button size="sm" tone="ghost" disabled={phase.kind === "ending" || phase.kind === "opening"} busy={phase.kind === "ending"} onClick={() => void finish(false)}>
-              <Square size={13} /> Stop
-            </Button>
-            <Button size="sm" disabled={!live} busy={phase.kind === "ending"} onClick={() => void finish(true)}>
-              <Check size={14} /> I&apos;m done
-            </Button>
+        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {terminal || watching ? null : (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Keys">
+              <Button size="sm" tone="ghost" disabled={!typing} aria-label="Enter key" title="Enter" onClick={() => press("Enter")}>
+                <CornerDownLeft size={14} /> Enter
+              </Button>
+              <Button size="sm" tone="ghost" disabled={!typing} aria-label="Tab key" onClick={() => press("Tab")}>
+                Tab
+              </Button>
+              <Button size="sm" tone="ghost" disabled={!typing} aria-label="Backspace key" title="Backspace" onClick={() => press("Backspace")}>
+                <Delete size={14} />
+              </Button>
+              <Button size="sm" tone="ghost" disabled={!typing} aria-label="Escape key" onClick={() => press("Escape")}>
+                Esc
+              </Button>
+              <Button size="sm" tone="ghost" disabled={!typing} onClick={() => void paste()}>
+                <ClipboardPaste size={14} /> Paste
+              </Button>
+            </div>
+          )}
+          <span className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            {live && !terminal ? (
+              controls ? (
+                <Button size="sm" tone="ghost" busy={switching} disabled={!active} onClick={() => void setControl(false)}>
+                  <Hand size={13} /> Hand back
+                </Button>
+              ) : (
+                <Button size="sm" busy={switching} disabled={!active} onClick={() => void setControl(true)}>
+                  <MousePointerClick size={14} /> Take control
+                </Button>
+              )
+            ) : null}
+            {live ? (
+              <Button size="sm" tone="ghost" disabled={phase.kind === "ending" || phase.kind === "opening"} busy={phase.kind === "ending"} onClick={() => void finish(false)}>
+                <X size={13} /> Close
+              </Button>
+            ) : (
+              <>
+                <Button size="sm" tone="ghost" disabled={phase.kind === "ending" || phase.kind === "opening"} busy={phase.kind === "ending"} onClick={() => void finish(false)}>
+                  <Square size={13} /> Stop
+                </Button>
+                <Button size="sm" disabled={!active} busy={phase.kind === "ending"} onClick={() => void finish(true)}>
+                  <Check size={14} /> I&apos;m done
+                </Button>
+              </>
+            )}
           </span>
         </div>
+        {extend.error ? <p className="text-xs text-muted">{extend.error}</p> : null}
         {note ? <p className="text-xs text-warn">{note}</p> : null}
         <p className="flex items-start gap-1.5 text-[11px] text-muted">
           <Lock size={12} className="mt-0.5 shrink-0 text-ok" aria-hidden />
-          <span>Encrypted between this browser and {computer}: Ensemble&apos;s server passes it on without being able to see or change it. Nodes and models see nothing of this page while you use it.</span>
+          <span>
+            Encrypted between this browser and {computer}: Ensemble&apos;s server passes it on without being able to see or change it.
+            {live ? (terminal ? " The node keeps using this terminal too." : controls ? " The node waits on this tab until you hand it back." : " The node keeps working while you watch.") : " Nodes and models see nothing of this page while you use it."}
+          </span>
         </p>
       </footer>
     </div>

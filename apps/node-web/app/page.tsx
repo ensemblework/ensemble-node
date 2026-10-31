@@ -9,6 +9,7 @@ import { NodeAvatar } from "@/components/node-avatar";
 import { External } from "@/components/ui";
 import { useMe } from "@/lib/hooks";
 import { ENSEMBLE_LINKS } from "@/lib/config";
+import { takeNext } from "@/lib/next-path";
 import type { Avatar } from "@/lib/types";
 
 const CAST: Array<{ avatar: Avatar; name: string; x: string; y: string; size: number; delay: string }> = [
@@ -30,7 +31,8 @@ export default function Landing() {
   const me = useMe();
   const router = useRouter();
   useEffect(() => {
-    if (me.data) router.replace("/chat");
+    // Back from a provider's sign-in: to the page that asked for it (a card's link), else the chats.
+    if (me.data) router.replace(takeNext() ?? "/chat");
   }, [me.data, router]);
 
   return (

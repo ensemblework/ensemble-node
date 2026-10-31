@@ -138,6 +138,7 @@ test("a message with only files previews as its files", () => {
   assert.equal(messagePreview({ authorKind: "human", body: "", data: { files: [file], deleted: true } }), "Message deleted");
   const media = [{ evidenceId: "e1", kind: "video", name: "demo.mp4", mime: "video/mp4" }, { evidenceId: "e2", kind: "screenshot", name: "a.png", mime: "image/png" }];
   assert.equal(messagePreview({ authorKind: "node", body: "", data: { media } }), "📎 1 picture, 1 video", "a node's media without words");
+  assert.equal(messagePreview({ authorKind: "node", body: "", data: { media: [{ evidenceId: "z", kind: "file", name: "site.zip", mime: "application/zip" }] } }), "📎 site.zip", "one file by its name");
   assert.equal(messagePreview({ authorKind: "human", body: "", data: { media } }), "", "only a node's message carries media");
 });
 

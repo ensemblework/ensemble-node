@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createDecipheriv, createHash, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync } from "node:crypto";
 import test from "node:test";
-import { cardLink, cleanCode, codeAnswer, codeHintText, codeInputMode, loginBadge, loginFingerprint, loginOpen, loginOutcomeText, loginPurpose, loginReasonText, loginRouteText, loginTitle, remoteDoneText, typedLoginAnswer, waitingLoginCard, type LoginTarget } from "./login";
+import { cardLink, cardPage, cleanCode, loginCommand, loginProvider, remoteAsked, codeAnswer, codeHintText, codeInputMode, loginBadge, loginFingerprint, loginOpen, loginOutcomeText, loginPurpose, loginReasonText, loginRouteText, loginTitle, remoteDoneText, typedLoginAnswer, waitingLoginCard, type LoginTarget } from "./login";
 import type { Message } from "./types";
 
 function computerKey() {
@@ -97,7 +97,12 @@ test("a sign-in and a human check say what they ask, and which statuses wait for
   assert.equal(remoteDoneText({ status: "signed_in" }, "lead"), "Signed in — @lead is carrying on");
   assert.equal(remoteDoneText({ status: "passed", purpose: "human_check" }, "lead"), "Check passed — @lead is carrying on");
   assert.equal(remoteDoneText({ status: "pending" }, "lead"), null);
-  assert.equal(cardLink("https://node.ensemblework.com/", "5e1f2a3b", "c-login"), "https://node.ensemblework.com/r/5e1f2a3b#m-c-login");
+  assert.equal(cardLink("https://node.ensemblework.com/", "c-login"), "https://node.ensemblework.com/c/c-login", "short, for a QR code");
+  assert.equal(cardPage("5e1f2a3b", "c-login", true), "/r/5e1f2a3b?remote=1#m-c-login");
+  assert.equal(cardPage("5e1f2a3b", "c-login"), "/r/5e1f2a3b#m-c-login");
+  assert.equal(remoteAsked("?remote=1", "#m-c-login", "c-login"), true);
+  assert.equal(remoteAsked("?remote=1", "#m-other", "c-login"), false, "another card's");
+  assert.equal(remoteAsked("", "#m-c-login", "c-login"), false);
 });
 
 test("settled cards say how they ended, for a human check too", () => {
@@ -124,4 +129,21 @@ test("a code the site asks for is sealed for the computer like a typed login, wi
   assert.equal(codeHintText({ origin: "https://github.com" }), null, "an older computer says nothing more");
   assert.equal(codeInputMode({ codeHint: "Enter the 6-digit code" }), "numeric");
   assert.equal(codeInputMode({ codeHint: "Enter the code we emailed you" }), "text");
+});
+
+test("a command's sign-in names the command and who runs the site, on the card and once settled", () => {
+  const data = { source: "cli", command: "az login", computer: "Studio", origin: "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize?client_id=x" };
+  assert.equal(loginCommand(data), "az login");
+  assert.equal(loginCommand({ source: "cli" }), "a command");
+  assert.equal(loginCommand({ command: "az login" }), null, "a node's own browser");
+  assert.equal(loginTitle(data, "lead"), "az login on Studio needs you to sign in to Microsoft");
+  assert.equal(loginProvider("https://github.com/login/device"), "GitHub");
+  assert.equal(loginProvider("https://accounts.google.com/o/oauth2/auth"), "Google");
+  assert.equal(loginProvider("https://d-1234.awsapps.com/start"), "AWS");
+  assert.equal(loginProvider("https://wandb.ai/authorize"), "Weights & Biases");
+  assert.equal(loginProvider("https://sso.example.org/login"), "sso.example.org", "an unknown site is its host");
+  assert.equal(loginProvider("https://notmicrosoft.com.evil.example"), "notmicrosoft.com.evil.example");
+  assert.equal(loginOutcomeText({ ...data, status: "signed_in", via: "takeover" }), "Signed in to Microsoft for az login on Studio from the remote view: the command carries on.");
+  assert.equal(loginOutcomeText({ ...data, status: "declined" }), "You chose not to sign in to Microsoft for az login on Studio now.");
+  assert.equal(loginOutcomeText({ ...data, status: "ended" }), "az login ended before it was signed in.");
 });

@@ -106,7 +106,7 @@ function HeldPreview({ item }: { item: EvidenceItem }) {
   );
 }
 
-const ICON = { image: ImageIcon, video: Film, download: FileText } as const;
+const ICON = { image: ImageIcon, video: Film, audio: FileText, download: FileText } as const;
 
 function HeldFile({ item, answer, open, onToggle, single, waiting, pending, onAnswer, busy, error }: { item: EvidenceItem; answer: Answer | null; open: boolean; onToggle: () => void; single: boolean; waiting: boolean; pending: boolean; onAnswer: (decision: "approve" | "discard") => void; busy: "approve" | "discard" | null; error: string | null }) {
   const Icon = ICON[evidenceShow(item)];

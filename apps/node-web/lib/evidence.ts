@@ -1,21 +1,26 @@
 /**
  * Files a run attached as evidence (screenshots, videos, traces, reports, logs: `data.evidence` on a
  * run card) and media a node sends with a message (`data.media`), and how each shows. Only still
- * pictures in formats a browser cannot run show inline, and videos play in a player; text files
- * (Markdown, plain text, logs, CSV, JSON) show a preview (lib/file-preview.ts); everything else, and
- * every active format (HTML, SVG, XML, scripts, PDF), is a download, whatever its kind says.
+ * pictures in formats a browser cannot run show inline, and videos and sound play in a player; text
+ * files (Markdown, code, plain text, logs, CSV, JSON) show a preview as text (lib/file-preview.ts);
+ * everything else (PDF, archives, office files, HTML, SVG, XML) is a download, whatever its kind says.
  * A file kept on the computer (upload off there) or held for its owner's preview is listed, never
  * opened inline (Ensemble docs/35 §8.12, §8.16).
  */
+import { sizeLabel } from "./attachments";
 import type { EvidenceItem, MediaItem, Message } from "./types";
 
-export type EvidenceShow = "image" | "video" | "download";
+export type EvidenceShow = "image" | "video" | "audio" | "download";
 
 /** Pictures shown in an <img>: none of them can run script. SVG is not among them. */
 const IMAGES: ReadonlySet<string> = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/bmp"]);
 const VIDEOS: ReadonlySet<string> = new Set(["video/mp4", "video/webm", "video/ogg", "video/quicktime"]);
+const AUDIO: ReadonlySet<string> = new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave", "audio/ogg", "audio/opus", "audio/webm", "audio/aac", "audio/mp4", "audio/x-m4a", "audio/flac", "audio/x-flac"]);
 const IMAGE_NAME = /\.(png|jpe?g|gif|webp|avif|bmp)$/i;
 const VIDEO_NAME = /\.(mp4|webm|ogv|mov)$/i;
+const AUDIO_NAME = /\.(mp3|wav|ogg|oga|opus|weba|aac|m4a|flac)$/i;
+/** What a server says when it does not know what a file is. */
+const UNTYPED: ReadonlySet<string> = new Set(["application/octet-stream", "binary/octet-stream", "application/unknown"]);
 
 /** A MIME type without its parameters, lower case: "image/png; charset=x" → "image/png". */
 export const mimeOf = (value: string | null | undefined): string => (value ?? "").split(";")[0]!.trim().toLowerCase().replace(/^image\/jpg$/, "image/jpeg");
@@ -23,11 +28,16 @@ export const mimeOf = (value: string | null | undefined): string => (value ?? ""
 /** Whether bytes of this type may be shown in an <img>: checked again on what the server sent. */
 export const isSafeImage = (mime: string | null | undefined): boolean => IMAGES.has(mimeOf(mime));
 
-/** How a piece of evidence shows. The MIME type decides; a name is read only when the type is missing. */
+/**
+ * How a piece of evidence shows. The MIME type decides; a name is read only when the type is missing,
+ * or for sound when the type says nothing (Ensemble does not type sound by its bytes): a player cannot
+ * run anything, and one that cannot play it becomes a download.
+ */
 export function evidenceShow(item: Pick<EvidenceItem, "mime" | "name">): EvidenceShow {
   const mime = mimeOf(item.mime);
   if (IMAGES.has(mime)) return "image";
   if (VIDEOS.has(mime)) return "video";
+  if (AUDIO.has(mime) || ((!mime || UNTYPED.has(mime)) && AUDIO_NAME.test(item.name ?? ""))) return "audio";
   if (mime) return "download";
   if (IMAGE_NAME.test(item.name ?? "")) return "image";
   if (VIDEO_NAME.test(item.name ?? "")) return "video";
@@ -158,4 +168,11 @@ export function evidenceCount(items: readonly Pick<EvidenceItem, "kind" | "mime"
   const local = items.length - open.length - held;
   const part = (count: number, one: string, many: string) => (count ? `${count} ${count === 1 ? one : many}` : null);
   return [part(pictures, "picture", "pictures"), part(videos, "video", "videos"), part(files, "file", "files"), part(held, "held", "held"), part(local, "not uploaded", "not uploaded")].filter(Boolean).join(", ");
+}
+
+/** "5 files · 14 MB": how many files a message brings, and how large they are together (when known). */
+export function filesLine(items: readonly Pick<EvidenceItem, "size">[]): string {
+  const total = items.reduce((sum, item) => sum + (typeof item.size === "number" && Number.isFinite(item.size) && item.size > 0 ? item.size : 0), 0);
+  const count = `${items.length} ${items.length === 1 ? "file" : "files"}`;
+  return total ? `${count} · ${sizeLabel(total)}` : count;
 }

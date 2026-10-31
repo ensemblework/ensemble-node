@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { workBoard } from "./work";
+import { messageTask, workBoard } from "./work";
 import type { Message } from "./types";
 
 const message = (id: string, seq: number, extra: Partial<Message>): Message => ({
@@ -51,4 +51,13 @@ test("a routine's run is on the board, marked so its chip opens its card: it is 
   const run = message("m1", 3, { kind: "plan", planId: "routine-1", body: "Work", data: { type: "plan", kind: "self", leadNodeId: "lead", leadHandle: "lead", status: "running", goal: "Morning summary", routine: { id: "routine-1", runId: "run-1", title: "Morning summary", notify: "always" }, steps: [step("lead", { status: "working", progress: "Reading the board" })] } });
   assert.deepEqual(workBoard([run], "me", ownerOf), [{ kind: "work", id: "m1", messageId: "m1", title: "Morning summary", detail: "Reading the board", routineId: "routine-1" }]);
   assert.equal(workBoard([{ ...run, data: { ...run.data, routine: undefined } }], "me", ownerOf)[0]?.routineId, "routine-1", "its planId says so too");
+});
+
+test("a node's message about a task assigned to it names the task and its due day, never a status that may be stale", () => {
+  assert.deepEqual(messageTask({ task: { id: "t1", title: " Fix the login redirect ", due: "2026-11-03T12:00:00Z", status: "todo" } }, "UTC"), { id: "t1", title: "Fix the login redirect", due: "3 Nov" });
+  assert.deepEqual(messageTask({ task: { id: "t2", title: "Write tests", dueAt: null } }), { id: "t2", title: "Write tests", due: null });
+  assert.equal(messageTask({ task: { id: "t3", title: "" } }), null);
+  assert.equal(messageTask({ task: "t4" }), null);
+  assert.equal(messageTask({}), null);
+  assert.equal(messageTask(null), null);
 });

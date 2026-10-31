@@ -1,19 +1,20 @@
 "use client";
 
-import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Handshake, Lock, MessageSquareShare, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Handshake, Lock, MessageSquareShare, Pin, PinOff, Reply, SmilePlus, SquareCheckBig, Trash2, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cardWords, runAgent, runCardAgent } from "@/lib/cards";
 import { canDelete, canPin, canReact, isDeleted, messagePreview, reactionRows, reactionsOf } from "@/lib/chat";
-import { ENSEMBLE_APP } from "@/lib/config";
+import { ENSEMBLE_APP, ENSEMBLE_LINKS } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, TOOL_LABEL } from "@/lib/text";
 import { formatEntityText, messageRefs, readableBody } from "@/lib/entity-text";
-import { loginBadge } from "@/lib/login";
+import { loginBadge, loginCommand } from "@/lib/login";
 import { mediaItems } from "@/lib/evidence";
 import { canShare, sharedLabel, type RoomTab } from "@/lib/rooms";
 import type { HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
-import type { HeldCall, Member, Message, NodePublic, PeerRequest, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
+import type { HeldCall, Member, Message, MessageFile, NodePublic, PeerRequest, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
+import { messageTask } from "@/lib/work";
 import { toolChipSummary } from "@/lib/work-log";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { SecretBox } from "../secret-box";
@@ -23,8 +24,10 @@ import { Button, External, Textarea } from "../ui";
 import { EvidenceGallery } from "./evidence";
 import { MessageFiles } from "./file-chips";
 import { ComputerCard } from "./computer-card";
+import { DeviceCodeCard } from "./device-code-card";
 import { HeldCapturesCard } from "./held-captures";
 import { HelperThreadChip } from "./helper-thread";
+import { LiveCard } from "./live-card";
 import { CardCheckpoint, OwnerCard } from "./owner-card";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
@@ -76,6 +79,8 @@ export type MessageContext = {
   onView?: (view: "board") => void;
   /** The space that holds the room's work, when it has one: tasks and pages there open in it. */
   spaceId?: string | null;
+  /** In a chat with only my nodes: asks them to save a file I attached on my computer (a reply to its message, in the composer). */
+  onAskSave?: (message: Message, file: MessageFile) => void;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -103,6 +108,26 @@ function ToolRow({ tool }: { tool: ToolChip }) {
     <span className={style} title={summary ?? undefined}>
       {content}
     </span>
+  );
+}
+
+/** The Ensemble task a node's message is about (one assigned to it), opening in Ensemble. */
+function TaskChip({ message, ctx }: { message: Message; ctx: MessageContext }) {
+  const task = messageTask(message.data);
+  if (!task) return null;
+  return (
+    <External
+      href={ENSEMBLE_LINKS.inSpace(`/tasks/${encodeURIComponent(task.id)}`, ctx.spaceId)}
+      className="mt-1.5 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-line bg-bg px-2 py-1 text-xs transition hover:border-accent"
+      title="Open the task in Ensemble"
+      data-task-chip
+    >
+      <SquareCheckBig size={13} className="shrink-0 text-accent" aria-hidden />
+      <span className="shrink-0 text-muted">Task</span>
+      <span className="min-w-0 truncate font-medium">{task.title}</span>
+      {task.due ? <span className="shrink-0 text-muted">· due {task.due}</span> : null}
+      <ExternalLink size={11} className="shrink-0 text-muted" aria-hidden />
+    </External>
   );
 }
 
@@ -185,6 +210,8 @@ function ApprovalBody({ message, ctx, node }: { message: Message; ctx: MessageCo
   if (message.data.type === "disclosure") return <DisclosureCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "node_proposal") return <NodeProposalCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "media_preview") return <HeldCapturesCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "device_code") return <DeviceCodeCard message={message} />;
+  if (message.data.type === "live") return <LiveCard message={message} handle={node?.slug ?? "node"} />;
   return <HeldCard message={message} ctx={ctx} node={node} />;
 }
 
@@ -201,8 +228,18 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
   const handedTo = handOver && typeof data.input?.to === "string" ? `@${data.input.to.replace(/^@/, "")}` : "The node";
   const pill = handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : data.type === "login" ? loginBadge(data) : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
   const error = settle.error?.message ?? (typeof data.error === "string" ? data.error : null);
+  // A command's sign-in names its command as code: "az login on Studio needs you to sign in to Microsoft".
+  const command = data.type === "login" ? loginCommand(data as { source?: string; command?: string }) : null;
+  const title = command && words.title.startsWith(command) ? (
+    <>
+      <code className="font-mono">{command}</code>
+      {words.title.slice(command.length)}
+    </>
+  ) : (
+    words.title
+  );
   return (
-    <OwnerCard title={words.title} state={pill}>
+    <OwnerCard title={title} state={pill}>
       {data.type === "secret" ? (
         <div className="space-y-3">
           <p className="text-sm">{message.body}</p>
@@ -217,7 +254,7 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
           {pending ? (
             <Textarea aria-label="The words to post" value={body} onChange={(event) => setBody(event.target.value)} rows={Math.min(10, Math.max(3, body.split("\n").length + 1))} />
           ) : (
-            <RichText text={message.body} handles={ctx.handles} refs={messageRefs(data)} showIds={data.showIds === true} />
+            <RichText text={message.body} handles={ctx.handles} refs={messageRefs(data)} showIds={data.showIds === true} kindLinks />
           )}
           {/* A result's draft: what goes with it, from the work's own ledger and checked evidence. */}
           {data.result ? <ResultFacts data={{ ...data.result, media: data.media, refs: data.refs }} messageId={null} /> : null}
@@ -583,7 +620,7 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
           {deleted ? null : (
             <div className={`rounded-2xl transition ${message.body ? "" : ring}`}>
               <EvidenceGallery items={media} messageId={message.id} label="Media" className={message.body ? "mt-1.5" : ""} />
-              <MessageFiles message={message} meId={ctx.meId} align="end" />
+              <MessageFiles message={message} meId={ctx.meId} align="end" onSave={ctx.onAskSave && !message.sending && !message.failed ? (file) => ctx.onAskSave!(message, file) : undefined} />
             </div>
           )}
           {deleted ? null : (ctx.threadsOf?.(message) ?? []).map((thread) => (
@@ -679,6 +716,9 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
             </div>
           ) : deleted ? (
             <Deleted />
+          ) : message.data.type === "device_code" || message.data.type === "live" ? (
+            // Owner-only cards that ask nothing to approve: a device code, a live session.
+            <ApprovalCard message={message} ctx={ctx} node={node} />
           ) : message.data.type === "digest" ? (
             <DigestCard message={message} ctx={ctx} />
           ) : message.data.type === "room_result" ? (
@@ -686,7 +726,8 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
           ) : (
             <div className={message.private ? "rounded-2xl border border-private/30 bg-private/5 px-3 py-2" : ""}>
               <SharedLine message={message} ctx={ctx} mine={false} />
-              {message.body ? <RichText text={message.body} handles={ctx.handles} {...(message.authorKind === "node" ? { refs: messageRefs(message.data), showIds: message.data.showIds === true } : {})} /> : null}
+              {message.body ? <RichText text={message.body} handles={ctx.handles} {...(message.authorKind === "node" ? { refs: messageRefs(message.data), showIds: message.data.showIds === true, kindLinks: true } : {})} /> : null}
+              {message.authorKind === "node" ? <TaskChip message={message} ctx={ctx} /> : null}
               <EvidenceGallery items={media} messageId={message.id} label="Media" className={message.body ? "mt-2" : ""} />
               <MessageFiles message={message} meId={ctx.meId} sender={person?.name} />
               <ToolChips tools={Array.isArray(message.data.tools) ? message.data.tools : []} />

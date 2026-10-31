@@ -9,7 +9,9 @@
  * the lead drafted for the owner to send, and a question about sharing something private (Ensemble
  * docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
  */
-import { loginPurpose, loginSite } from "./login";
+import { deviceCodeCommand } from "./device-code";
+import { liveTitle } from "./live-session";
+import { loginCommand, loginProvider, loginPurpose, loginSite } from "./login";
 import { agentName } from "./session";
 import { cardRunSettings } from "./work-log";
 
@@ -127,6 +129,9 @@ export function cardWords(data: CardData, handle: string, roomTitle: string): Ca
     case "login": {
       const site = loginSite(data?.origin);
       const on = typeof data?.computer === "string" && data.computer ? ` on ${data.computer}` : "";
+      // A command's sign-in (`az login`): the command asks, in its sign-in browser on the computer.
+      const command = loginCommand(data as { source?: string; command?: string });
+      if (command) return { title: `${command}${on} needs you to sign in to ${loginProvider(data?.origin)}`, wants: `needs you to sign in to ${loginProvider(data?.origin)} for ${command}${on}`, approve: "Sign in here", discard: "Not now" };
       return loginPurpose(data as { purpose?: string }) === "human_check"
         ? { title: `@${handle} needs you to pass a human check on ${site}`, wants: `needs you to pass a human check on ${site}${on}`, approve: "Open it here", discard: "Not now" }
         : { title: `@${handle} needs you to sign in to ${site}`, wants: `needs you to sign in to ${site}${on}`, approve: "Sign in here", discard: "Not now" };
@@ -137,6 +142,15 @@ export function cardWords(data: CardData, handle: string, roomTitle: string): Ca
       const title = text(data?.title, "");
       if (data?.event === "question") return { title: `${asker} asks you`, wants: `has a question from ${agent ?? "its run"}${title ? `: ${title}` : ""}`, approve: "Answer", discard: "Skip" };
       return { title: text(data?.command, "") ? `${asker} wants to run a command` : `${asker} asks for permission`, wants: `has ${agent ?? "a run"} asking to ${runAsk(data)}`, approve: "Allow once", discard: "Don't allow" };
+    }
+    case "device_code": {
+      const on = typeof data?.computer === "string" && data.computer ? ` on ${data.computer}` : "";
+      const command = deviceCodeCommand(data as { command?: string });
+      return { title: `Sign-in code for ${command}${on}`, wants: `has a sign-in code for you: ${command}${on}`, approve: "Copy code", discard: "Dismiss" };
+    }
+    case "live": {
+      const title = liveTitle(data as { kind?: string; computer?: string; title?: string });
+      return { title, wants: `shares ${title.charAt(0).toLowerCase()}${title.slice(1)}`, approve: "Open", discard: "Close" };
     }
     case "node_proposal":
       return data?.action === "crew"

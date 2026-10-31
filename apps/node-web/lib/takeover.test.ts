@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createDecipheriv, createHash, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync } from "node:crypto";
 import test, { mock } from "node:test";
 import { ApiError } from "./api";
-import { batchEvents, endedText, fitFrame, keyEvent, keyPress, pageInfo, pageLabel, pointOnFrame, reconnectDelay, retryable, TakeoverSession, TouchGesture, typingEvents } from "./takeover";
+import { batchEvents, endedText, fitFrame, keyEvent, keyPress, MAX_IN_FLIGHT, pageInfo, pageLabel, pointOnFrame, reconnectDelay, retryable, takeoverControls, takeoverKind, TakeoverSession, TouchGesture, typingEvents, unsupported } from "./takeover";
 import { channelFromBase64Url, openMessage, packMessage, sealMessage, takeoverKeys, type ChannelMessage } from "./takeover-channel";
 
 test("a pointer on the picture is a fraction of the page, also when the picture is letterboxed; outside it, nothing", () => {
@@ -25,7 +25,12 @@ test("keys go as the computer takes them; composition and function keys stay her
     batchEvents([{ t: "mouse", type: "move", ...point }, { t: "mouse", type: "move", x: 0.3, y: 0.4 }, { t: "ping" }, { t: "mouse", type: "down", ...point }, { t: "ping" }, { t: "text", text: "hi" }]),
     [{ t: "mouse", type: "move", x: 0.3, y: 0.4 }, { t: "ping" }, { t: "mouse", type: "down", ...point }, { t: "text", text: "hi" }],
   );
-  assert.equal(endedText("expired", "Studio"), "Its time ran out (15 minutes). Open the browser again to go on.");
+  assert.deepEqual(
+    batchEvents([{ t: "tty", text: "l" }, { t: "tty", text: "s" }, { t: "tty-key", key: "Enter" }, { t: "tty-size", cols: 80, rows: 24 }, { t: "tty-size", cols: 54, rows: 30 }]),
+    [{ t: "tty", text: "ls" }, { t: "tty-key", key: "Enter" }, { t: "tty-size", cols: 54, rows: 30 }],
+    "terminal text typed together goes as one; only the last size",
+  );
+  assert.equal(endedText("expired", "Studio"), "Its time ran out. Open it again to go on.");
   assert.equal(endedText("unpaired", "Studio"), "Studio is no longer paired.");
 });
 
@@ -211,6 +216,7 @@ test("a held finger is let go before the view ends, and input keeps being tried 
   await session.open("https://node.example");
   const gesture = new TouchGesture({ client: { x: 10, y: 10 }, page: { x: 0.5, y: 0.5 } }, 1);
   session.send(gesture.hold());
+  await new Promise((resolve) => setImmediate(resolve));
   session.send(gesture.cancel());
   await session.end(false);
   assert.deepEqual(order, ["1:move,down", "2:up", "end"], "the mouse goes up before the end");
@@ -231,4 +237,117 @@ test("a held finger is let go before the view ends, and input keeps being tried 
   } finally {
     mock.timers.reset();
   }
+});
+
+/** A fake relay that answers each input after `delay` ms (or fails it while `down`), and records when each arrived and its events. */
+function relay(device: ReturnType<typeof computer>, id: string, delay: () => number) {
+  let keys: Awaited<ReturnType<typeof takeoverKeys>> | null = null;
+  const arrived: Array<{ seq: number; at: number; events: Array<Record<string, unknown>> }> = [];
+  const state = { down: 0, inFlight: 0, maxInFlight: 0, calls: [] as Array<{ path: string; body?: unknown; headers?: Record<string, string> }>, frames: [] as ChannelMessage[] };
+  const api = async <T,>(path: string, init: { body?: unknown; headers?: Record<string, string> } = {}): Promise<T> => {
+    state.calls.push({ path, body: init.body, headers: init.headers });
+    if (path === "/api/node/takeovers") return { takeover: { id, computer: { id: "dev-1", name: "Studio" }, tab: "pty-1", origin: "terminal://pty-1", state: "created", startBy: "", endsAt: null, loginCardId: null, kind: "terminal", mode: "watch", sealKey: device.sealKey }, controller: "cap" } as T;
+    if (path.endsWith("/start")) {
+      keys = await takeoverKeys(channelFromBase64Url(device.open((init.body as { sealed: { epk: string; iv: string; ct: string; aad: string } }).sealed).plain.k), id);
+      return { takeover: { state: "live", endsAt: "2026-10-31T12:15:00.000Z" } } as T;
+    }
+    if (path.includes("/frames")) return { state: "live", frame: state.frames.shift() ?? null } as T;
+    if (path.endsWith("/input")) {
+      if (state.down > 0) {
+        state.down -= 1;
+        throw new ApiError(0, "Ensemble cannot be reached.");
+      }
+      const message = init.body as ChannelMessage;
+      state.inFlight += 1;
+      state.maxInFlight = Math.max(state.maxInFlight, state.inFlight);
+      arrived.push({ seq: message.seq, at: Date.now(), events: (JSON.parse(new TextDecoder().decode(await openMessage(keys!.w2d, id, "w2d", message))) as { events: Array<Record<string, unknown>> }).events });
+      await new Promise((resolve) => setTimeout(resolve, delay()));
+      state.inFlight -= 1;
+      return { ok: true } as T;
+    }
+    if (path.endsWith("/extend")) return { takeover: { id, endsAt: "2026-10-31T12:30:00.000Z" } } as T;
+    if (path.endsWith("/control")) return { takeover: { id, mode: (init.body as { on: boolean }).on ? "control" : "watch" } } as T;
+    return { signedIn: null } as T;
+  };
+  return { api, arrived, state, keys: () => keys };
+}
+
+test("each key goes at once, several messages on their way together; what waits goes together, all numbered in order", async () => {
+  const device = computer();
+  const id = "8e2f3041-5b6c-4d7e-9f0a-1b2c3d4e5f60";
+  const fake = relay(device, id, () => 120);
+  const session = new TakeoverSession(fake.api as never, { liveCardId: "live-1" });
+  const counts: number[] = [];
+  session.onPending = (count) => counts.push(count);
+  const info = await session.open("https://node.example");
+  assert.deepEqual([takeoverKind(info), takeoverControls(info)], ["terminal", false], "a live terminal, watched");
+  assert.deepEqual(fake.state.calls[0]!.body, { liveCardId: "live-1" });
+  const typed: number[] = [];
+  for (const letter of "pwd ls") {
+    typed.push(Date.now());
+    session.send([{ t: "tty", text: letter }]);
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+  await session.end(false);
+  assert.ok(fake.state.maxInFlight >= 3 && fake.state.maxInFlight <= MAX_IN_FLIGHT, `several on their way, never more than ${MAX_IN_FLIGHT}: ${fake.state.maxInFlight}`);
+  const sent = [...fake.arrived].sort((a, b) => a.seq - b.seq);
+  assert.deepEqual(sent.map((row) => row.seq), sent.map((_, index) => index + 1), "numbered in order, each once");
+  assert.equal(sent.flatMap((row) => row.events).map((event) => event.text).join(""), "pwd ls", "nothing lost, in order");
+  // The first four keys went the moment they were typed, without waiting for an answer; the rest waited and went together.
+  for (let at = 0; at < MAX_IN_FLIGHT; at += 1) assert.ok(sent[at]!.at - typed[at]! < 60, `key ${at + 1} went at once: ${sent[at]!.at - typed[at]!} ms`);
+  assert.ok(sent.length < 6, "what was typed while four were on their way went in one message");
+  assert.ok(counts.some((count) => count > 1) && counts.at(-1) === 0, "the view hears what is still on its way");
+});
+
+test("a message lost on the way goes again before anything newer; later ones wait behind it", async () => {
+  const device = computer();
+  const id = "9f304152-6c7d-4e8f-a01b-2c3d4e5f6071";
+  const fake = relay(device, id, () => 5);
+  const session = new TakeoverSession(fake.api as never, { loginCardId: "card-1" });
+  await session.open("https://node.example");
+  fake.state.down = 1;
+  session.send([{ t: "text", text: "a" }]);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  session.send([{ t: "text", text: "b" }]);
+  session.send([{ t: "text", text: "c" }]);
+  for (let waited = 0; session.pending > 0 && waited < 4000; waited += 20) await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(fake.arrived.map((row) => [row.seq, row.events.map((event) => event.text).join("")]), [[1, "a"], [2, "bc"]], "the lost one first, the same number; the next after it");
+  session.close();
+});
+
+test("+15 min and Take control ask the server and keep what it says; an older server has no such route", async () => {
+  const device = computer();
+  const id = "a0415263-7d8e-4f90-b12c-3d4e5f607182";
+  const fake = relay(device, id, () => 1);
+  const session = new TakeoverSession(fake.api as never, { liveCardId: "live-2" });
+  await session.open("https://node.example");
+  assert.equal(session.info?.endsAt, "2026-10-31T12:15:00.000Z");
+  const longer = await session.extend();
+  assert.equal(longer.endsAt, "2026-10-31T12:30:00.000Z");
+  assert.ok(longer.sealKey, "the computer's key is kept");
+  assert.equal(takeoverControls(await session.control(true)), true);
+  assert.equal(takeoverControls(await session.control(false)), false);
+  const asked = fake.state.calls.filter((call) => /\/(extend|control)$/.test(call.path));
+  assert.deepEqual(asked.map((call) => [call.path.split("/").at(-1), call.body, call.headers?.["x-ensemble-takeover"]]), [["extend", {}, "cap"], ["control", { on: true }, "cap"], ["control", { on: false }, "cap"]]);
+  assert.equal(unsupported(new ApiError(404, "Not Found")), true);
+  assert.equal(unsupported(new ApiError(409, "It cannot last more than an hour.")), false);
+  assert.equal(takeoverControls({ mode: "clean" }), true, "an older server's which-browser mode is control");
+  assert.equal(takeoverKind({}), "browser");
+  session.close();
+});
+
+test("a terminal's frame is its screen; the next frame is asked for the newest number seen", async () => {
+  const device = computer();
+  const id = "b1526374-8e9f-4a01-823d-4e5f60718293";
+  const fake = relay(device, id, () => 1);
+  const session = new TakeoverSession(fake.api as never, { liveCardId: "live-3" });
+  await session.open("https://node.example");
+  const keys = fake.keys()!;
+  fake.state.frames.push(await sealMessage(keys.d2w, id, "d2w", 4, packMessage({ t: "frame", kind: "terminal", cols: 40, rows: 2, cursor: { x: 2, y: 0 }, title: "zsh" }, new TextEncoder().encode(JSON.stringify({ rows: [[{ t: "$ ", fg: "green" }], [{ t: "ok" }]] })))));
+  const next = await session.next();
+  assert.equal(next.frame, null);
+  assert.deepEqual([next.terminal?.cols, next.terminal?.title, next.terminal?.lines[1]], [40, "zsh", [{ t: "ok" }]]);
+  await session.next();
+  assert.match(fake.state.calls.filter((call) => call.path.includes("/frames")).at(-1)!.path, /after=4$/);
+  session.close();
 });

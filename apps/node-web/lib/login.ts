@@ -55,6 +55,12 @@ export type LoginCardData = {
   codeHint?: string | null;
   shownAt?: string | null;
   jobId?: string | null;
+  /** When the card stops waiting (at least 15 minutes after it was raised). */
+  expiresAt?: string | null;
+  /** "cli": a command on the computer (`az login`, `gh auth login`…) opened the sign-in page in its sign-in browser. */
+  source?: string | null;
+  /** That command, as it was run. */
+  command?: string | null;
 };
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
@@ -77,9 +83,52 @@ export function loginSite(origin: unknown): string {
   }
 }
 
-/** The card's title: "@node needs you to sign in to portal.azure.com", or to pass a human check on a site. */
+/** Sign-in sites by who runs them, for a command's sign-in: "login.microsoftonline.com" → Microsoft. */
+const PROVIDERS: ReadonlyArray<[RegExp, string]> = [
+  [/(^|\.)(microsoftonline\.com|microsoft\.com|live\.com|windows\.net|microsoftonline\.us|azure\.com)$/, "Microsoft"],
+  [/(^|\.)github\.com$/, "GitHub"],
+  [/(^|\.)gitlab\.com$/, "GitLab"],
+  [/(^|\.)(google\.com|cloud\.google\.com)$/, "Google"],
+  [/(^|\.)(awsapps\.com|aws\.amazon\.com|signin\.aws|amazonaws\.com)$/, "AWS"],
+  [/(^|\.)wandb\.ai$/, "Weights & Biases"],
+  [/(^|\.)huggingface\.co$/, "Hugging Face"],
+  [/(^|\.)vercel\.com$/, "Vercel"],
+  [/(^|\.)netlify\.com$/, "Netlify"],
+  [/(^|\.)cloudflare(access)?\.com$/, "Cloudflare"],
+  [/(^|\.)heroku\.com$/, "Heroku"],
+  [/(^|\.)fly\.io$/, "Fly.io"],
+  [/(^|\.)supabase\.(com|io)$/, "Supabase"],
+  [/(^|\.)okta\.com$/, "Okta"],
+  [/(^|\.)auth0\.com$/, "Auth0"],
+  [/(^|\.)atlassian\.com$/, "Atlassian"],
+  [/(^|\.)salesforce\.com$/, "Salesforce"],
+  [/(^|\.)openai\.com$/, "OpenAI"],
+  [/(^|\.)anthropic\.com$/, "Anthropic"],
+];
+
+/** Who runs a sign-in site, as people say it ("Microsoft", "GitHub"); else its host. */
+export function loginProvider(origin: unknown): string {
+  const site = loginSite(origin);
+  const host = site.replace(/:\d+$/, "").toLowerCase();
+  return PROVIDERS.find(([pattern]) => pattern.test(host))?.[1] ?? site;
+}
+
+/** A command's sign-in (`source: "cli"`): the command, as it was run, on one line. Null for a node's own browser. */
+export function loginCommand(data: Pick<LoginCardData, "source" | "command"> | null | undefined): string | null {
+  if (text(data?.source) !== "cli") return null;
+  const command = text(data?.command).split("\n")[0]!.trim();
+  return command ? (command.length > 80 ? `${command.slice(0, 79)}…` : command) : "a command";
+}
+
+/**
+ * The card's title: "@node needs you to sign in to portal.azure.com", or to pass a human check on a
+ * site; a command's sign-in names the command and who runs the site: "az login on Studio needs you to
+ * sign in to Microsoft".
+ */
 export function loginTitle(data: LoginCardData | null | undefined, handle: string): string {
   const site = loginSite(data?.origin);
+  const command = loginCommand(data);
+  if (command) return `${command}${data?.computer ? ` on ${data.computer}` : ""} needs you to sign in to ${loginProvider(data?.origin)}`;
   return loginPurpose(data) === "human_check" ? `@${handle} needs you to pass a human check on ${site}` : `@${handle} needs you to sign in to ${site}`;
 }
 
@@ -108,10 +157,22 @@ export function remoteDoneText(data: LoginCardData | null | undefined, handle: s
   return null;
 }
 
-/** The address of a card in its conversation: "Open on your phone" shows it as a QR code. */
-export function cardLink(origin: string, roomId: string, cardId: string): string {
-  return `${origin.replace(/\/+$/, "")}/r/${encodeURIComponent(roomId)}#m-${encodeURIComponent(cardId)}`;
+/**
+ * A card's short address, for "Open on your phone" (as a QR code: the shorter, the larger its squares):
+ * `/c/‹card›` finds the card's conversation, and opens the card's remote view there (`cardPage`). A phone
+ * not signed in to Node signs in first and comes back to it.
+ */
+export function cardLink(origin: string, cardId: string): string {
+  return `${origin.replace(/\/+$/, "")}/c/${encodeURIComponent(cardId)}`;
 }
+
+/** A card in its conversation; `remote`: open its remote view (or live view) at once, as a scanned link does. */
+export function cardPage(roomId: string, cardId: string, remote = false): string {
+  return `/r/${encodeURIComponent(roomId)}${remote ? "?remote=1" : ""}#m-${encodeURIComponent(cardId)}`;
+}
+
+/** Whether this page was opened to show this card's remote view at once (`?remote=1#m-‹card›`). */
+export const remoteAsked = (search: string, hash: string, cardId: string): boolean => new URLSearchParams(search).get("remote") === "1" && hash === `#m-${encodeURIComponent(cardId)}`;
 
 /** How typed values travel, said plainly. */
 export function loginRouteText(target: Pick<LoginTarget, "route" | "computer">, fingerprint: string | null, cli = "ensemble"): string {
@@ -177,6 +238,14 @@ const HOW: Record<string, string> = {
 
 /** What a settled sign-in card says. */
 export function loginOutcomeText(data: LoginCardData): string {
+  const command = loginCommand(data);
+  if (command) {
+    const what = `${loginProvider(data.origin)} for ${command} on ${data.computer ?? "your computer"}`;
+    if (data.status === "signed_in") return `Signed in to ${what}${HOW[text(data.via)] ?? ""}: the command carries on.${data.note ? ` ${data.note}` : ""}`;
+    if (data.status === "declined") return `You chose not to sign in to ${what} now.`;
+    if (data.status === "expired") return `Nobody signed in to ${what} in time.`;
+    if (data.status === "ended") return data.note ?? `${command} ended before it was signed in.`;
+  }
   const where = `${data.origin ?? "the site"} on ${data.computer ?? "your computer"}`;
   const check = loginPurpose(data) === "human_check";
   const how = HOW[text(data.via)] ?? "";

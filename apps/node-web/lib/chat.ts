@@ -176,6 +176,7 @@ export function messagePreview(message: Pick<Message, "authorKind" | "body" | "d
   const files = messageFiles(message);
   if (files.length) return files.length === 1 ? `📎 ${files[0]!.name}` : `📎 ${files.length} files`;
   const media = message.authorKind === "node" ? mediaItems(message.data?.media) : [];
+  if (media.length === 1) return `📎 ${media[0]!.name}`;
   return media.length ? `📎 ${evidenceCount(media)}` : "";
 }
 

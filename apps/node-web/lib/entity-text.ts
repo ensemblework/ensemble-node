@@ -42,6 +42,7 @@ const KINDS: Record<string, string> = {
   meeting: "meeting",
   reminder: "reminder",
   room: "room",
+  board: "board",
 };
 
 /** A kind as written in a link (`person`, `tasks`) → the ref kind, or null. */
@@ -81,6 +82,8 @@ export function refHref(ref: Pick<EntityRef, "kind" | "id" | "label">, app: stri
       return `${app}/pages/${id}`;
     case "meeting":
       return `${app}/meetings?session=${id}`;
+    case "board":
+      return `${app}/board?board=${id}`;
     default:
       return null;
   }

@@ -1,4 +1,5 @@
 /** Small pure helpers for the chat: time, mentions in text, the composer's @ menu. */
+import { refHref, refKind } from "./entity-text";
 
 export function ago(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) return "";
@@ -16,9 +17,9 @@ export function clock(iso: string): string {
 
 export type Piece = { text: string; mention?: string; link?: string; code?: boolean };
 
-const TOKEN = /(`[^`\n]+`)|\[([^\]\n]+)\]\(((?:https?:\/\/|\/(?!\/))[^\s)]*)\)|(https?:\/\/[^\s)]+)|((?:^|(?<=[\s([{"'>,;]))@[a-z0-9][a-z0-9_-]*)/gi;
+const TOKEN = /(`[^`\n]+`)|\[([^\]\n]+)\]\(((?:https?:\/\/|\/(?!\/)|ensemble:\/\/[a-z]+\/)[^\s)]*)\)|(https?:\/\/[^\s)]+)|((?:^|(?<=[\s([{"'>,;]))@[a-z0-9][a-z0-9_-]*)/gi;
 
-/** Splits a message into plain text, `code`, links (bare or `[label](address)`) and @mentions (only handles that exist in the room). */
+/** Splits a message into plain text, `code`, links (bare or `[label](address)`, a record's `ensemble://task/…` too) and @mentions (only handles that exist in the room). */
 export function pieces(text: string, handles: ReadonlySet<string>): Piece[] {
   const out: Piece[] = [];
   let last = 0;
@@ -37,8 +38,23 @@ export function pieces(text: string, handles: ReadonlySet<string>): Piece[] {
   return out.length ? out : [{ text }];
 }
 
-/** Where a link opens: this site's rooms and nodes in place, other paths in Ensemble (`app`), the rest in a new tab. */
+/**
+ * Where a link opens: this site's rooms and nodes in place, other paths in Ensemble (`app`), a record's
+ * `ensemble://kind/id` where that record opens (in Ensemble, a room here), the rest in a new tab.
+ */
 export function linkTarget(href: string, app: string): { href: string; here: boolean } {
+  const record = /^ensemble:\/\/([a-z]+)\/([^\s/?#]+)\/?$/i.exec(href);
+  if (record) {
+    const kind = refKind(record[1]!);
+    let id = "";
+    try {
+      id = decodeURIComponent(record[2]!);
+    } catch {
+      id = "";
+    }
+    const to = kind && id ? refHref({ kind, id, label: "" }, app) : null;
+    return to ? linkTarget(to, app) : { href: app, here: false };
+  }
   if (/^\/(?:r|n)\//.test(href)) return { href, here: true };
   if (href.startsWith("/")) return { href: `${app}${href}`, here: false };
   return { href, here: false };

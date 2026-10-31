@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Lock } from "lucide-react";
+import { ExternalLink, HardDriveDownload, Lock } from "lucide-react";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { fileOriginal } from "@/lib/api";
 import { fileChipView, kindLabel, messageFiles, sizeLabel } from "@/lib/attachments";
@@ -51,7 +51,7 @@ function useThumbnail(id: string, enabled: boolean, ref: RefObject<HTMLElement |
   return url;
 }
 
-function FileChip({ file, message, meId, sender }: { file: MessageFile; message: Message; meId: string; sender?: string }) {
+function FileChip({ file, message, meId, sender, onSave }: { file: MessageFile; message: Message; meId: string; sender?: string; onSave?: (file: MessageFile) => void }) {
   const view = fileChipView(message, file, meId);
   const ref = useRef<HTMLLIElement>(null);
   const thumbnail = useThumbnail(file.id, view.thumbnail, ref);
@@ -72,7 +72,7 @@ function FileChip({ file, message, meId, sender }: { file: MessageFile; message:
   );
   const style = "flex w-60 max-w-full items-center gap-2.5 rounded-xl border border-line bg-bg/70 p-1.5 pr-2.5 text-left";
   return (
-    <li ref={ref} className="flex max-w-full">
+    <li ref={ref} className="flex max-w-full items-stretch gap-1">
       {view.href ? (
         <External href={view.href} className={`${style} transition hover:border-accent`} title="Open in your Ensemble Files" aria-label={`${file.name}, ${kindLabel(file.kind)}, ${sizeLabel(file.size)}. Open in your Ensemble Files`}>
           {content}
@@ -82,18 +82,33 @@ function FileChip({ file, message, meId, sender }: { file: MessageFile; message:
           {content}
         </span>
       )}
+      {view.mine && onSave ? (
+        <button
+          type="button"
+          onClick={() => onSave(file)}
+          aria-label={`Ask to save ${file.name} on your computer`}
+          title="Save on my computer: asks your node in the chat"
+          className="inline-flex w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-bg/70 text-muted transition hover:border-accent hover:text-ink"
+        >
+          <HardDriveDownload size={15} aria-hidden />
+        </button>
+      ) : null}
     </li>
   );
 }
 
-/** The files on a message, under its words. The sender's open in Ensemble's Files; everyone else sees names only. */
-export function MessageFiles({ message, meId, sender, align = "start" }: { message: Message; meId: string; sender?: string; align?: "start" | "end" }) {
+/**
+ * The files on a message, under its words. The sender's open in Ensemble's Files; everyone else sees
+ * names only. With `onSave` (my own files in a chat with my nodes), each has "Save on my computer",
+ * which asks the node in the chat.
+ */
+export function MessageFiles({ message, meId, sender, align = "start", onSave }: { message: Message; meId: string; sender?: string; align?: "start" | "end"; onSave?: (file: MessageFile) => void }) {
   const files = messageFiles(message);
   if (!files.length) return null;
   return (
     <ul className={`mt-1.5 flex flex-wrap gap-1.5 ${align === "end" ? "justify-end" : ""}`} aria-label={files.length === 1 ? "1 attached file" : `${files.length} attached files`}>
       {files.map((file) => (
-        <FileChip key={file.id} file={file} message={message} meId={meId} sender={sender} />
+        <FileChip key={file.id} file={file} message={message} meId={meId} sender={sender} onSave={onSave} />
       ))}
     </ul>
   );

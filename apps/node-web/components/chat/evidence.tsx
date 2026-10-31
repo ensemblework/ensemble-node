@@ -1,28 +1,31 @@
 "use client";
 
 /**
- * Evidence a run attached (screenshots, videos, traces, reports, logs) and media a node sends with a
- * message: thumbnails, a lightbox with keyboard and swipe navigation, a player for videos, a preview
- * for text files (Markdown rendered, other text as it is; lib/file-preview.ts) and a download for
- * everything else. Pictures are read with the session cookie and shown only when the bytes that came
- * back are a safe picture type (lib/evidence.ts); HTML, SVG, scripts and other active formats are only
- * ever downloaded, never shown in the page. Media in a message is read through that message (`via`), so
- * people in a room who do not own the file can open it too. A video shows its poster and length, and
- * media keeps its measured shape while it loads; a tall picture (a full page) shows its top and scrolls
- * when opened. A file held for its owner's preview, or kept on the computer, is listed and never read
- * from here.
+ * Evidence a run attached (screenshots, videos, traces, reports, logs) and files a node sends with a
+ * message: thumbnails, a lightbox with keyboard and swipe navigation, a player for videos and sound, a
+ * preview for text files (Markdown rendered, code with line numbers, other text as it is;
+ * lib/file-preview.ts) and a download for everything else, each with its type's icon and label
+ * (lib/file-types.ts). Pictures are read with the session cookie and shown only when the bytes that
+ * came back are a safe picture type (lib/evidence.ts); HTML, SVG, XML and other active formats are
+ * only ever downloaded, never shown in the page, and a script shows as text, never runs. Media in a
+ * message is read through that message (`via`), so people in a room who do not own the file can open
+ * it too. A video shows its poster and length, and media keeps its measured shape while it loads; a
+ * tall picture (a full page) shows its top and scrolls when opened. A file held for its owner's
+ * preview, or kept on the computer, is listed and never read from here.
  */
-import { ChevronLeft, ChevronRight, Download, EyeOff, FileText, HardDrive, ImageOff, Maximize2, ScrollText, X } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject, type SyntheticEvent } from "react";
+import { ChevronDown, ChevronLeft, ChevronRight, Download, EyeOff, File as FileIcon, FileArchive, FileAudio, FileCode, FileImage, FileJson, FileSpreadsheet, FileText, FileType as FontIcon, FileVideo, HardDrive, ImageOff, Maximize2, Presentation, ScrollText, X } from "lucide-react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
 import { download, evidenceBlob, evidenceHead, evidenceUrl } from "@/lib/api";
 import { sizeLabel } from "@/lib/attachments";
 import { heldReasonWords } from "@/lib/captures";
-import { durationLabel, evidenceKind, evidencePath, evidenceShow, isSafeImage, isTall, keptAs, mediaFrame } from "@/lib/evidence";
-import { decodePreview, looksBinary, PREVIEW_MAX_BYTES, previewContent, previewLines, textPreviewKind, type TextPreviewKind } from "@/lib/file-preview";
+import { durationLabel, evidenceKind, evidencePath, evidenceShow, filesLine, isSafeImage, isTall, keptAs, mediaFrame } from "@/lib/evidence";
+import { decodePreview, looksBinary, PREVIEW_LINES, PREVIEW_MAX_BYTES, previewContent, previewLines, previewsOpen, textPreviewKind, type TextPreviewKind } from "@/lib/file-preview";
+import { fileType, type FileFamily, type FileType } from "@/lib/file-types";
 import { toastError } from "@/lib/toast";
 import type { EvidenceItem } from "@/lib/types";
 import { Spinner } from "../ui";
+import { CopyButton } from "./code-block";
 import { RichText } from "./rich-text";
 
 /** The requirement a piece of evidence is for, with where it is listed when that is on the page. */
@@ -101,12 +104,61 @@ export function usePicture(id: string, enabled: boolean, via: string | null): Pi
   return shown;
 }
 
-async function save(item: EvidenceItem, via: string | null) {
+async function save(item: EvidenceItem, via: string | null, onProgress?: (percent: number) => void) {
   try {
-    await download(evidencePath(item.id, via), item.name);
+    await download(evidencePath(item.id, via), item.name, onProgress, item.size);
   } catch (error) {
     toastError(error);
   }
+}
+
+/** A download that says how far it has got: null while idle, else 0–100. */
+function useSave(item: EvidenceItem, via: string | null) {
+  const [progress, setProgress] = useState<number | null>(null);
+  const start = () => {
+    if (progress !== null) return;
+    setProgress(0);
+    void save(item, via, setProgress).finally(() => setProgress(null));
+  };
+  return { progress, busy: progress !== null, start };
+}
+
+const FAMILY_ICON: Record<FileFamily, typeof FileText> = {
+  image: FileImage,
+  video: FileVideo,
+  audio: FileAudio,
+  markdown: FileText,
+  code: FileCode,
+  data: FileJson,
+  text: FileText,
+  markup: FileCode,
+  pdf: FileText,
+  archive: FileArchive,
+  document: FileText,
+  spreadsheet: FileSpreadsheet,
+  presentation: Presentation,
+  font: FontIcon,
+  other: FileIcon,
+};
+const FAMILY_TINT: Partial<Record<FileFamily, string>> = {
+  code: "text-accent",
+  markup: "text-accent",
+  data: "text-accent",
+  markdown: "text-accent",
+  pdf: "text-danger",
+  archive: "text-warn",
+  spreadsheet: "text-ok",
+  presentation: "text-warn",
+  document: "text-private",
+  audio: "text-private",
+  video: "text-private",
+  image: "text-private",
+};
+
+/** A file type's icon, tinted by its family so a list of files reads at a glance. */
+export function FileTypeIcon({ type, size = 17, className = "" }: { type: FileType; size?: number; className?: string }) {
+  const Icon = type.family === "data" && /CSV|TSV/.test(type.label) ? FileSpreadsheet : FAMILY_ICON[type.family];
+  return <Icon size={size} className={`${FAMILY_TINT[type.family] ?? "text-muted"} ${className}`} aria-hidden data-file-family={type.family} />;
 }
 
 const describe = (item: EvidenceItem) => `${evidenceKind(item.kind)} “${item.name}”${item.caption ? `: ${item.caption}` : ""}`;
@@ -234,7 +286,7 @@ function KeptRow({ item }: { item: EvidenceItem }) {
   const why = held ? "Held for you to check first" : "On the computer, not uploaded";
   return (
     <li className="flex max-w-full" data-kept={held ? "held" : "local"}>
-      <span title={`${evidenceKind(item.kind)}: ${held ? (item.holdReason ? heldReasonWords(item.holdReason) : why) : "evidence upload is off on that computer."}`} className="flex w-64 max-w-full items-center gap-2.5 rounded-xl border border-dashed border-line bg-bg/40 p-1.5 pr-2.5 text-left">
+      <span title={`${evidenceKind(item.kind)}: ${held ? (item.holdReason ? heldReasonWords(item.holdReason) : why) : "evidence upload is off on that computer."}`} className="flex w-72 max-w-full items-center gap-2.5 rounded-xl border border-dashed border-line bg-bg/40 p-1.5 pr-2.5 text-left">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-raised text-muted">{held ? <EyeOff size={16} aria-hidden /> : <HardDrive size={16} aria-hidden />}</span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-medium">{item.name}</span>
@@ -252,30 +304,65 @@ function LargeVideo({ item, via }: { item: EvidenceItem; via: string | null }) {
 }
 
 function FileRow({ item, via, requirement }: Tile) {
-  const [busy, setBusy] = useState(false);
+  const saving = useSave(item, via);
+  const type = fileType(item);
   const size = typeof item.size === "number" ? sizeLabel(item.size) : "";
   return (
-    <li className="flex max-w-full">
+    <li className="flex max-w-full" data-file={type.family}>
       <button
         type="button"
-        disabled={busy}
-        onClick={() => {
-          setBusy(true);
-          void save(item, via).finally(() => setBusy(false));
-        }}
+        disabled={saving.busy}
+        onClick={saving.start}
         aria-label={`Download ${describe(item)}`}
-        className="flex w-64 max-w-full items-center gap-2.5 rounded-xl border border-line bg-bg/70 p-1.5 pr-2.5 text-left transition hover:border-accent disabled:opacity-70"
+        title={`Download ${item.name}`}
+        className="flex w-72 max-w-full items-center gap-2.5 rounded-xl border border-line bg-bg/70 p-1.5 pr-2.5 text-left transition hover:border-accent disabled:opacity-80"
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-raised text-muted">{busy ? <Spinner className="h-3.5 w-3.5" /> : <FileText size={17} aria-hidden />}</span>
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-raised">{saving.busy ? <Spinner className="h-3.5 w-3.5 text-muted" /> : <FileTypeIcon type={type} />}</span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-medium">{item.name}</span>
-          <span className="block truncate text-[11px] text-muted">
-            {[evidenceKind(item.kind), size, item.caption, requirement ? `for ${requirement.text}` : null].filter(Boolean).join(" · ")}
+          <span className="block truncate text-[11px] text-muted" aria-live={saving.busy ? "polite" : undefined}>
+            {saving.busy ? `Downloading${saving.progress ? ` ${saving.progress}%` : "…"}` : [type.label, size, item.caption, requirement ? `for ${requirement.text}` : null].filter(Boolean).join(" · ")}
           </span>
         </span>
         <Download size={13} className="shrink-0 text-muted" aria-hidden />
       </button>
     </li>
+  );
+}
+
+/** Sound in a player, with its name, size and Download; one that does not play here becomes a download. */
+function AudioTile({ item, via, requirement }: Tile) {
+  const ref = useRef<HTMLElement>(null);
+  const near = useNear(ref);
+  const [failed, setFailed] = useState(false);
+  const saving = useSave(item, via);
+  const type = fileType(item);
+  const size = typeof item.size === "number" ? sizeLabel(item.size) : null;
+  return (
+    <figure ref={ref} className="w-full max-w-sm min-w-0 rounded-xl border border-line bg-bg/70 p-1.5" data-file="audio">
+      <figcaption className="flex items-center gap-2.5 pr-1">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-raised">
+          <FileTypeIcon type={type} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[13px] font-medium">{item.name}</span>
+          <span className="block truncate text-[11px] text-muted">{saving.busy ? `Downloading${saving.progress ? ` ${saving.progress}%` : "…"}` : [type.label, durationLabel(item.durationMs), size].filter(Boolean).join(" · ")}</span>
+        </span>
+        <button type="button" disabled={saving.busy} onClick={saving.start} aria-label={`Download ${item.name}`} title="Download" className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink disabled:opacity-60">
+          {saving.busy ? <Spinner className="h-3.5 w-3.5" /> : <Download size={15} aria-hidden />}
+        </button>
+      </figcaption>
+      {failed ? (
+        <p className="px-1 pb-0.5 pt-1.5 text-xs text-muted">This file does not play here. Download it to listen.</p>
+      ) : near ? (
+        <audio src={evidenceUrl(item.id, via)} controls preload="none" onError={() => setFailed(true)} aria-label={describe(item)} className="mt-1.5 h-10 w-full" />
+      ) : null}
+      {item.caption || requirement ? (
+        <div className="px-1">
+          <Caption item={item} requirement={requirement} />
+        </div>
+      ) : null}
+    </figure>
   );
 }
 
@@ -474,18 +561,22 @@ function textOf(id: string, via: string | null): Promise<TextRead> {
 const NO_HANDLES: ReadonlySet<string> = new Set();
 
 /**
- * A text file in the chat: its name, its first lines (Markdown rendered as in a message, other text as
- * it is, in monospace), Show all or Collapse, and Download. Read when it comes near the screen.
+ * A text file in the chat: its name, its type, size and lines, Copy and Download, and its first lines
+ * (Markdown rendered as in a message, code with line numbers, other text as it is, in monospace), Show
+ * all or Collapse. It is read when it comes near the screen; one that starts folded (one of many on a
+ * message) is read when it is opened.
  */
-function TextPreview({ item, via, kind, requirement }: Tile & { kind: TextPreviewKind }) {
+function TextPreview({ item, via, kind, requirement, startOpen }: Tile & { kind: TextPreviewKind; startOpen: boolean }) {
   const ref = useRef<HTMLElement>(null);
   const near = useNear(ref);
+  const [unfolded, setUnfolded] = useState(startOpen);
   const [read, setRead] = useState<TextRead | null>(null);
   const [all, setAll] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const saving = useSave(item, via);
   const id = useId();
+  const type = fileType(item);
   useEffect(() => {
-    if (!near) return;
+    if (!near || !unfolded) return;
     let live = true;
     void textOf(item.id, via).then((row) => {
       if (live) setRead(row);
@@ -493,10 +584,11 @@ function TextPreview({ item, via, kind, requirement }: Tile & { kind: TextPrevie
     return () => {
       live = false;
     };
-  }, [near, item.id, via]);
+  }, [near, unfolded, item.id, via]);
   const body = read && "text" in read ? previewContent(kind, read.text, read.truncated) : "";
   const lines = previewLines(body);
   const shown = all ? body : lines.shown;
+  const numbers = useMemo(() => Array.from({ length: all ? lines.total : Math.min(lines.total, PREVIEW_LINES) }, (_, at) => at + 1).join("\n"), [all, lines.total]);
   const truncated = Boolean(read && "text" in read && read.truncated);
   const size = typeof item.size === "number" ? sizeLabel(item.size) : null;
   // Folded, the preview is also kept short on screen: what does not fit fades out, and Show all opens it.
@@ -505,55 +597,64 @@ function TextPreview({ item, via, kind, requirement }: Tile & { kind: TextPrevie
   useLayoutEffect(() => {
     const element = box.current;
     setClipped(Boolean(element && !all && element.scrollHeight > element.clientHeight + 1));
-  }, [shown, all, read]);
+  }, [shown, all, read, unfolded]);
   const more = lines.more || clipped;
+  const text = read && "text" in read;
+  const icon = "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink disabled:opacity-60";
   return (
-    <figure ref={ref} className="min-w-0 overflow-hidden rounded-xl border border-line bg-bg/70" data-text-preview={kind}>
-      <figcaption className="flex items-center gap-2 border-b border-line/70 py-1 pl-2.5 pr-1">
-        <FileText size={15} className="shrink-0 text-accent" aria-hidden />
+    <figure ref={ref} className="min-w-0 overflow-hidden rounded-xl border border-line bg-bg/70" data-text-preview={kind} data-folded={unfolded ? undefined : true}>
+      <figcaption className={`flex items-center gap-2 py-1 pl-2.5 pr-1 ${unfolded ? "border-b border-line/70" : ""}`}>
+        <FileTypeIcon type={type} size={16} className="shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-medium" title={item.name}>
             {item.name}
           </span>
-          <span className="block truncate text-[11px] text-muted">{[kind === "markdown" ? "Markdown" : kind === "json" ? "JSON" : evidenceKind(item.kind), size, read && "text" in read ? `${lines.total} ${lines.total === 1 ? "line" : "lines"}` : null].filter(Boolean).join(" · ")}</span>
+          <span className="block truncate text-[11px] text-muted" aria-live={saving.busy ? "polite" : undefined}>
+            {saving.busy ? `Downloading${saving.progress ? ` ${saving.progress}%` : "…"}` : [type.label, size, text ? `${lines.total} ${lines.total === 1 ? "line" : "lines"}` : null].filter(Boolean).join(" · ")}
+          </span>
         </span>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            void save(item, via).finally(() => setBusy(false));
-          }}
-          aria-label={`Download ${item.name}`}
-          title="Download"
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink disabled:opacity-60"
-        >
-          {busy ? <Spinner className="h-3.5 w-3.5" /> : <Download size={15} aria-hidden />}
+        {unfolded && text && kind !== "markdown" ? <CopyButton text={body} label={kind === "code" ? `Copy ${item.name}` : `Copy the text of ${item.name}`} /> : null}
+        <button type="button" disabled={saving.busy} onClick={saving.start} aria-label={`Download ${item.name}`} title="Download" className={icon}>
+          {saving.busy ? <Spinner className="h-3.5 w-3.5" /> : <Download size={15} aria-hidden />}
         </button>
-      </figcaption>
-      <div
-        id={id}
-        ref={box}
-        {...(all ? { role: "region", tabIndex: 0, "aria-label": `${item.name}, all of it` } : {})}
-        className={all ? "scroll-thin max-h-[70vh] overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60" : `relative max-h-[min(22rem,55vh)] overflow-hidden ${more ? "[mask-image:linear-gradient(to_bottom,black_75%,transparent)]" : ""}`}
-      >
-        {!read ? (
-          <p className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted" role="status">
-            <Spinner className="h-3 w-3" /> Reading {item.name}…
-          </p>
-        ) : "error" in read ? (
-          <p className="px-3 py-2.5 text-xs text-danger">{read.error}</p>
-        ) : "binary" in read ? (
-          <p className="px-3 py-2.5 text-xs text-muted">This file is not text. Download it to open it.</p>
-        ) : kind === "markdown" ? (
-          <div className="px-3 py-2.5">
-            <RichText text={shown} handles={NO_HANDLES} small />
-          </div>
-        ) : (
-          <pre className="scroll-thin overflow-x-auto px-3 py-2.5 font-mono text-xs leading-relaxed">{shown}</pre>
+        {startOpen ? null : (
+          <button type="button" onClick={() => setUnfolded(!unfolded)} aria-expanded={unfolded} aria-controls={id} aria-label={`${unfolded ? "Hide" : "Preview"} ${item.name}`} title={unfolded ? "Hide" : "Preview"} className={icon}>
+            <ChevronDown size={16} className={`transition motion-reduce:transition-none ${unfolded ? "rotate-180" : ""}`} aria-hidden />
+          </button>
         )}
-      </div>
-      {read && "text" in read && (more || all || truncated) ? (
+      </figcaption>
+      {unfolded ? (
+        <div
+          id={id}
+          ref={box}
+          {...(all ? { role: "region", tabIndex: 0, "aria-label": `${item.name}, all of it` } : {})}
+          className={all ? "scroll-thin max-h-[70vh] overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60" : `relative max-h-[min(22rem,55vh)] overflow-hidden ${more ? "[mask-image:linear-gradient(to_bottom,black_75%,transparent)]" : ""}`}
+        >
+          {!read ? (
+            <p className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted" role="status">
+              <Spinner className="h-3 w-3" /> Reading {item.name}…
+            </p>
+          ) : "error" in read ? (
+            <p className="px-3 py-2.5 text-xs text-danger">{read.error}</p>
+          ) : "binary" in read ? (
+            <p className="px-3 py-2.5 text-xs text-muted">This file is not text. Download it to open it.</p>
+          ) : kind === "markdown" ? (
+            <div className="px-3 py-2.5">
+              <RichText text={shown} handles={NO_HANDLES} small />
+            </div>
+          ) : kind === "code" ? (
+            <div className="flex min-w-0 font-mono text-xs leading-relaxed">
+              <pre aria-hidden className="shrink-0 select-none border-r border-line/60 py-2.5 pl-2.5 pr-2 text-right text-muted/70">{numbers}</pre>
+              <pre className="scroll-thin min-w-0 flex-1 overflow-x-auto px-3 py-2.5" aria-label={`${type.label} code`}>
+                <code>{shown}</code>
+              </pre>
+            </div>
+          ) : (
+            <pre className="scroll-thin overflow-x-auto px-3 py-2.5 font-mono text-xs leading-relaxed">{shown}</pre>
+          )}
+        </div>
+      ) : null}
+      {unfolded && text && (more || all || truncated) ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line/70 px-3 py-1.5 text-xs">
           {more || all ? (
             <button type="button" aria-expanded={all} aria-controls={id} onClick={() => setAll(!all)} className="font-medium text-accent hover:underline">
@@ -564,7 +665,7 @@ function TextPreview({ item, via, kind, requirement }: Tile & { kind: TextPrevie
         </div>
       ) : null}
       {item.caption || requirement ? (
-        <div className="px-3 pb-2">
+        <div className={`px-3 pb-2 ${unfolded ? "" : "-mt-1"}`}>
           <Caption item={item} requirement={requirement} />
         </div>
       ) : null}
@@ -573,24 +674,29 @@ function TextPreview({ item, via, kind, requirement }: Tile & { kind: TextPrevie
 }
 
 /**
- * Evidence as a gallery: pictures and videos in a grid that opens into the lightbox, text files as
- * previews, other files as downloads. `requirementOf` names the requirement a piece is for (a plan's
- * ledger); `messageId` is the message that shows these files, which is how anyone but their owner may
- * read them.
+ * Evidence as a gallery: pictures and videos in a grid that opens into the lightbox, sound in a
+ * player, text files as previews (folded when there are more than two), other files as downloads with
+ * their type's icon; several files say how many and how large together. `requirementOf` names the
+ * requirement a piece is for (a plan's ledger); `messageId` is the message that shows these files,
+ * which is how anyone but their owner may read them.
  */
 export function EvidenceGallery({ items, requirementOf, messageId = null, label = "Evidence", className = "" }: { items: readonly EvidenceItem[]; requirementOf?: (id: string) => RequirementLink | null; messageId?: string | null; label?: string; className?: string }) {
   const [open, setOpen] = useState<number | null>(null);
   const via = messageId;
   if (!items.length) return null;
   const readable = items.filter((item) => !keptAs(item));
-  const visual = readable.filter((item) => evidenceShow(item) !== "download");
+  const visual = readable.filter((item) => evidenceShow(item) === "image" || evidenceShow(item) === "video");
+  const sounds = readable.filter((item) => evidenceShow(item) === "audio");
   const previews = readable.flatMap((item) => {
     const kind = evidenceShow(item) === "download" ? textPreviewKind(item) : null;
     return kind ? [{ item, kind }] : [];
   });
   const files = items.filter((item) => keptAs(item) || (evidenceShow(item) === "download" && !textPreviewKind(item)));
+  const listed = [...sounds, ...previews.map((row) => row.item), ...files];
+  const startOpen = previewsOpen(previews.length);
   const requirement = (item: EvidenceItem) => (item.requirementId && requirementOf ? requirementOf(item.requirementId) : null);
   const alone = visual.length === 1;
+  const gap = (before: boolean) => (before ? "mt-1.5" : "");
   return (
     <section aria-label={label} className={className}>
       {visual.length ? (
@@ -606,15 +712,27 @@ export function EvidenceGallery({ items, requirementOf, messageId = null, label 
           ))}
         </ul>
       ) : null}
+      {listed.length >= 3 ? (
+        <p className={`text-[11px] font-medium text-muted ${gap(visual.length > 0)}`} data-files-line>
+          {filesLine(listed)}
+        </p>
+      ) : null}
+      {sounds.length ? (
+        <div className={`space-y-1.5 ${gap(visual.length > 0 || listed.length >= 3)}`}>
+          {sounds.map((item) => (
+            <AudioTile key={item.id} item={item} via={via} requirement={requirement(item)} />
+          ))}
+        </div>
+      ) : null}
       {previews.length ? (
-        <div className={`space-y-1.5 ${visual.length ? "mt-1.5" : ""}`}>
+        <div className={`space-y-1.5 ${gap(visual.length > 0 || listed.length >= 3 || sounds.length > 0)}`}>
           {previews.map(({ item, kind }) => (
-            <TextPreview key={item.id} item={item} via={via} kind={kind} requirement={requirement(item)} />
+            <TextPreview key={item.id} item={item} via={via} kind={kind} requirement={requirement(item)} startOpen={startOpen} />
           ))}
         </div>
       ) : null}
       {files.length ? (
-        <ul className={`flex flex-wrap gap-1.5 ${visual.length || previews.length ? "mt-1.5" : ""}`}>
+        <ul className={`flex flex-wrap gap-1.5 ${gap(visual.length > 0 || listed.length >= 3 || sounds.length > 0 || previews.length > 0)}`}>
           {files.map((item) => (keptAs(item) ? <KeptRow key={item.id} item={item} /> : <FileRow key={item.id} item={item} via={via} requirement={requirement(item)} />))}
         </ul>
       ) : null}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { durationLabel, evidenceCount, evidenceErrorWords, evidenceItems, evidenceKind, evidenceOfCards, evidencePath, evidenceShow, isSafeImage, isTall, keptAs, mediaFrame, mediaItems, mimeOf } from "./evidence";
+import { durationLabel, evidenceCount, evidenceErrorWords, evidenceItems, evidenceKind, evidenceOfCards, evidencePath, evidenceShow, filesLine, isSafeImage, isTall, keptAs, mediaFrame, mediaItems, mimeOf } from "./evidence";
 
 test("only pictures that cannot run script show inline; videos play; active formats always download", () => {
   assert.equal(evidenceShow({ mime: "image/png", name: "home.png" }), "image");
@@ -18,6 +18,22 @@ test("only pictures that cannot run script show inline; videos play; active form
   assert.equal(isSafeImage("image/svg+xml"), false);
   assert.equal(isSafeImage(""), false);
   assert.equal(mimeOf(" Text/HTML ; charset=utf-8"), "text/html");
+});
+
+test("sound plays in a player, by its type or, when the type says nothing, its name", () => {
+  assert.equal(evidenceShow({ mime: "audio/mpeg", name: "memo" }), "audio");
+  assert.equal(evidenceShow({ mime: "audio/wav", name: "take.wav" }), "audio");
+  assert.equal(evidenceShow({ mime: "application/octet-stream", name: "podcast.mp3" }), "audio", "Ensemble does not type sound by its bytes");
+  assert.equal(evidenceShow({ mime: "", name: "voice.m4a" }), "audio");
+  assert.equal(evidenceShow({ mime: "application/zip", name: "song.mp3" }), "download", "a type that says otherwise wins");
+  assert.equal(evidenceShow({ mime: "audio/x-unknown", name: "x" }), "download");
+});
+
+test("several files say how many and how large together", () => {
+  assert.equal(filesLine([{ size: 1024 }, { size: 2048 }, { size: 3 * 1024 * 1024 }]), "3 files · 3 MB");
+  assert.equal(filesLine([{ size: null }, { size: 512 }]), "2 files · 512 B");
+  assert.equal(filesLine([{}, {}]), "2 files", "no size, no total");
+  assert.equal(filesLine([{ size: 10 }]), "1 file · 10 B");
 });
 
 test("evidence and media rows become one gallery's items", () => {

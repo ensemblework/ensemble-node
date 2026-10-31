@@ -100,7 +100,27 @@ export function finishUpload(current: Attachment[], key: string, file: MessageFi
   return change(current, key, (row) => ({ ...row, status: "ready", progress: 100, fileId: file.id, name: file.name, kind: file.kind || row.kind, size: file.size, error: null }));
 }
 
-export const failUpload = (current: Attachment[], key: string, error: string): Attachment[] => change(current, key, (row) => ({ ...row, status: "failed", error }));
+/** A failed upload; `again: false` when uploading it again cannot help (a program, an empty file, too large). */
+export const failUpload = (current: Attachment[], key: string, error: string, again = true): Attachment[] => change(current, key, (row) => ({ ...row, status: "failed", error, local: row.local && again }));
+
+/** Programs and raw binary data, which Ensemble's Files never keeps (Ensemble's shared-types `fileTypeProblem`, the same list). */
+const REFUSED_EXTENSIONS: ReadonlySet<string> = new Set([
+  "exe", "msi", "msix", "msp", "scr", "pif", "cpl", "dll", "sys", "drv", "ocx", "bat", "cmd", "vbs", "vbe", "wsf", "wsh", "hta", "lnk", "reg",
+  "bin", "so", "dylib", "elf", "run", "appimage", "dmg", "pkg", "mpkg", "deb", "rpm", "apk", "aab", "ipa", "xapk", "jar", "iso",
+]);
+
+/**
+ * Why Ensemble would refuse a file before it is uploaded, in its own words, or null: an empty file, a
+ * program, or one larger than `limit` (the server's `maxFileBytes`). Any other type is taken: text,
+ * code, pictures, PDFs, office files, archives, sound and video.
+ */
+export function attachProblem(file: { name: string; size: number }, limit?: number | null): string | null {
+  if (file.size === 0) return "This file is empty, so there is nothing to keep.";
+  const ext = /\.([a-z0-9]+)$/i.exec(file.name)?.[1]?.toLowerCase() ?? "";
+  if (REFUSED_EXTENSIONS.has(ext)) return `.${ext} files are programs or raw binary data, which Files does not keep.`;
+  if (limit && file.size > limit) return `Files can be up to ${sizeLabel(limit)} here. For a larger file on your computer, tell your node where it is.`;
+  return null;
+}
 
 /** Uploads a failed file again under the same chip. */
 export const retryUpload = (current: Attachment[], key: string): Attachment[] =>
@@ -119,8 +139,10 @@ export function sendBlocker(items: readonly Attachment[]): string | null {
   const uploading = items.filter((row) => row.status === "uploading").length;
   if (uploading) return uploading === 1 ? "Sending waits until the file has uploaded." : `Sending waits until ${uploading} files have uploaded.`;
   const failed = items.filter((row) => row.status === "failed");
-  if (failed.length === 1) return `“${failed[0]!.name}” did not upload. Retry or remove it to send.`;
-  if (failed.length) return `${failed.length} files did not upload. Retry or remove them to send.`;
+  // Only what can be uploaded again offers Retry.
+  const retry = failed.some((row) => row.local);
+  if (failed.length === 1) return `“${failed[0]!.name}” did not upload. ${retry ? "Retry or remove" : "Remove"} it to send.`;
+  if (failed.length) return `${failed.length} files did not upload. ${retry ? "Retry or remove" : "Remove"} them to send.`;
   return null;
 }
 
@@ -207,6 +229,9 @@ export function fileDate(iso: string): string {
 
 /** Pictures a browser can show; HEIC and TIFF it cannot. */
 export const canShowPicture = (name: string, kind: string): boolean => kind === "image" && !/\.(heic|heif|tiff?)$/i.test(name);
+
+/** What a person asks their node when they want a file they attached put on their computer (the node's `node_save_attachment`). */
+export const saveOnComputerAsk = (name: string): string => `Save “${name}” on my computer.`;
 
 /** The files on a message (`data.files`). */
 export function messageFiles(message: Pick<Message, "data">): MessageFile[] {

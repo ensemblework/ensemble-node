@@ -3,15 +3,16 @@
 /**
  * A question from the owner's computer, in the chat where the node is talking (Ensemble's computer
  * cards, `data.type: "computer"`): the first use of a folder, or of a website when the owner asks to be
- * asked. What the node tried, where, and the answers the computer offers (Once, This mission, Always for
- * this folder or address) or Don't allow. The node's call waits for the answer and goes on by itself.
+ * asked. What the node tried, where, and the answers the computer offers, the lasting one first (Allow in
+ * this folder from now on, Only this mission, Just once) or Don't allow: the owner is asked at most once
+ * per folder. The node's call waits for the answer and goes on by itself.
  * The answer is Ensemble's decision for it (`POST /api/decisions/:id/decide`, the option as `reason`),
  * so answering it in the Hub, the CLI or on a phone settles this card too.
  */
 import { Check, FolderOpen, Globe, Monitor, X } from "lucide-react";
 import { useState } from "react";
 import { cardWords } from "@/lib/cards";
-import { computerAnswered, computerDecision, computerOptions } from "@/lib/checkpoints";
+import { computerAnswered, computerChoices, computerDecision } from "@/lib/checkpoints";
 import { answerLocally, useDecide } from "@/lib/hooks";
 import type { Badge } from "@/lib/plan";
 import { clock } from "@/lib/text";
@@ -59,7 +60,7 @@ export function ComputerCard({ message, ctx, node }: { message: Message; ctx: Me
   const words = cardWords(data, handle, ctx.roomTitle);
   const status = data.status ?? "pending";
   const pending = status === "pending";
-  const options = computerOptions(data);
+  const choices = computerChoices(data);
   const decisionId = typeof data.decisionId === "string" && data.decisionId ? data.decisionId : null;
   const site = data.scope === "origin";
   const Where = site ? Globe : FolderOpen;
@@ -115,10 +116,10 @@ export function ComputerCard({ message, ctx, node }: { message: Message; ctx: Me
         {pending ? (
           <>
             <div className="flex flex-wrap gap-2" role="group" aria-label="Your answer">
-              {options.map((option, at) => (
+              {choices.map(({ option, label }, at) => (
                 <Button key={option} size="sm" tone={at === 0 ? "primary" : "ghost"} busy={busy === option} disabled={Boolean(busy) || !decisionId} onClick={() => answer(option)} title={optionHint(option, data)}>
                   {at === 0 ? <Check size={13} aria-hidden /> : null}
-                  {option}
+                  {label}
                 </Button>
               ))}
               <Button size="sm" tone="quiet" busy={busy === "deny"} disabled={Boolean(busy) || !decisionId} onClick={() => answer(null)}>

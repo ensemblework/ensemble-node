@@ -4,10 +4,14 @@
  * computer (starting or sending to a session, or handing one to another node), secrets and sign-ins; a
  * question from the owner's computer (a folder or a website used for the first time), a command to run
  * as administrator; a proposed node or crew, or an existing node to bring into a crew; captures held
- * for the owner to check before they are sent; and in rooms with other people, a request for work or a
- * review, a request the lead drafted for the owner to send, and a question about sharing something
- * private (Ensemble docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
+ * for the owner to check before they are sent; a question or permission from a run the node started
+ * (its coding agent asks); and in rooms with other people, a request for work or a review, a request
+ * the lead drafted for the owner to send, and a question about sharing something private (Ensemble
+ * docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
  */
+import { loginPurpose, loginSite } from "./login";
+import { agentName } from "./session";
+import { cardRunSettings } from "./work-log";
 
 type CardData = {
   type?: unknown;
@@ -34,6 +38,34 @@ export type CardWords = {
 };
 
 const text = (value: unknown, fallback: string) => (typeof value === "string" && value.trim() ? value.trim() : fallback);
+
+/**
+ * The coding agent a run's question comes from, by name ("GitHub Copilot"), when its card says: Ensemble
+ * may name it (`agent`), its engine or its source; the conversation adds it from the run's own card.
+ */
+export function runAgent(data: { agent?: unknown; agentName?: unknown; engine?: unknown; source?: unknown; [key: string]: unknown } | null | undefined): string | null {
+  for (const value of [data?.agentName, data?.agent, data?.engine, data?.source]) {
+    const name = typeof value === "string" ? value.trim() : "";
+    if (name && name !== "other") return agentName(name);
+  }
+  return null;
+}
+
+/** The coding agent a run card's run uses, by name, from the card: its engine, or its session's agent. */
+export function runCardAgent(data: Record<string, unknown> | null | undefined): string | null {
+  const engine = cardRunSettings(data).engine;
+  const session = (data?.session ?? null) as { agent?: unknown; agentId?: unknown } | null;
+  const value = engine ?? (typeof session?.agentId === "string" ? session.agentId : typeof session?.agent === "string" ? session.agent : null);
+  return value ? agentName(value) : null;
+}
+
+/** What a run asks permission for, after "to": "run python3 search.py", or its own words without the question mark. */
+export function runAsk(data: { command?: unknown; title?: unknown; [key: string]: unknown } | null | undefined): string {
+  const command = text(data?.command, "");
+  if (command) return `run ${command.split("\n")[0]!.slice(0, 160)}`;
+  const title = text(data?.title, "do something").replace(/\?$/, "");
+  return title.charAt(0).toLowerCase() + title.slice(1);
+}
 
 /** What each capability of the owner's computer lets a node do (Ensemble's node/device-tool-decisions.ts). */
 const COMPUTER_VERBS: Record<string, string> = { run: "run commands", git: "read git", files: "change files", http: "call", browse: "browse", read: "share files" };
@@ -93,8 +125,18 @@ export function cardWords(data: CardData, handle: string, roomTitle: string): Ca
     case "secret":
       return { title: `@${handle} needs a secret: ${text(data?.name, "a value")}`, wants: "needs a secret", approve: "Save", discard: "Decline" };
     case "login": {
-      const where = `${text(data?.origin, "a site")}${typeof data?.computer === "string" && data.computer ? ` on ${data.computer}` : ""}`;
-      return { title: `@${handle} needs you to sign in to ${where}`, wants: `needs you to sign in to ${where}`, approve: "Sign in", discard: "Not now" };
+      const site = loginSite(data?.origin);
+      const on = typeof data?.computer === "string" && data.computer ? ` on ${data.computer}` : "";
+      return loginPurpose(data as { purpose?: string }) === "human_check"
+        ? { title: `@${handle} needs you to pass a human check on ${site}`, wants: `needs you to pass a human check on ${site}${on}`, approve: "Open it here", discard: "Not now" }
+        : { title: `@${handle} needs you to sign in to ${site}`, wants: `needs you to sign in to ${site}${on}`, approve: "Sign in here", discard: "Not now" };
+    }
+    case "run_decision": {
+      const agent = runAgent(data);
+      const asker = agent ?? `@${handle}'s run`;
+      const title = text(data?.title, "");
+      if (data?.event === "question") return { title: `${asker} asks you`, wants: `has a question from ${agent ?? "its run"}${title ? `: ${title}` : ""}`, approve: "Answer", discard: "Skip" };
+      return { title: text(data?.command, "") ? `${asker} wants to run a command` : `${asker} asks for permission`, wants: `has ${agent ?? "a run"} asking to ${runAsk(data)}`, approve: "Allow once", discard: "Don't allow" };
     }
     case "node_proposal":
       return data?.action === "crew"

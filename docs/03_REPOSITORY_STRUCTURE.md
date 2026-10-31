@@ -27,7 +27,8 @@ ensemble-node/
 │   │   │                        card (session.tsx: settings, queue, controls), a worker's report (report.tsx),
 │   │   │                        evidence gallery, text previews and lightbox (evidence.tsx), every owner card's
 │   │   │                        frame and its checkpoint (owner-card.tsx), a question from the computer
-│   │   │                        (computer-card.tsx), a command to run as administrator (sudo-card.tsx), captures held for the owner to check
+│   │   │                        (computer-card.tsx), a run's question or permission (run-decision-card.tsx), a
+│   │   │                        command to run as administrator (sudo-card.tsx), captures held for the owner to check
 │   │   │                        (held-captures.tsx), a run's live view (live-view.tsx), plan card (plan-card.tsx), helper
 │   │   │                        threads (helper-thread.tsx), the "Working on" strip (work-strip.tsx), rooms with
 │   │   │                        other people: their cards (room-cards.tsx: a request and its owner's card, a
@@ -49,9 +50,12 @@ ensemble-node/
 │   │   ├── email-chips.tsx      emails as chips
 │   │   ├── invites.tsx          the requests-to-join inbox
 │   │   ├── secret-box.tsx       a node's request for a secret: password box encrypted for the computer, its route and key
-│   │   ├── login-box.tsx        a sign-in card: the saved login, signing in on the computer, a login typed and
-│   │   │                        encrypted for the computer, opening its browser here, Not now
-│   │   ├── takeover-view.tsx    controlling a tab of the computer's browser: the picture, input, Paste, I'm done
+│   │   ├── login-box.tsx        a sign-in card or a human check: Sign in here (the remote view), Open on your
+│   │   │                        phone (a QR code), the window on the computer, a login typed and encrypted for the
+│   │   │                        computer, the saved login, the code a site asks for, Not now
+│   │   ├── takeover-view.tsx    the remote view: the page from the computer on a phone or a laptop, taps, drags,
+│   │   │                        press and hold, the box that types into it, its keys, I'm done, reconnecting
+│   │   ├── qr-code.tsx          a QR code as SVG (loaded only when shown)
 │   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      Node signature faces, shape/colour/eyes and thinking state
@@ -72,14 +76,18 @@ ensemble-node/
 │   │   ├── entity-text.ts       node replies name records by title, not id (tested)
 │   │   ├── seal.ts, secret.ts   the sealed box (WebCrypto; identical to Ensemble's shared-types seal.ts, checked
 │   │   │                        against the same seal-vectors.json) and the secret card's route, words and answer
-│   │   ├── login.ts             the sign-in card: how a typed login travels, sealed for the computer, and its words
+│   │   ├── login.ts             the sign-in card: sign-in or human check, how a typed login and a code travel,
+│   │   │                        sealed for the computer, the card's link, and its words (tested)
+│   │   ├── qr.ts                a QR code encoder (byte mode, the standard's levels and masks; tested)
 │   │   ├── sudo.ts              a command run as administrator: the password sealed for the computer, bound to the
 │   │   │                        card and the command's hash, and its words (tested)
 │   │   ├── checkpoints.ts       which owner cards are still open, each settled card's one line, a computer's answer (tested)
 │   │   ├── file-preview.ts      which files preview as text in the chat, their first lines, 200 KB at most (tested)
 │   │   ├── owner-settings.ts    the run profile a node's sessions use, and asking before a new website (tested)
 │   │   ├── takeover.ts, takeover-channel.ts
-│   │   │                        a takeover session (secret sealed for the computer, frames, numbered input, end)
+│   │   │                        a takeover session (secret sealed for the computer, frames and the page they show,
+│   │   │                        numbered input sent again while the link is down, end), the remote view's input
+│   │   │                        (typing as it changes, taps, drags, press and hold, fitting the picture)
 │   │   │                        and its channel (WebCrypto; identical to Ensemble's shared-types takeover.ts,
 │   │   │                        checked against the same takeover-vectors.json) (tested)
 │   │   ├── plan.ts, session.ts, evidence.ts, threads.ts, work.ts, routines.ts, rooms.ts, room-work.ts, trust.ts, cards.ts, captures.ts

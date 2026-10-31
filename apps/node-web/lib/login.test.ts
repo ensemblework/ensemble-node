@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createDecipheriv, createHash, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync } from "node:crypto";
 import test from "node:test";
-import { loginFingerprint, loginOutcomeText, loginReasonText, loginRouteText, typedLoginAnswer, waitingLoginCard, type LoginTarget } from "./login";
+import { cardLink, cleanCode, codeAnswer, codeHintText, codeInputMode, loginBadge, loginFingerprint, loginOpen, loginOutcomeText, loginPurpose, loginReasonText, loginRouteText, loginTitle, remoteDoneText, typedLoginAnswer, waitingLoginCard, type LoginTarget } from "./login";
 import type { Message } from "./types";
 
 function computerKey() {
@@ -9,6 +9,18 @@ function computerKey() {
   const spki = publicKey.export({ type: "spki", format: "der" });
   const kid = createHash("sha256").update(spki).digest("hex").slice(0, 16);
   return { privateKey, info: { kid, alg: "ECDH-P256+HKDF-SHA256+A256GCM", spki: spki.toString("base64url"), fingerprint: kid.toUpperCase().match(/.{4}/g)!.join(" ") } };
+}
+
+/** Opens a box as the computer does, with its private key. */
+function openBox(privateKey: ReturnType<typeof computerKey>["privateKey"], kid: string, box: { epk: string; iv: string; ct: string; aad: string }) {
+  const epk = Buffer.from(box.epk, "base64url");
+  const shared = diffieHellman({ privateKey, publicKey: createPublicKey({ key: { kty: "EC", crv: "P-256", x: epk.subarray(1, 33).toString("base64url"), y: epk.subarray(33).toString("base64url") }, format: "jwk" }) });
+  const aesKey = Buffer.from(hkdfSync("sha256", shared, epk, Buffer.from(`ensemble-seal-v1|${kid}`), 32));
+  const ct = Buffer.from(box.ct, "base64url");
+  const decipher = createDecipheriv("aes-256-gcm", aesKey, Buffer.from(box.iv, "base64url"));
+  decipher.setAAD(Buffer.from(box.aad, "base64url"));
+  decipher.setAuthTag(ct.subarray(ct.length - 16));
+  return { aad: JSON.parse(Buffer.from(box.aad, "base64url").toString("utf8")), plain: JSON.parse(Buffer.concat([decipher.update(ct.subarray(0, ct.length - 16)), decipher.final()]).toString("utf8")) };
 }
 
 const target = (route: LoginTarget["route"]): LoginTarget => ({
@@ -56,6 +68,7 @@ test("nothing typed goes to a computer that cannot open it, and the card says wh
 test("why the page wants a sign-in, in one line, and a sign-in from the browser here", () => {
   assert.equal(loginReasonText(["the page has a password field", "it was sent to sign in at accounts.google.com"]), "Why: the page has a password field; it was sent to sign in at accounts.google.com.");
   assert.equal(loginReasonText([]), "");
+  assert.equal(loginReasonText(["the page asks: Robot or human?"]), "Why: the page asks: Robot or human?", "no stop after a question mark");
   assert.equal(loginOutcomeText({ status: "ended", note: "The work that needed this sign-in ended, or its tab closed." }), "The work that needed this sign-in ended, or its tab closed.");
 });
 
@@ -68,5 +81,47 @@ test("a run's paused live view points to its sign-in card only while that card i
     card("acting", { type: "login", jobId: "J1", status: "working" }),
   ];
   assert.equal(waitingLoginCard(cards, "J1")?.id, "acting");
+  assert.equal(waitingLoginCard([card("code", { type: "login", jobId: "J1", status: "needs_code" })], "J1")?.id, "code", "waiting for a code is still open");
   assert.equal(waitingLoginCard(cards.slice(0, 3), "J1"), undefined, "a settled sign-in or another kind of card is not it");
+});
+
+test("a sign-in and a human check say what they ask, and which statuses wait for the owner", () => {
+  assert.equal(loginTitle({ origin: "https://portal.azure.com" }, "lead"), "@lead needs you to sign in to portal.azure.com");
+  assert.equal(loginTitle({ origin: "https://www.walmart.com", purpose: "human_check" }, "lead"), "@lead needs you to pass a human check on www.walmart.com");
+  assert.equal(loginPurpose({}), "sign_in", "an older card is a sign-in");
+  for (const status of ["pending", "working", "needs_code", undefined]) assert.equal(loginOpen({ status }), true, String(status));
+  for (const status of ["signed_in", "passed", "declined", "expired", "ended"]) assert.equal(loginOpen({ status }), false, status);
+  assert.deepEqual(loginBadge({ status: "needs_code" }), { label: "Needs a code", tone: "warn" }, "a code to enter waits for the owner");
+  assert.deepEqual(loginBadge({ status: "passed" }), { label: "Passed", tone: "ok" });
+  assert.deepEqual(loginBadge({ status: "working" }), { label: "Working…", tone: "accent" });
+  assert.equal(remoteDoneText({ status: "signed_in" }, "lead"), "Signed in — @lead is carrying on");
+  assert.equal(remoteDoneText({ status: "passed", purpose: "human_check" }, "lead"), "Check passed — @lead is carrying on");
+  assert.equal(remoteDoneText({ status: "pending" }, "lead"), null);
+  assert.equal(cardLink("https://node.ensemblework.com/", "5e1f2a3b", "c-login"), "https://node.ensemblework.com/r/5e1f2a3b#m-c-login");
+});
+
+test("settled cards say how they ended, for a human check too", () => {
+  assert.equal(loginOutcomeText({ status: "passed", purpose: "human_check", origin: "https://www.walmart.com", computer: "Studio", via: "takeover" }), "Passed the human check on https://www.walmart.com on Studio from the remote view.");
+  assert.equal(loginOutcomeText({ status: "signed_in", origin: "https://github.com", computer: "Studio", via: "code" }), "Signed in to https://github.com on Studio with the code you gave.");
+  assert.equal(loginOutcomeText({ status: "signed_in", origin: "https://github.com", computer: "Studio", via: "auto" }), "Signed in to https://github.com on Studio.", "an unknown way says nothing of how");
+  assert.equal(loginOutcomeText({ status: "declined", purpose: "human_check", origin: "https://www.walmart.com", computer: "Studio" }), "You chose not to do the human check on https://www.walmart.com on Studio now.");
+  assert.equal(loginOutcomeText({ status: "expired", purpose: "human_check", origin: "https://x.example", computer: "Studio" }), "Nobody passed the human check on https://x.example on Studio in time.");
+});
+
+test("a code the site asks for is sealed for the computer like a typed login, without spaces, and never in the clear", async () => {
+  const key = computerKey();
+  const answer = await codeAnswer(target({ mode: "sealed", sealKey: key.info }), { id: "card-1" }, " 123 456 ", "https://node.ensemblework.com");
+  assert.equal(answer.action, "code");
+  assert.ok(answer.action === "code" && !JSON.stringify(answer).includes("123"));
+  const opened = openBox(key.privateKey, key.info.kid, answer.sealed);
+  assert.deepEqual(opened.plain, { origin: "https://ledger.example.com", code: "123456" }, "the sign-in's site travels inside, as with a typed login");
+  assert.deepEqual([opened.aad.purpose, opened.aad.deviceId, opened.aad.decisionId, opened.aad.name, opened.aad.origin], ["login", "dev-1", "card-1", "lg_0123456789abcdef0123456789abcdef", "https://node.ensemblework.com"]);
+  await assert.rejects(codeAnswer(target({ mode: "sealed", sealKey: key.info }), { id: "card-1" }, "   ", "https://node.ensemblework.com"), /Type the code/);
+  await assert.rejects(codeAnswer(target({ mode: "pair_again" }), { id: "card-1" }, "123456", "https://node.ensemblework.com"), /Pair it again/);
+  assert.equal(cleanCode("123-456"), "123456");
+  assert.equal(cleanCode(" AB12 CD "), "AB12CD");
+  assert.equal(codeHintText({ codeHint: "Enter the 6-digit code from your authenticator app.", origin: "https://github.com" }), "github.com says: “Enter the 6-digit code from your authenticator app”");
+  assert.equal(codeHintText({ origin: "https://github.com" }), null, "an older computer says nothing more");
+  assert.equal(codeInputMode({ codeHint: "Enter the 6-digit code" }), "numeric");
+  assert.equal(codeInputMode({ codeHint: "Enter the code we emailed you" }), "text");
 });

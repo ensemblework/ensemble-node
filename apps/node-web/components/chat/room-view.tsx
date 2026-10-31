@@ -167,6 +167,16 @@ export function RoomView({ roomId }: { roomId: string }) {
   const timeline = useMemo(() => whole.filter(inTimeline), [whole]);
   // Each session's newest card here (step runs inside plan cards too): it keeps the session's line once its run ended.
   const sessionCards = useMemo(() => newestSessionCards(whole), [whole]);
+  // Runs' cards by job, and the cards of their questions by decision: a question with its own card is answered there.
+  const runLinks = useMemo(() => {
+    const runs = new Map<string, Message>();
+    const questions = new Map<string, string>();
+    for (const row of whole) {
+      if (row.kind === "run" && typeof row.data?.jobId === "string") runs.set(row.data.jobId, row);
+      else if (row.kind === "approval" && row.data?.type === "run_decision" && typeof row.data.decisionId === "string") questions.set(row.data.decisionId, row.id);
+    }
+    return { runs, questions };
+  }, [whole]);
   // Each tab's unread as Ensemble counts it, and the newest message the shown tab has.
   const tabCounts = isPeople && room ? tabUnreadOf(room) : { room: 0, crew: 0 };
   const tabNewest = useMemo(() => timeline.reduce((max, row) => (row.sending || row.id.startsWith("local-") || (isPeople && tabOf(row) !== tab) ? max : Math.max(max, row.seq)), 0), [timeline, isPeople, tab]);
@@ -421,6 +431,8 @@ export function RoomView({ roomId }: { roomId: string }) {
       helperOf: (nodeId: string) => threads.find((thread) => thread.helper?.id === nodeId),
       onHelper: (thread: HelperThread) => setHelper(thread),
       sessionCardOf: (sessionId: string) => sessionCards.get(sessionId),
+      runCardOf: (jobId: string) => runLinks.runs.get(jobId),
+      decisionCardOf: (decisionId: string) => runLinks.questions.get(decisionId),
       ...(isPeopleRoom(room)
         ? {
             tab,
@@ -444,7 +456,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           }
         : {}),
     };
-  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan, nodes, attached, threads, tab, requests.data, shareMessage, whole, sessionCards]);
+  }, [boot.data, room, jumpTo, sendMessage, client, roomId, inPlan, nodes, attached, threads, tab, requests.data, shareMessage, whole, sessionCards, runLinks]);
 
   if (!boot.data || !ctx || !room) {
     return (

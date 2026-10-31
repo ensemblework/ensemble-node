@@ -4,7 +4,8 @@
  * which opens back into the card. These are the rules: which cards are still open, the chip's words for
  * each kind of card, the answer a computer's question sends, and the chips of a run's own questions.
  */
-import { computerAction } from "./cards";
+import { computerAction, runAgent, runAsk } from "./cards";
+import { loginPurpose, loginSite } from "./login";
 import { TOOL_LABEL } from "./text";
 import type { AgentDecision, DecisionBody } from "./types";
 
@@ -16,27 +17,49 @@ export type Checkpoint = { text: string; tone: CheckpointTone; icon: CheckpointI
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CardData = Record<string, any> | null | undefined;
 
-/** A card waits for its owner (pending), or its computer or Ensemble is acting on the answer. */
-const OPEN: ReadonlySet<string> = new Set(["pending", "applying", "saving", "working", "running"]);
+/** A card waits for its owner (pending, or a code a sign-in asks for), or its computer or Ensemble is acting on the answer. */
+const OPEN: ReadonlySet<string> = new Set(["pending", "needs_code", "applying", "saving", "working", "running"]);
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 /** Whether a card stays open in the chat: it waits for an answer, or the answer is being carried out. */
 export const cardOpen = (data: CardData): boolean => OPEN.has(text(data?.status) || "pending");
 
-/** An answer given here that the card does not show yet: the server updates the card soon after. */
-export type LocalAnswer = { status: string; answer?: string | null; answeredAt: string };
+/** An answer given here that the card does not show yet: the server updates the card soon after. A run's question also keeps allow or deny and its scope. */
+export type LocalAnswer = { status: string; answer?: string | null; answeredAt: string; decision?: "allow" | "deny"; scope?: string };
 
 /** The card as it should read now: its own data, or the answer just given here while the card still says pending. */
 export function withLocalAnswer<T extends CardData>(data: T, local: LocalAnswer | null | undefined): T {
   if (!local || text(data?.status) !== "pending") return data;
-  return { ...(data ?? {}), status: local.status, answer: local.answer ?? null, answeredAt: local.answeredAt } as unknown as T;
+  return { ...(data ?? {}), status: local.status, answer: local.answer ?? null, answeredAt: local.answeredAt, ...(local.decision ? { decision: local.decision } : {}), ...(local.scope ? { scope: local.scope } : {}) } as unknown as T;
+}
+
+/** How a run's question card reads straight after an answer here. */
+export function runDecisionAnswered(body: DecisionBody, now = new Date()): LocalAnswer {
+  return { status: "answered", answer: body.reason ?? null, answeredAt: now.toISOString(), decision: body.decision, scope: body.scope };
 }
 
 /** The options a computer's question offers (Once, This mission, Always for this folder), in its order. */
 export function computerOptions(data: CardData): string[] {
   const options = Array.isArray(data?.options) ? data.options.filter((row: unknown): row is string => typeof row === "string" && row.trim().length > 0).map((row: string) => row.trim()) : [];
   return options.length ? [...new Set(options)].slice(0, 4) : ["Once"];
+}
+
+/**
+ * The computer's answers as buttons, the lasting one first (the owner's rule: ask at most once per
+ * folder): "Allow in this folder from now on", "Only this mission", "Just once". Each still sends the
+ * computer's own words for it (`option`).
+ */
+export function computerChoices(data: CardData): Array<{ option: string; label: string }> {
+  const rank = (option: string) => (/^always/i.test(option) ? 0 : /mission/i.test(option) ? 1 : /^once$/i.test(option) ? 2 : 3);
+  const site = data?.scope === "origin";
+  return computerOptions(data)
+    .map((option, at) => ({ option, at }))
+    .sort((a, b) => rank(a.option) - rank(b.option) || a.at - b.at)
+    .map(({ option }) => ({
+      option,
+      label: /^always/i.test(option) ? (site ? "Allow this address from now on" : "Allow in this folder from now on") : /mission/i.test(option) ? "Only this mission" : /^once$/i.test(option) ? "Just once" : option,
+    }));
 }
 
 /** What answering a computer's question sends to `POST /api/decisions/:id/decide`: the option picked travels as `reason`. */
@@ -55,15 +78,7 @@ const handleOf = (value: unknown, fallback: string): string => {
 };
 
 /** A site's address without its scheme: "https://github.com/login" → "github.com". */
-export function siteName(origin: unknown): string {
-  const value = text(origin);
-  if (!value) return "the site";
-  try {
-    return new URL(value).host || value;
-  } catch {
-    return value.replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "");
-  }
-}
+export const siteName = loginSite;
 
 /** "Create tasks, Update page +2": the calls a card held, by their labels. */
 function callNames(data: CardData): string {
@@ -149,10 +164,30 @@ export function cardCheckpoint(data: CardData, context: { handle: string; roomTi
     }
     case "login": {
       const site = siteName(data?.origin);
+      const check = loginPurpose(data ?? {}) === "human_check";
       if (status === "signed_in") return ok(`Signed in to ${site}`);
-      if (status === "declined") return no(`Didn't sign in to ${site}`);
-      if (expired) return late(`No answer in time: sign-in to ${site}`);
-      if (status === "ended") return late(`Sign-in to ${site} ended`);
+      if (status === "passed") return ok(`Passed the human check on ${site}`);
+      if (status === "declined") return no(check ? `Skipped the human check on ${site}` : `Didn't sign in to ${site}`);
+      if (expired) return late(check ? `No answer in time: human check on ${site}` : `No answer in time: sign-in to ${site}`);
+      if (status === "ended") return late(check ? `Human check on ${site} ended` : `Sign-in to ${site} ended`);
+      break;
+    }
+    case "run_decision": {
+      const agent = runAgent(data) ?? "the agent";
+      const question = text(data?.event) === "question";
+      const what = question ? text(data?.title) || "its question" : runAsk(data);
+      // The node may answer its own run's question; then the chip says so.
+      const by = data?.answeredBy === "node" ? node : null;
+      if (status === "answered" || status === "decided") {
+        const answer = text(data?.answer);
+        if (data?.decision === "deny") return no(question ? `Skipped, the agent chose: ${what}` : `${by ? `${by} didn't allow` : "Didn't allow"} ${agent} to ${what}`);
+        if (question) return ok(answer ? `${by ? `${by} answered` : "Answered"}: “${answer}”` : `${by ? `${by} answered` : "Answered"}: ${what}`);
+        const scope = text(data?.scope);
+        const how = scope === "session" ? "For this run" : scope === "always" ? "Always" : answer && !/^(allow|yes)$/i.test(answer) ? answer : "Once";
+        return ok(`${by ? `${by} allowed` : "Allowed"} ${agent} to ${what} · ${how}`);
+      }
+      if (expired) return late(`No answer in time: ${question ? what : `${agent} asked to ${what}`}`);
+      if (status === "closed") return late(`The run ended before an answer: ${question ? what : `${agent} asked to ${what}`}`);
       break;
     }
     case "media_preview": {

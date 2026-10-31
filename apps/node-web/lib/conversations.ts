@@ -5,10 +5,11 @@ export type ConversationFilter = "all" | "unread" | "groups";
 
 /**
  * What waits for me in each conversation: my nodes' open cards there (a question from my computer, a
- * command to run as administrator, a draft, a secret…), and runs there that wait on my answer. `first`
- * is the oldest of them, to open the conversation at. The sidebar marks those conversations.
+ * command to run as administrator, a draft, a secret, a run's question…), and runs there that wait on my
+ * answer, unless their questions have cards of their own (one question counts once). `first` is the
+ * oldest of them, to open the conversation at. The sidebar marks those conversations.
  */
-export function waitingRooms(cards: readonly Pick<Message, "id" | "roomId" | "createdAt">[] | undefined, runs: readonly Pick<Run, "roomId" | "status" | "messageId">[] | undefined): Map<string, { count: number; first: string | null }> {
+export function waitingRooms(cards: readonly (Pick<Message, "id" | "roomId" | "createdAt"> & { data?: Message["data"] })[] | undefined, runs: readonly (Pick<Run, "roomId" | "status" | "messageId"> & { jobId?: string | null })[] | undefined): Map<string, { count: number; first: string | null }> {
   const waiting = new Map<string, { count: number; first: string | null; at: number }>();
   const add = (roomId: string | null | undefined, messageId: string | null, at: number) => {
     if (!roomId) return;
@@ -16,8 +17,12 @@ export function waitingRooms(cards: readonly Pick<Message, "id" | "roomId" | "cr
     const older = !known || (messageId !== null && (known.first === null || at < known.at));
     waiting.set(roomId, { count: (known?.count ?? 0) + 1, first: older ? messageId : known.first, at: older ? at : known.at });
   };
-  for (const card of cards ?? []) add(card.roomId, card.id, Date.parse(card.createdAt) || 0);
-  for (const run of runs ?? []) if (run.status === "waiting_approval") add(run.roomId, run.messageId, Number.MAX_SAFE_INTEGER);
+  const asking = new Set<string>();
+  for (const card of cards ?? []) {
+    add(card.roomId, card.id, Date.parse(card.createdAt) || 0);
+    if (card.data?.type === "run_decision" && typeof card.data.jobId === "string") asking.add(card.data.jobId);
+  }
+  for (const run of runs ?? []) if (run.status === "waiting_approval" && !(run.jobId && asking.has(run.jobId))) add(run.roomId, run.messageId, Number.MAX_SAFE_INTEGER);
   return new Map([...waiting].map(([roomId, row]) => [roomId, { count: row.count, first: row.first }]));
 }
 

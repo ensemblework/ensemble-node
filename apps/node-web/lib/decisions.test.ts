@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { answeredForJob, answeredNote, approvalsForRun, decisionBody, decisionsForJob, decisionView } from "./decisions";
+import { answeredForJob, answeredNote, approvalsForRun, decisionBody, decisionsForJob, decisionView, runDecisionRow, runDecisionView } from "./decisions";
 import type { AgentDecision, ApprovalRecord } from "./types";
 
 const decision = (more: Partial<AgentDecision> = {}, detail: AgentDecision["detail"] = {}): AgentDecision => ({
@@ -78,4 +78,23 @@ test("a run's questions are found by the job that asked or by the session that i
   assert.deepEqual(approvalsForRun([approval("by-job", { jobId: "job-9" }), approval("by-run", { runId: "run-9" }), approval("neither", {})], "run-9", "job-9").map((row) => row.id), ["by-job", "by-run"]);
   assert.deepEqual(approvalsForRun([approval("by-job", { jobId: "job-9" })], null, "job-9").map((row) => row.id), ["by-job"], "before the job's run is known");
   assert.deepEqual(approvalsForRun([approval("x", {})], null, null), []);
+});
+
+test("a run's card in the chat answers as Ensemble's row says, else from the card, and the run card leaves it out", () => {
+  const card = { decisionId: "d1", jobId: "J1", event: "question", title: "Which branch?", options: ["main", "develop", "main", ""], allowCustom: true, recommended: "main" };
+  assert.deepEqual(runDecisionView(card), { kind: "question", options: ["main", "develop"], recommended: "main", custom: true, confirm: false }, "without the row: the card's options, deduplicated");
+  // An agent's own multiple-choice question is answered on the card too.
+  assert.deepEqual(runDecisionView(card, decision({ source: "copilot", event: "question" }, { options: ["main", "develop"], deviceId: "d" })), { kind: "question", options: ["main", "develop"], recommended: "main", custom: true, confirm: false });
+  assert.deepEqual(runDecisionView({ event: "permission", command: "python3 search.py" }), { kind: "permission", forRun: false, confirm: false }, "once only unless Ensemble's row allows more");
+  assert.deepEqual(runDecisionView({ event: "permission" }, decision({}, { command: "npm i" })), { kind: "permission", forRun: true, confirm: false }, "a run on Ensemble's own server may be allowed for the run");
+  assert.deepEqual(runDecisionView({ event: "permission" }, decision({}, { deviceId: "d", confirm: true })), { kind: "permission", forRun: false, confirm: true }, "a risky one is confirmed first");
+  assert.deepEqual(runDecisionView({ event: "permission" }, decision({}, { deviceId: "d", deviceName: "MacBook", tier: "run_branch_push" })), { kind: "on-computer", computer: "MacBook" });
+  assert.equal(runDecisionView({ event: "question", options: [] }).kind === "question" && (runDecisionView({ event: "question", options: [] }) as { custom: boolean }).custom, true, "a question without options takes words");
+  const row = runDecisionRow({ ...card, cwd: "/work/prices" });
+  assert.deepEqual([row.id, row.event, row.detail?.jobId, row.cwd], ["d1", "question", "J1", "/work/prices"]);
+  const rows = [decision({ id: "a", sessionId: "J1" }), decision({ id: "b", sessionId: "J1", requestedAt: "2026-10-26T11:00:00.000Z" }), decision({ id: "c", sessionId: "J1", status: "decided" }), decision({ id: "e", sessionId: "J1", status: "decided" })];
+  const hasCard = (id: string) => id === "a" || id === "c";
+  assert.deepEqual(decisionsForJob(rows, "J1", hasCard).map((row) => row.id), ["b"], "a question with its own card waits on that card");
+  assert.deepEqual(answeredForJob(rows, "J1", hasCard).map((row) => row.id), ["e"], "and keeps its checkpoint there");
+  assert.deepEqual(decisionsForJob(rows, "J1").map((row) => row.id), ["a", "b"], "without cards (an older Ensemble), the run card shows them all");
 });

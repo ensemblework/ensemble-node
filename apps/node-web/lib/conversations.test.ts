@@ -89,4 +89,7 @@ test("a conversation needs me while a node's card there waits, or a run there wa
   );
   assert.deepEqual(Object.fromEntries(waiting), { "dm-lead": { count: 2, first: "older" }, crew: { count: 2, first: "crew-card" }, "dm-scout": { count: 1, first: "scout-run" }, "dm-x": { count: 1, first: null } });
   assert.equal(waitingRooms(undefined, undefined).size, 0);
+  // A run's question with its own card: the card counts, not the run that waits on it too.
+  const asked = waitingRooms([{ id: "q1", roomId: "dm-a3", createdAt: "2026-10-31T01:00:00Z", data: { type: "run_decision", jobId: "J1" } }], [{ roomId: "dm-a3", status: "waiting_approval", messageId: "run-card", jobId: "J1" }, { roomId: "dm-a3", status: "waiting_approval", messageId: "other-run", jobId: "J2" }]);
+  assert.deepEqual(Object.fromEntries(asked), { "dm-a3": { count: 2, first: "q1" } });
 });

@@ -516,7 +516,11 @@ export type CaptureSummary = {
   targets: Record<string, { screenshot: boolean; video: boolean; reason?: string }>;
   setup: boolean;
 };
-/** `takeover` 1: it shows a tab of its browser here for the owner to control; `logins` 1: it hands sign-ins to the owner. */
+/**
+ * `takeover` 1: it shows a tab of its browser here for the owner to control; `logins` 1: it hands sign-ins
+ * to the owner. 2 for both: sign-ins and human checks in a clean browser it sees through by itself, with
+ * the page's details on each frame and codes asked on the card.
+ */
 export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; takeover?: number; logins?: number; [key: string]: unknown };
 
 /** Ensemble's run approval (`GET /api/approvals`); `jobId` when Ensemble names the job too. */

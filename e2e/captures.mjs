@@ -286,9 +286,9 @@ try {
 
     // Larger, it offers to take over that tab: the takeover view opens for the run and the tab the picture shows.
     await liveView.getByRole("button", { name: "Take over" }).click();
-    const takeover = page.getByRole("dialog", { name: "Control the browser on Studio" });
+    const takeover = page.getByRole("dialog", { name: "Remote view: Pricing — Fieldnote on Studio" });
     await takeover.getByText("Someone is already controlling this tab. Stop there first.").waitFor();
-    assert.ok(await takeover.getByText("Pricing — Fieldnote on Studio").isVisible(), "the view names the page and the computer");
+    assert.ok((await takeover.getByText("Pricing — Fieldnote", { exact: true }).isVisible()) && (await takeover.getByText("on Studio", { exact: true }).isVisible()), "the view names the page and the computer");
     assert.deepEqual(state.calls.find((call) => call.takeover)?.takeover, { jobId: J1, tab: "t1" });
     await shot("live-takeover");
     await takeover.getByRole("button", { name: "Close" }).last().click();
@@ -315,7 +315,7 @@ try {
       const box = document.querySelector("#m-login1")?.getBoundingClientRect();
       return box && box.top >= 0 && box.top < window.innerHeight;
     });
-    assert.ok(await signInCard.getByText("@builder needs you to sign in to https://www.fieldnote.example on Studio").isVisible(), "the jump lands on the run's sign-in card");
+    assert.ok(await signInCard.getByText("@builder needs you to sign in to www.fieldnote.example").isVisible(), "the jump lands on the run's sign-in card");
     state.login.data = { ...state.login.data, status: "signed_in", via: "takeover" };
     await emit("node.message.updated", state.login);
     state.live = "picture";

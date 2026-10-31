@@ -250,7 +250,11 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const log = useMemo(() => (steps.data ? workLog(steps.data, events ?? []) : null), [steps.data, events]);
   const decisions = useDecisions();
   const approvals = useApprovals();
-  const asks = decisionsForJob(decisions.data, jobId);
+  // A question with its own card in the chat is answered there (and keeps its checkpoint there); an older Ensemble posts none.
+  const cardOf = ctx.decisionCardOf;
+  const hasCard = useMemo(() => (cardOf ? (decisionId: string) => Boolean(cardOf(decisionId)) : undefined), [cardOf]);
+  const asks = decisionsForJob(decisions.data, jobId, hasCard);
+  const carded = cardOf && jobId ? decisionsForJob(decisions.data, jobId).filter((row) => cardOf(row.id)) : [];
   const runApprovals = approvalsForRun(approvals.data, detail?.runId, jobId);
   const owner = node?.ownerId === ctx.meId;
   // What it asked that no longer waits: Ensemble's recent answers, and approvals answered in this tab.
@@ -259,10 +263,10 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const answered = useMemo<Answered[]>(() => {
     const runId = detail?.runId ?? null;
     return [
-      ...answeredForJob(recent.data, jobId).map((row) => ({ id: row.id, at: Date.parse(row.decidedAt ?? row.requestedAt) || 0, point: decisionCheckpoint(row), title: `${row.detail?.header ? `${row.detail.header}: ` : ""}${row.title}`, command: row.detail?.command ?? null })),
+      ...answeredForJob(recent.data, jobId, hasCard).map((row) => ({ id: row.id, at: Date.parse(row.decidedAt ?? row.requestedAt) || 0, point: decisionCheckpoint(row), title: `${row.detail?.header ? `${row.detail.header}: ` : ""}${row.title}`, command: row.detail?.command ?? null })),
       ...answeredHere.filter((row) => (runId && row.runId === runId) || (jobId && row.jobId === jobId)).map((row) => ({ id: row.id, at: Date.parse(row.at) || 0, point: approvalCheckpoint(row), title: row.title, command: null })),
     ].sort((a, b) => a.at - b.at);
-  }, [recent.data, answeredHere, jobId, detail?.runId]);
+  }, [recent.data, answeredHere, jobId, detail?.runId, hasCard]);
   const stop = useStopJob();
   const session = sessionOf(data.session);
   const agent = sessionAgent(session);
@@ -359,7 +363,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
 
       {quiet ? <p className="mt-2 text-[13px] text-muted">{quiet.note}</p> : queuedNote ? <p className="mt-2 text-[13px] text-muted">{queuedNote}</p> : null}
 
-      {progress && !ended && !quiet && !queuedNote && !asks.length && !runApprovals.length ? (
+      {progress && !ended && !quiet && !queuedNote && !asks.length && !runApprovals.length && !carded.length ? (
         <p className={`mt-2 truncate text-[13px] ${status === "running" || status === "claimed" ? "live-shine" : "text-muted"}`} title={progress} aria-live="polite">
           {progress}
         </p>
@@ -375,6 +379,15 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
       ) : null}
 
       {asks.length || runApprovals.length ? <NeedsYou decisions={asks} approvals={runApprovals} jobId={jobId} runId={detail?.runId ?? null} /> : null}
+      {carded.length ? (
+        <p className="mt-2 flex flex-wrap items-center gap-x-2 text-[13px] text-warn" data-run-asks-below>
+          <span className="h-1.5 w-1.5 rounded-full bg-warn motion-safe:animate-pulse" aria-hidden />
+          {carded.length === 1 ? "It waits for your answer on its card." : `It waits for ${carded.length} answers on their cards.`}
+          <button type="button" onClick={() => ctx.onJump(cardOf!(carded[0]!.id)!)} className="font-medium text-accent hover:underline">
+            Go to the {carded.length === 1 ? "question" : "first"}
+          </button>
+        </p>
+      ) : null}
       <AnsweredList rows={answered} />
 
       {sessionPanel && session ? (
@@ -436,7 +449,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
             Open the task in Ensemble <ExternalLink size={11} />
           </External>
         ) : null}
-        {waiting && !asks.length && !runApprovals.length ? (
+        {waiting && !asks.length && !runApprovals.length && !carded.length ? (
           <External href={ENSEMBLE_LINKS.needsMe} className="inline-flex items-center gap-1 text-warn hover:underline">
             Answer it in Ensemble <ExternalLink size={11} />
           </External>

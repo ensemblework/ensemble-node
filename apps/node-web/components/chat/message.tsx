@@ -2,12 +2,13 @@
 
 import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Handshake, Lock, MessageSquareShare, Pin, PinOff, Reply, SmilePlus, Trash2, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { cardWords } from "@/lib/cards";
+import { cardWords, runAgent, runCardAgent } from "@/lib/cards";
 import { canDelete, canPin, canReact, isDeleted, messagePreview, reactionRows, reactionsOf } from "@/lib/chat";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { useDeleteMessage, usePin, useReact, useSettle } from "@/lib/hooks";
 import { clock, TOOL_LABEL } from "@/lib/text";
 import { formatEntityText, messageRefs, readableBody } from "@/lib/entity-text";
+import { loginBadge } from "@/lib/login";
 import { mediaItems } from "@/lib/evidence";
 import { canShare, sharedLabel, type RoomTab } from "@/lib/rooms";
 import type { HelperThread } from "@/lib/threads";
@@ -27,6 +28,7 @@ import { HelperThreadChip } from "./helper-thread";
 import { CardCheckpoint, OwnerCard } from "./owner-card";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
+import { RunDecisionCard } from "./run-decision-card";
 import { PlanCard } from "./plan-card";
 import { CrewAddCard, DisclosureCard, NodeProposalCard, RequestCard, RequestDraftCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
 import { DecisionLine, DeclinedLine, DigestCard, PageRoleLine, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
@@ -66,6 +68,10 @@ export type MessageContext = {
   sharedCopyOf?: (messageId: string) => Message | undefined;
   /** A session's newest card in this conversation: it keeps the session's line (who manages it, Hand to…) once its run ended. */
   sessionCardOf?: (sessionId: string) => string | undefined;
+  /** A run's card here, by its job: a run's question card links to it and names its agent. */
+  runCardOf?: (jobId: string) => Message | undefined;
+  /** The card in the chat for one of a run's questions, by its decision: the run card then leaves it out. */
+  decisionCardOf?: (decisionId: string) => string | undefined;
   /** In a room with other people: shows another view of the room (its Board). */
   onView?: (view: "board") => void;
   /** The space that holds the room's work, when it has one: tasks and pages there open in it. */
@@ -149,13 +155,19 @@ const STATUS_PILL: Record<string, { label: string; tone: "warn" | "ok" | "muted"
   posted: { label: "Posted", tone: "ok" },
   discarded: { label: "Discarded", tone: "muted" },
   working: { label: "Working…", tone: "accent" },
+  needs_code: { label: "Needs a code", tone: "warn" },
   signed_in: { label: "Signed in", tone: "ok" },
+  passed: { label: "Passed", tone: "ok" },
   declined: { label: "Not now", tone: "muted" },
   expired: { label: "Expired", tone: "muted" },
   ended: { label: "Ended", tone: "muted" },
 };
 
-function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
+function ApprovalCard({ message: original, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
+  // A run's question names the agent that asks, from the run's own card when Ensemble's card does not.
+  const jobId = original.data.type === "run_decision" && typeof original.data.jobId === "string" ? original.data.jobId : null;
+  const agent = jobId && !runAgent(original.data) ? runCardAgent(ctx.runCardOf?.(jobId)?.data) : null;
+  const message = agent ? { ...original, data: { ...original.data, agent } } : original;
   return (
     <CardCheckpoint message={message} handle={node?.slug ?? "node"} roomTitle={ctx.roomTitle}>
       {(shown) => <ApprovalBody message={shown} ctx={ctx} node={node} />}
@@ -165,6 +177,7 @@ function ApprovalCard({ message, ctx, node }: { message: Message; ctx: MessageCo
 
 function ApprovalBody({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
   if (message.data.type === "computer") return <ComputerCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "run_decision") return <RunDecisionCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "sudo") return <SudoCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "crew_add") return <CrewAddCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "peer_request") return <RequestOwnerCard message={message} ctx={ctx} node={node} />;
@@ -186,7 +199,7 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
   // Handing a session to another node: the card has no prompt or title, only who it goes to and a note.
   const handOver = data.type === "session" && data.action === "hand_over";
   const handedTo = handOver && typeof data.input?.to === "string" ? `@${data.input.to.replace(/^@/, "")}` : "The node";
-  const pill = handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
+  const pill = handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : data.type === "login" ? loginBadge(data) : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
   const error = settle.error?.message ?? (typeof data.error === "string" ? data.error : null);
   return (
     <OwnerCard title={words.title} state={pill}>
@@ -196,7 +209,7 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
           <SecretBox message={message} nodeName={node?.name ?? "The node"} />
         </div>
       ) : data.type === "login" ? (
-        <LoginBox message={message} nodeName={node?.name ?? "The node"} />
+        <LoginBox message={message} nodeName={node?.name ?? "The node"} handle={node?.slug ?? "node"} />
       ) : data.type === "session" ? (
         <p className="whitespace-pre-wrap rounded-lg bg-bg/70 p-2 text-sm">{message.body.replace(/^@\S+ wants to /, "")}</p>
       ) : data.type === "post" && data.status === "posted" ? null : data.type === "post" ? (

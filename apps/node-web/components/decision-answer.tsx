@@ -10,9 +10,9 @@
 import { useState, type ReactNode } from "react";
 import { AlertTriangle, Check, Send, X } from "lucide-react";
 import { ENSEMBLE_LINKS } from "@/lib/config";
-import { answeredNote, decisionBody, decisionView } from "@/lib/decisions";
+import { answeredNote, decisionBody, decisionView, type DecisionView } from "@/lib/decisions";
 import { useDecide, useDecideApproval } from "@/lib/hooks";
-import type { AgentDecision, ApprovalRecord } from "@/lib/types";
+import type { AgentDecision, ApprovalRecord, DecisionBody } from "@/lib/types";
 import { Button, External, Input, Notice } from "./ui";
 
 type Size = "sm" | "md";
@@ -25,10 +25,13 @@ function InEnsemble({ size }: { size: Size }) {
   );
 }
 
-/** What can be answered here for one question from an agent, and the request it sends. */
-export function DecisionActions({ decision, size = "md" }: { decision: AgentDecision; size?: Size }) {
+/**
+ * What can be answered here for one question from an agent, and the request it sends. A card in the chat
+ * (`cardId`) passes its own view, names its deny button, and folds once answered (`onAnswered`).
+ */
+export function DecisionActions({ decision, size = "md", view: given, cardId, denyLabel = "Deny", onAnswered }: { decision: AgentDecision; size?: Size; view?: DecisionView; cardId?: string; denyLabel?: string; onAnswered?: (body: DecisionBody) => void }) {
   const decide = useDecide();
-  const view = decisionView(decision);
+  const view = given ?? decisionView(decision);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,9 +43,15 @@ export function DecisionActions({ decision, size = "md" }: { decision: AgentDeci
     setError(null);
     setBusy(key);
     decide.mutate(
-      { id: decision.id, body, jobId: decision.detail?.jobId, note: answeredNote(view, body) },
+      { id: decision.id, body, jobId: decision.detail?.jobId, note: answeredNote(view, body), cardId },
       {
+        onSuccess: () => onAnswered?.(body),
         onError: (failure) => {
+          // Ensemble asks to confirm a risky allow this page did not know about: ask, then send it again.
+          if (body.decision === "allow" && !body.confirmed && /^Confirm this/i.test(failure.message)) {
+            setConfirming({ forRun: body.scope === "session", answer: body.reason ?? null });
+            return;
+          }
           setError(failure.message);
           setConfirming(null);
         },
@@ -86,7 +95,7 @@ export function DecisionActions({ decision, size = "md" }: { decision: AgentDeci
       <div className="space-y-2">
         <p className={`${text} text-muted`}>Approve this on {view.computer}: it takes this kind of approval only on itself. You can deny it from here.</p>
         <div className="flex flex-wrap items-center gap-2">
-          {deny("Deny")}
+          {deny(denyLabel)}
           <InEnsemble size={size} />
         </div>
       </div>
@@ -175,7 +184,7 @@ export function DecisionActions({ decision, size = "md" }: { decision: AgentDeci
             Allow for this run{view.confirm ? "…" : ""}
           </Button>
         ) : null}
-        {deny("Deny")}
+        {deny(denyLabel)}
       </div>
     );
   }

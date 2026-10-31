@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { approvalCheckpoint, cardCheckpoint, cardOpen, computerAnswered, computerDecision, computerOptions, decisionCheckpoint, siteName, withLocalAnswer } from "./checkpoints";
+import { approvalCheckpoint, cardCheckpoint, cardOpen, computerAnswered, computerChoices, computerDecision, computerOptions, decisionCheckpoint, runDecisionAnswered, siteName, withLocalAnswer } from "./checkpoints";
 import type { AgentDecision } from "./types";
 
 const where = { handle: "assistant-3", roomTitle: "Launch" };
 const words = (data: Record<string, unknown>) => cardCheckpoint(data, where).text;
 
 test("a card stays open while it waits or its answer is carried out, and folds once it is settled", () => {
-  for (const status of ["pending", "applying", "saving", "working", "running", undefined]) assert.equal(cardOpen({ status }), true, String(status));
-  for (const status of ["allowed", "denied", "expired", "done", "failed", "applied", "discarded", "saved", "signed_in", "released", "posted", "approved"]) assert.equal(cardOpen({ status }), false, status);
+  for (const status of ["pending", "needs_code", "applying", "saving", "working", "running", undefined]) assert.equal(cardOpen({ status }), true, String(status));
+  for (const status of ["allowed", "denied", "expired", "done", "failed", "applied", "discarded", "saved", "signed_in", "passed", "released", "posted", "approved", "answered", "closed"]) assert.equal(cardOpen({ status }), false, status);
 });
 
 test("a computer's question folds into who was allowed to do what, with the option picked", () => {
@@ -25,6 +25,13 @@ test("a computer's question folds into who was allowed to do what, with the opti
 test("answering a computer's question sends the option as the reason, and the card reads answered at once", () => {
   assert.deepEqual(computerOptions({ options: ["Once", "This mission", "Always for this folder", "Once", 3, " "] }), ["Once", "This mission", "Always for this folder"]);
   assert.deepEqual(computerOptions({}), ["Once"], "a card without options still allows once");
+  assert.deepEqual(computerChoices({ scope: "folder", options: ["Once", "This mission", "Always for this folder"] }), [
+    { option: "Always for this folder", label: "Allow in this folder from now on" },
+    { option: "This mission", label: "Only this mission" },
+    { option: "Once", label: "Just once" },
+  ], "asked at most once per folder: the lasting answer comes first");
+  assert.deepEqual(computerChoices({ scope: "origin", options: ["Once", "Always for this address", "Ask the team"] }).map((row) => row.label), ["Allow this address from now on", "Just once", "Ask the team"]);
+  assert.deepEqual(computerChoices({}), [{ option: "Once", label: "Just once" }]);
   assert.deepEqual(computerDecision("Always for this folder"), { decision: "allow", scope: "once", reason: "Always for this folder" });
   assert.deepEqual(computerDecision(null), { decision: "deny", scope: "once" });
   const now = new Date("2026-10-31T01:00:00Z");
@@ -88,4 +95,32 @@ test("a run's own questions fold into what was answered", () => {
   assert.equal(decisionCheckpoint(row({ status: "expired" })).icon, "clock");
   assert.deepEqual(approvalCheckpoint({ title: "Push to main", decision: "approved" }), { text: "Approved: Push to main", tone: "ok", icon: "check" });
   assert.equal(approvalCheckpoint({ title: "Push to main", decision: "rejected" }).text, "Rejected: Push to main");
+});
+
+test("a sign-in or a human check folds into how it ended", () => {
+  assert.equal(words({ type: "login", status: "passed", purpose: "human_check", origin: "https://www.walmart.com" }), "Passed the human check on www.walmart.com");
+  assert.equal(words({ type: "login", status: "declined", purpose: "human_check", origin: "https://www.walmart.com" }), "Skipped the human check on www.walmart.com");
+  assert.equal(words({ type: "login", status: "expired", purpose: "human_check", origin: "https://www.walmart.com" }), "No answer in time: human check on www.walmart.com");
+  assert.equal(words({ type: "login", status: "ended", origin: "https://portal.azure.com" }), "Sign-in to portal.azure.com ended");
+  assert.equal(words({ type: "login", status: "signed_in", origin: "https://portal.azure.com", via: "takeover" }), "Signed in to portal.azure.com");
+});
+
+test("a run's question folds into what was decided, by whom, and how far it goes", () => {
+  const permission = { type: "run_decision", event: "permission", title: "Run python3 search.py?", command: "python3 search.py", agent: "copilot" };
+  assert.deepEqual(cardCheckpoint({ ...permission, status: "answered", decision: "allow", answer: null }, where), { text: "Allowed GitHub Copilot to run python3 search.py · Once", tone: "ok", icon: "check" });
+  assert.equal(words({ ...permission, status: "answered", decision: "allow", scope: "session" }), "Allowed GitHub Copilot to run python3 search.py · For this run");
+  assert.deepEqual(cardCheckpoint({ ...permission, status: "answered", decision: "deny" }, where), { text: "Didn't allow GitHub Copilot to run python3 search.py", tone: "muted", icon: "x" });
+  assert.equal(words({ ...permission, status: "answered", decision: "allow", answeredBy: "node" }), "@assistant-3 allowed GitHub Copilot to run python3 search.py · Once", "its node answered");
+  assert.equal(words({ ...permission, agent: undefined, status: "answered", decision: "allow" }), "Allowed the agent to run python3 search.py · Once");
+  assert.equal(cardCheckpoint({ ...permission, status: "expired" }, where).icon, "clock");
+  assert.equal(words({ ...permission, status: "closed" }), "The run ended before an answer: GitHub Copilot asked to run python3 search.py");
+  const question = { type: "run_decision", event: "question", title: "Which branch?", options: ["main", "develop"], agent: "codex" };
+  assert.equal(words({ ...question, status: "answered", decision: "allow", answer: "Use main" }), "Answered: “Use main”");
+  assert.equal(words({ ...question, status: "answered", decision: "deny" }), "Skipped, the agent chose: Which branch?");
+  assert.equal(words({ ...question, status: "expired" }), "No answer in time: Which branch?");
+  // Answered here: the card reads answered at once, with what was sent.
+  const local = runDecisionAnswered({ decision: "allow", scope: "once", reason: "Use main" }, new Date("2026-10-31T01:00:00Z"));
+  assert.deepEqual(local, { status: "answered", answer: "Use main", answeredAt: "2026-10-31T01:00:00.000Z", decision: "allow", scope: "once" });
+  assert.equal(words(withLocalAnswer({ ...question, status: "pending" }, local)), "Answered: “Use main”");
+  assert.equal(words(withLocalAnswer({ ...permission, status: "pending" }, runDecisionAnswered({ decision: "allow", scope: "once" }))), "Allowed GitHub Copilot to run python3 search.py · Once");
 });

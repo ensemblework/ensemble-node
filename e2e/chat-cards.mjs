@@ -8,7 +8,9 @@
  * which opens the card again with the tries left), one whose computer cannot take a password (Don't
  * run), checkpoints that open back into their card and close again, a crew's lead asking to add an
  * existing node, the "needs you" marks in the chat list and on the home page, the old Needs me address
- * going home, a run card's own question with its answered checkpoint and its settings from the card,
+ * going home, a run's questions on their own cards (a permission allowed once, a question answered in
+ * words, one that expired; the run card points to them instead of repeating them), a run card's own
+ * question (from an Ensemble that posts no cards) with its answered checkpoint and its settings,
  * screenshots in a grid with a tall one that scrolls when opened, Markdown and JSON files previewed in
  * the chat, the run profile a node's sessions use, and the owner's "ask before a new website".
  * Never points at a hosted account or calls a model. Usage is in docs/05 (Browser regression).
@@ -30,6 +32,7 @@ const PASSWORD = "hunter2-CANARY-7c1d";
 const COMMAND = "apt-get install -y xvfb";
 const HASH = createHash("sha256").update(COMMAND).digest("hex");
 const OLD_COMMAND = "systemctl restart docker";
+const RUN_COMMAND = "python3 search.py --q 'ps5 price wisconsin'";
 
 /** The computer's key: the page seals the password for it, and this fixture opens the box as the computer would. */
 const computer = generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -117,6 +120,10 @@ function fixture() {
       message("dm-a3", "c-secret", "approval", "Needed to call the pricing API.", { type: "secret", status: "saved", name: "PRICES_KEY", computer: "Akash's-HomeServer", sealed: true }),
       message("dm-a3", "n-media", "text", "Here are both sites and the report. Best Buy is cheaper for the 65\" Hisense.", { media: [media("e-walmart", "walmart.png", "image/png", { width: 1280, height: 800, caption: "Walmart search" }), media("e-bestbuy", "bestbuy.png", "image/png", { width: 1280, height: 800 }), media("e-full", "walmart-full.png", "image/png", { width: 1280, height: 9464, caption: "The whole results page" }), media("e-report", "tv-prices.md", "text/markdown"), media("e-json", "prices.json", "application/json")] }),
       message("dm-a3", "r1", "run", "Fix the flaky price parser", { jobId: J1, taskId: "t1", sessionId: "s-1", status: "waiting_approval", agent: "GitHub Copilot", computer: "Akash's-HomeServer", engine: "copilot-cli", model: "gpt-6.1-sol", effort: "medium", context: "1M" }),
+      // The run's questions on their own cards (Ensemble's run decisions): Ensemble names no agent, the run's card does.
+      message("dm-a3", "c-run-late", "approval", "GitHub Copilot wants to run a command", { type: "run_decision", status: "expired", decisionId: "dec-run-4", jobId: J1, runTitle: "Fix the flaky price parser", event: "permission", title: "Run rm -rf node_modules?", command: "rm -rf node_modules", cwd: "/work/prices", options: [], allowCustom: false, answer: null, decision: null, answeredAt: null, private: true }),
+      message("dm-a3", "c-run-perm", "approval", "GitHub Copilot wants to run a command", { type: "run_decision", status: "pending", decisionId: "dec-run-2", jobId: J1, runTitle: "Fix the flaky price parser", event: "permission", title: "Run python3 search.py?", command: RUN_COMMAND, cwd: "/home/akash/.agents/skills/web-search", options: [], allowCustom: false, recommended: null, answer: null, decision: null, answeredAt: null, private: true }),
+      message("dm-a3", "c-run-ask", "approval", "GitHub Copilot asks you", { type: "run_decision", status: "pending", decisionId: "dec-run-3", jobId: J1, runTitle: "Fix the flaky price parser", event: "question", title: "Which branch should I base the fix on?", options: ["Use main", "Use develop"], allowCustom: true, recommended: "Use main", answer: null, decision: null, answeredAt: null, private: true }),
     ],
     crew: [message("crew", "c-crew-add", "approval", "@lead wants to add @tester to this crew", { type: "crew_add", status: "pending", nodeId: "tester", nodeSlug: "tester", nodeName: "Tester", roomId: "crew", reason: "The plan needs someone who knows the test suite.", private: true }, { authorNodeId: "lead" })],
     "dm-lead": [],
@@ -129,6 +136,9 @@ function fixture() {
   const decisions = [
     { id: "dec-run-0", source: "copilot", event: "permission", toolName: "Bash", title: "Run git status?", detail: { command: "git status" }, cwd: "/work/prices", sessionId: J1, canAnswer: true, status: "decided", decision: "allow", scope: "once", reason: null, requestedAt: at(-6), decidedAt: at(-6), expiresAt: at(60) },
     { id: "dec-run-1", source: "copilot", event: "permission", toolName: "Bash", title: "Run npm test?", detail: { command: "npm test -- --runInBand" }, cwd: "/work/prices", sessionId: J1, canAnswer: true, status: "pending", requestedAt: at(-3), expiresAt: at(60) },
+    { id: "dec-run-2", source: "copilot", event: "permission", toolName: "Bash", title: "Run python3 search.py?", detail: { command: RUN_COMMAND, deviceId: "dev-1", deviceName: "Akash's-HomeServer" }, cwd: "/home/akash/.agents/skills/web-search", sessionId: J1, canAnswer: true, status: "pending", requestedAt: at(-2), expiresAt: at(60) },
+    { id: "dec-run-3", source: "copilot", event: "question", toolName: "ask_person", title: "Which branch should I base the fix on?", detail: { options: ["Use main", "Use develop"], allowCustom: true, recommended: "Use main", deviceId: "dev-1", deviceName: "Akash's-HomeServer" }, cwd: "/work/prices", sessionId: J1, canAnswer: true, status: "pending", requestedAt: at(-1), expiresAt: at(60) },
+    { id: "dec-run-4", source: "copilot", event: "permission", toolName: "Bash", title: "Run rm -rf node_modules?", detail: { command: "rm -rf node_modules", deviceId: "dev-1" }, cwd: "/work/prices", sessionId: J1, canAnswer: true, status: "expired", requestedAt: at(-5), expiresAt: at(-1) },
   ];
   const boot = { me: { id: "me", name: "Akash", email: "akash@fieldnote.example", verified: true }, nodes: [a3, lead, tester], rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-6-luna", options: [] } };
   const settings = { runProfiles: [{ id: "copilot", name: "Copilot", engine: "copilot-cli", model: "gpt-6.1-sol", effort: "medium", context: "long_context" }], defaultRunProfileId: "copilot", node: { askBeforeBrowsing: false } };
@@ -192,7 +202,10 @@ try {
       if (one && method === "GET") return card(one[1]) ? json({ message: card(one[1]) }) : json({ error: "That message is not available." }, 404);
       const decide = /^\/api\/decisions\/([^/]+)\/decide$/.exec(path);
       if (decide && method === "POST") {
-        state.calls.push({ decide: decide[1], body: request.postDataJSON() });
+        const body = request.postDataJSON();
+        state.calls.push({ decide: decide[1], body });
+        const row = state.decisions.find((item) => item.id === decide[1]);
+        if (row) Object.assign(row, { status: "decided", decision: body.decision, scope: body.scope, reason: body.reason ?? null, decidedAt: new Date().toISOString() });
         // The card stays pending for a moment: the page shows the answer before Ensemble updates it.
         return json({ decision: { id: decide[1], status: "decided" } });
       }
@@ -245,7 +258,7 @@ try {
     await page.goto(`${WEB}/needs-me`);
     await page.waitForURL(`${WEB}/chat`);
     const waiting = page.getByRole("region", { name: /wait for you/ });
-    await waiting.getByText("6 things wait for you in 3 chats").waitFor();
+    await waiting.getByText("7 things wait for you in 3 chats").waitFor();
     assert.equal(await waiting.getByRole("link", { name: /Assistant 3/ }).getAttribute("href"), "/r/dm-a3#m-c-browse", "a chat opens at what waits there, oldest first");
     assert.ok(await waiting.getByRole("link", { name: /EnsembleWork Software Team/ }).isVisible());
     await fits("home");
@@ -276,7 +289,8 @@ try {
     // A question from the computer: what it tried, where, and the computer's own answers.
     assert.ok(await browse.getByText("Waiting for you").isVisible());
     assert.ok(await browse.getByLabel("What it tried").getByText("Open: https://www.walmart.com/search?q=tv+55").isVisible());
-    assert.deepEqual(await browse.getByRole("group", { name: "Your answer" }).getByRole("button").allInnerTexts(), ["Once", "This mission", "Always for this address", "Don't allow"]);
+    // Asked at most once per place: the lasting answer comes first.
+    assert.deepEqual(await browse.getByRole("group", { name: "Your answer" }).getByRole("button").allInnerTexts(), ["Allow this address from now on", "Only this mission", "Just once", "Don't allow"]);
     assert.equal(await browse.locator('[data-owner-card="waiting"]').count(), 1, "a card that waits stands out");
 
     // A settled one is a checkpoint that opens back into its card, and closes again.
@@ -317,7 +331,7 @@ try {
     await shot("cards-waiting");
 
     // Answered: the option goes as the reason, and the card folds into its checkpoint at once.
-    await browse.getByRole("button", { name: "This mission" }).click();
+    await browse.getByRole("button", { name: "Only this mission" }).click();
     await browse.getByRole("button", { name: /Allowed @assistant-3 to browse walmart.com · This mission/ }).waitFor();
     assert.deepEqual(state.calls.find((row) => row.decide), { decide: "dec-browse", body: { decision: "allow", scope: "once", reason: "This mission" } });
     // Ensemble settles the card: it stays a checkpoint, now with Ensemble's own record.
@@ -411,6 +425,10 @@ try {
     assert.ok(await run.getByText("1M context").isVisible());
     const asks = run.getByRole("group", { name: /Waiting for you: Command approval/ });
     assert.ok(await asks.getByLabel("Command").getByText("npm test -- --runInBand").isVisible());
+    // Questions with their own card wait there: the run card points to them instead of repeating them.
+    assert.equal(await asks.getByText(/1 of/).count(), 0, "only the one without a card");
+    assert.equal(await run.getByText(/python3 search\.py|Which branch|rm -rf/).count(), 0, "nor their checkpoints");
+    await run.getByText("It waits for 2 answers on their cards.").waitFor();
     const before = run.getByRole("button", { name: "Allowed once: git status" });
     await before.waitFor();
     await before.click();
@@ -419,6 +437,45 @@ try {
     await fits("run card");
     await run.evaluate((element) => element.scrollIntoView({ block: "start" }));
     await shot("cards-run");
+
+    // A run's permission on its own card: the agent (from the run's card), its words, the command, the folder and the run.
+    await run.getByRole("button", { name: "Go to the first" }).click();
+    const perm = timeline.locator('[id="m-c-run-perm"]');
+    await page.waitForFunction(() => {
+      const box = document.querySelector("#m-c-run-perm")?.getBoundingClientRect();
+      return box && box.top < window.innerHeight && box.bottom > 0;
+    });
+    await perm.getByText("GitHub Copilot wants to run a command").waitFor();
+    assert.ok(await perm.getByText("Run python3 search.py?").isVisible());
+    assert.ok(await perm.getByLabel("Command").getByText(RUN_COMMAND).isVisible());
+    assert.ok(await perm.getByText("/home/akash/.agents/skills/web-search").isVisible(), "the folder");
+    assert.deepEqual((await perm.getByRole("button").allInnerTexts()).map((text) => text.trim()), ["In the run “Fix the flaky price parser”", "Allow once", "Don't allow"], "once only, on a paired computer");
+    const question = timeline.locator('[id="m-c-run-ask"]');
+    await question.getByText("GitHub Copilot asks you").waitFor();
+    assert.ok(await question.getByRole("button", { name: /Use main/ }).getByText("Recommended").isVisible());
+    assert.ok(await question.getByLabel("Your answer").isVisible(), "it takes your own words");
+    await timeline.getByRole("button", { name: "No answer in time: GitHub Copilot asked to run rm -rf node_modules" }).waitFor();
+    await fits("run decisions");
+    await perm.evaluate((element) => element.scrollIntoView({ block: "start" }));
+    await shot("cards-run-decision");
+    // Allowed once: the card folds into its checkpoint at once.
+    await perm.getByRole("button", { name: "Allow once" }).click();
+    await perm.getByRole("button", { name: `Allowed GitHub Copilot to run ${RUN_COMMAND} · Once` }).waitFor();
+    assert.deepEqual(state.calls.find((row) => row.decide === "dec-run-2")?.body, { decision: "allow", scope: "once" });
+    // Answered in words: the answer travels as the reason.
+    await question.getByLabel("Your answer").fill("Use main, then rebase on develop");
+    await question.getByRole("button", { name: "Send the answer" }).click();
+    await question.getByRole("button", { name: "Answered: “Use main, then rebase on develop”" }).waitFor();
+    assert.deepEqual(state.calls.find((row) => row.decide === "dec-run-3")?.body, { decision: "allow", scope: "once", reason: "Use main, then rebase on develop" });
+    // Ensemble settles it: it stays a checkpoint, and opened it says who answered.
+    await emit("node.message.updated", update("c-run-ask", { status: "answered", decision: "allow", answer: "Use main, then rebase on develop", answeredAt: new Date().toISOString(), answeredBy: "owner" }));
+    const answered = question.getByRole("button", { name: "Answered: “Use main, then rebase on develop”" });
+    await answered.click();
+    await question.getByText(/^You answered at/).waitFor();
+    await answered.click();
+    await run.getByText(/It waits for/).waitFor({ state: "detached" });
+    await perm.evaluate((element) => element.scrollIntoView({ block: "start" }));
+    await shot("cards-run-decision-answered");
 
     // A crew's lead asks to bring an existing node in: Approve, and it folds into what happened.
     await page.goto(`${WEB}/r/crew`);

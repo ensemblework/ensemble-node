@@ -5,7 +5,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { useQueryClient } from "@tanstack/react-query";
 import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Download, Ellipsis, Handshake, KanbanSquare, Lock, MessagesSquare, Pause, Pin, Search, Settings2, ShieldCheck, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
-import { messageFiles } from "@/lib/attachments";
+import { messageFiles, saveOnComputerAsk } from "@/lib/attachments";
 import { dayKey, dayLabel, firstUnread, inTimeline, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
 import { ensureMessages, keys, limitsOf, loadOlder, markRead, nodesById, PAGE, updateMessages, useBootstrap, useMessages, usePlan, useRoomRequests, useRoomSpace, useSend, useShareToRoom, type Author } from "@/lib/hooks";
 import { cardOpen } from "@/lib/checkpoints";
@@ -16,7 +16,7 @@ import { newestSessionCards } from "@/lib/session";
 import { TOOL_LABEL } from "@/lib/text";
 import { helperThread, helperThreads, looseThreads, placeThreads, threadLabel, type HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
-import type { Bootstrap, Member, Message, NodeFull, Room } from "@/lib/types";
+import type { Bootstrap, Member, Message, MessageFile, NodeFull, Room } from "@/lib/types";
 import { workBoard } from "@/lib/work";
 import { NodeAvatar } from "../node-avatar";
 import { ToolIcon } from "../tool-icon";
@@ -427,6 +427,14 @@ export function RoomView({ roomId }: { roomId: string }) {
         if (target) setReply(target);
       },
       inPlan,
+      ...(room.kind === "dm" || room.kind === "crew"
+        ? {
+            onAskSave: (message: Message, file: MessageFile) => {
+              setReply(message);
+              setDraft({ nonce: Date.now(), body: saveOnComputerAsk(file.name), private: message.private, files: [] });
+            },
+          }
+        : {}),
       threadsOf: (message: Message) => attached.get(message.id) ?? [],
       helperOf: (nodeId: string) => threads.find((thread) => thread.helper?.id === nodeId),
       onHelper: (thread: HelperThread) => setHelper(thread),
@@ -501,7 +509,7 @@ export function RoomView({ roomId }: { roomId: string }) {
   const attachHint =
     others.length > 0
       ? "Nodes read files only from their owner's messages. Others here see a file's name but cannot open it."
-      : `${dmNode ? dmNode.name : "Your nodes"} read${dmNode ? "s" : ""} what you attach: the text of documents, and pictures when ${dmNode ? "its" : "their"} model can see images.`;
+      : `${dmNode ? dmNode.name : "Your nodes"} read${dmNode ? "s" : ""} what you attach: the text of documents and code, and pictures when ${dmNode ? "its" : "their"} model can see images. Ask ${dmNode ? "it" : "one"} to save a file on your computer.`;
   const placeholder = dmNode ? `Message ${dmNode.name}` : room.kind === "crew" ? "Message your crew" : `Message ${room.title}`;
   const suggest = (text: string) => send.mutate({ body: text, private: isPeople && tab === "crew", clientId: crypto.randomUUID() });
   const filterInfo = FILTERS.find((row) => row.id === filter)!;
@@ -818,7 +826,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                       ) : null}
                       {row.text ? (
                         <div className="opacity-80">
-                          <RichText text={row.text} handles={ctx.handles} refs={row.refs ?? []} showIds={row.showIds === true} streaming />
+                          <RichText text={row.text} handles={ctx.handles} refs={row.refs ?? []} showIds={row.showIds === true} streaming kindLinks />
                         </div>
                       ) : row.waiting ? null : (
                         <span className="inline-flex gap-1 py-2">

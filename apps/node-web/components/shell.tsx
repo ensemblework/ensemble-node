@@ -7,6 +7,7 @@ import { Activity as ActivityIcon, Inbox, Lock, Menu, PanelLeftClose, PanelLeftO
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { requestJump } from "@/lib/jump";
+import { loginPath, rememberNext } from "@/lib/next-path";
 import { useBusyNodes } from "@/lib/live";
 import { keys, useActivity, useBootstrap, useMe, useNodeEvents } from "@/lib/hooks";
 import { messagePreview } from "@/lib/chat";
@@ -169,13 +170,21 @@ export function AppShell({ children }: { children: ReactNode }) {
     };
   }, [ready]);
 
+  // Not signed in: sign in, then come back here (a card's link opened on a phone, with its hash).
+  const toLogin = () => {
+    const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    rememberNext(here);
+    router.replace(loginPath(here));
+  };
+  const toLoginRef = useRef(toLogin);
+  toLoginRef.current = toLogin;
   useEffect(() => {
-    if (me.error instanceof ApiError && me.error.status === 401) router.replace("/login");
+    if (me.error instanceof ApiError && me.error.status === 401) toLoginRef.current();
   }, [me.error, router]);
   useEffect(() => {
     if (boot.error instanceof ApiError && boot.error.status === 401) {
       void client.invalidateQueries({ queryKey: keys.me });
-      router.replace("/login");
+      toLoginRef.current();
     }
   }, [boot.error, client, router]);
   useEffect(() => {

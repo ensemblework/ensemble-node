@@ -5,7 +5,9 @@
  * each kind of card, the answer a computer's question sends, and the chips of a run's own questions.
  */
 import { computerAction, runAgent, runAsk } from "./cards";
-import { loginPurpose, loginSite } from "./login";
+import { deviceCodeCommand } from "./device-code";
+import { liveEndedText, liveOpen } from "./live-session";
+import { loginCommand, loginProvider, loginPurpose, loginSite } from "./login";
 import { TOOL_LABEL } from "./text";
 import type { AgentDecision, DecisionBody } from "./types";
 
@@ -22,8 +24,8 @@ const OPEN: ReadonlySet<string> = new Set(["pending", "needs_code", "applying", 
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
-/** Whether a card stays open in the chat: it waits for an answer, or the answer is being carried out. */
-export const cardOpen = (data: CardData): boolean => OPEN.has(text(data?.status) || "pending");
+/** Whether a card stays open in the chat: it waits for an answer, or the answer is being carried out; a live session's card while it lasts. */
+export const cardOpen = (data: CardData): boolean => (data?.type === "live" ? liveOpen(data) : OPEN.has(text(data?.status) || "pending"));
 
 /** An answer given here that the card does not show yet: the server updates the card soon after. A run's question also keeps allow or deny and its scope. */
 export type LocalAnswer = { status: string; answer?: string | null; answeredAt: string; decision?: "allow" | "deny"; scope?: string };
@@ -165,6 +167,14 @@ export function cardCheckpoint(data: CardData, context: { handle: string; roomTi
     case "login": {
       const site = siteName(data?.origin);
       const check = loginPurpose(data ?? {}) === "human_check";
+      const command = loginCommand(data);
+      if (command) {
+        const provider = loginProvider(data?.origin);
+        if (status === "signed_in") return ok(`Signed in to ${provider} for ${command}`);
+        if (status === "declined") return no(`Didn't sign in to ${provider} for ${command}`);
+        if (expired) return late(`No answer in time: ${command} wanted a sign-in to ${provider}`);
+        if (status === "ended") return late(`${command} ended before signing in to ${provider}`);
+      }
       if (status === "signed_in") return ok(`Signed in to ${site}`);
       if (status === "passed") return ok(`Passed the human check on ${site}`);
       if (status === "declined") return no(check ? `Skipped the human check on ${site}` : `Didn't sign in to ${site}`);
@@ -172,6 +182,15 @@ export function cardCheckpoint(data: CardData, context: { handle: string; roomTi
       if (status === "ended") return late(check ? `Human check on ${site} ended` : `Sign-in to ${site} ended`);
       break;
     }
+    case "device_code": {
+      const command = deviceCodeCommand(data);
+      const on = text(data?.computer) ? ` on ${text(data?.computer)}` : "";
+      if (status === "done") return ok(`Signed in with a code: ${command}${on}`);
+      if (expired) return late(`Sign-in code expired: ${command}${on}`);
+      break;
+    }
+    case "live":
+      return late(liveEndedText(data ?? {}));
     case "run_decision": {
       const agent = runAgent(data) ?? "the agent";
       const question = text(data?.event) === "question";

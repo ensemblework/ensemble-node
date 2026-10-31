@@ -45,8 +45,8 @@ function Inline({ text, handles }: { text: string; handles: ReadonlySet<string> 
  * A message body: Markdown blocks with mentions, links and code. `small` for text inside a card.
  * With `refs` (a node's message), records show by title (lib/entity-text.ts): record links show
  * their label and a known id its title, linked, unless `showIds`. `streaming` holds back a
- * half-written id at the end. `kindLinks` (briefs and reports on cards) shows a record link nobody
- * named as its kind, linked. `labelHeadings` shows headings as small labels, as cards name their parts
+ * half-written id at the end. `kindLinks` (a node's messages, briefs and reports on cards) shows a
+ * record link nobody named (`ensemble://task/…` with no title the message knows) as its kind, linked. `labelHeadings` shows headings as small labels, as cards name their parts
  * (a packet's "## Goal").
  */
 export function RichText({

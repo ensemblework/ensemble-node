@@ -11,6 +11,7 @@ ensemble-node/
 │   │   └── (app)/               signed-in shell (sidebar, activity panel, live stream, ⌘K search)
 │   │       ├── chat/            home: ask a node, requests to join, the chats where something waits for you, your nodes, recent conversations
 │   │       ├── r/[roomId]/      a conversation: messages, cards, search, pins, filters, composer
+│   │       ├── c/[cardId]/      a card's short address (a sign-in card's QR code): its conversation, its remote view
 │   │       ├── n/[nodeId]/      a node: look, charter, model, files on my computer, shared-room rule, memory, pause, delete
 │   │       ├── new/             create a node, a crew (from suggestions and existing nodes) or a room (with requests to join)
 │   │       ├── requests/        requests to join rooms: accept with 1–3 nodes and a lead, or decline
@@ -25,7 +26,8 @@ ensemble-node/
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
 │   │   │                        run card and its work log (run-card.tsx, work-log.tsx), the session parts of a run
 │   │   │                        card (session.tsx: settings, queue, controls), a worker's report (report.tsx),
-│   │   │                        evidence gallery, text previews and lightbox (evidence.tsx), every owner card's
+│   │   │                        evidence and files gallery: pictures and the lightbox, videos and sound in a player,
+│   │   │                        text and code previews, downloads with their type's icon (evidence.tsx), every owner card's
 │   │   │                        frame and its checkpoint (owner-card.tsx), a question from the computer
 │   │   │                        (computer-card.tsx), a run's question or permission (run-decision-card.tsx), a
 │   │   │                        command to run as administrator (sudo-card.tsx), captures held for the owner to check
@@ -39,8 +41,10 @@ ensemble-node/
 │   │   │                        question when work starts, the lead's notes, the catch-up, results, decisions;
 │   │   │                        room-space.tsx: linking its space, closing my tasks, the steward), composer, attachments
 │   │   │                        (attachments.tsx: paperclip menu, Files picker, shelf, drop and paste; also on the
-│   │   │                        start page), files on a message (file-chips.tsx), rich text and code blocks
-│   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer
+│   │   │                        start page), files on a message and Save on my computer (file-chips.tsx), rich text and code blocks
+│   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer,
+│   │   │                        a device code for the owner (device-code-card.tsx), a node's live terminal or
+│   │   │                        browser (live-card.tsx)
 │   │   ├── shell.tsx            collapsible recent-chat sidebar, phone sheet, layout, auth guard, ⌘K search
 │   │   ├── routines.tsx         routines: the list, the form (schedules in a time zone, events, webhooks),
 │   │   │                        a webhook's token shown once, runs and a run's card; a node's routines
@@ -54,8 +58,11 @@ ensemble-node/
 │   │   │                        phone (a QR code), the window on the computer, a login typed and encrypted for the
 │   │   │                        computer, the saved login, the code a site asks for, Not now
 │   │   ├── takeover-view.tsx    the remote view: the page from the computer on a phone or a laptop, taps, drags,
-│   │   │                        press and hold, the box that types into it, its keys, I'm done, reconnecting
-│   │   ├── qr-code.tsx          a QR code as SVG (loaded only when shown)
+│   │   │                        press and hold, the box that types into it, its keys, the time left and +15 min,
+│   │   │                        I'm done, reconnecting; a live browser (Take control, Hand back) or terminal
+│   │   ├── terminal-view.tsx    a live terminal's screen drawn with React, its keys, the phone's box and key bar, Fit
+│   │   ├── countdown.tsx        the time left on a card or in the remote view, ticking
+│   │   ├── qr-code.tsx          a QR code as a picture phones read (loaded only when shown)
 │   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      Node signature faces, shape/colour/eyes and thinking state
@@ -76,25 +83,35 @@ ensemble-node/
 │   │   ├── entity-text.ts       node replies name records by title, not id (tested)
 │   │   ├── seal.ts, secret.ts   the sealed box (WebCrypto; identical to Ensemble's shared-types seal.ts, checked
 │   │   │                        against the same seal-vectors.json) and the secret card's route, words and answer
-│   │   ├── login.ts             the sign-in card: sign-in or human check, how a typed login and a code travel,
-│   │   │                        sealed for the computer, the card's link, and its words (tested)
-│   │   ├── qr.ts                a QR code encoder (byte mode, the standard's levels and masks; tested)
+│   │   ├── login.ts             the sign-in card: sign-in or human check, a command's sign-in, how a typed login and
+│   │   │                        a code travel, sealed for the computer, the card's short link, and its words (tested)
+│   │   ├── next-path.ts         where to go back to after signing in to Node (tested)
+│   │   ├── countdown.ts         time left in words and digits, when "+15 min" shows (tested)
+│   │   ├── device-code.ts, live-session.ts
+│   │   │                        a device code's card and a live session's card in words (tested)
+│   │   ├── terminal.ts          a live terminal's frames, colours, lines and cursor, its keys, fitting (tested)
+│   │   ├── qr.ts                a QR code encoder (byte mode, the standard's levels and masks), drawn with whole
+│   │   │                        pixels per module and its quiet zone (tested)
 │   │   ├── sudo.ts              a command run as administrator: the password sealed for the computer, bound to the
 │   │   │                        card and the command's hash, and its words (tested)
 │   │   ├── checkpoints.ts       which owner cards are still open, each settled card's one line, a computer's answer (tested)
-│   │   ├── file-preview.ts      which files preview as text in the chat, their first lines, 200 KB at most (tested)
+│   │   ├── file-types.ts        what a file is by its name, else its type: its family (icon) and label (tested)
+│   │   ├── file-preview.ts      which files preview as text in the chat (Markdown, code, JSON, text), their first
+│   │   │                        lines, 200 KB at most, folded when there are many (tested)
 │   │   ├── owner-settings.ts    the run profile a node's sessions use, and asking before a new website (tested)
 │   │   ├── takeover.ts, takeover-channel.ts
 │   │   │                        a takeover session (secret sealed for the computer, frames and the page they show,
-│   │   │                        numbered input sent again while the link is down, end), the remote view's input
+│   │   │                        a terminal's screens, numbered input sent at once with several on their way and sent
+│   │   │                        again while the link is down, more time, control, end), the remote view's input
 │   │   │                        (typing as it changes, taps, drags, press and hold, fitting the picture)
 │   │   │                        and its channel (WebCrypto; identical to Ensemble's shared-types takeover.ts,
 │   │   │                        checked against the same takeover-vectors.json) (tested)
 │   │   ├── plan.ts, session.ts, evidence.ts, threads.ts, work.ts, routines.ts, rooms.ts, room-work.ts, trust.ts, cards.ts, captures.ts
 │   │   │                        pure helpers (tested): a plan card's statuses, outcomes, held steps, attempts and
 │   │   │                        ledger; a session's settings, actions, queue edits and its agent's name and id;
-│   │   │                        which evidence shows inline and which only downloads, held and kept files, a
-│   │   │                        video's poster, length and shape, why a file could not be read; helper threads, where they
+│   │   │                        which evidence shows inline, plays as sound or only downloads, held and kept files, a
+│   │   │                        video's poster, length and shape, why a file could not be read, how many files and
+│   │   │                        how large; a task a node's message is about; helper threads, where they
 │   │   │                        show and what a helper may do; what is working in a room; a routine's schedule
 │   │   │                        presets and cron, the form's checks and what it sends, runs in words, time zones;
 │   │   │                        a room's Room and My crew (which tab a message is in, each tab's unread and marker,
@@ -107,7 +124,7 @@ ensemble-node/
 │   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts, decisions.ts, work-log.ts, attachments.ts
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        what a message sends and a retry sends again, the attachment shelf and pasted
-│   │   │                        files, who may open a file on a message,
+│   │   │                        files, what Files refuses before an upload, who may open a file on a message,
 │   │   │                        model groups, crew drafts and unique names, connection status, how a run's
 │   │   │                        question is answered and which run it belongs to, a run's steps as a work log
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send
@@ -121,7 +138,7 @@ ensemble-node/
                                  actions/vercel-deploy (publish main on Vercel)
 ```
 
-`e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work; `e2e/routines.mjs` for Routines; `e2e/rooms-v2.mjs` for rooms with other people; `e2e/rooms-v3.mjs` for the work of a room with other people; `e2e/chat-cards.mjs` for the cards in the chat (a computer's question, a command as administrator, checkpoints, a node for a crew, the "needs you" marks, file previews and tall screenshots); `e2e/sessions.mjs` for Sessions; `e2e/captures.mjs` for held captures, a run's live view, posters and what a computer can capture. Usage is in [05](05_UI_AND_UX.md#browser-regression).
+`e2e/live-session.mjs` covers a node's live terminal and browser. `e2e/chat-ui.mjs` is the isolated local browser fixture for chat navigation, live arrivals and responsive interaction; `e2e/runtime-cards.mjs` is the same for plan, session and work cards, evidence, helper threads and stopping work; `e2e/routines.mjs` for Routines; `e2e/rooms-v2.mjs` for rooms with other people; `e2e/rooms-v3.mjs` for the work of a room with other people; `e2e/files.mjs` for files in the chat (every kind a node sends, the owner's own files and the composer's refusals); `e2e/chat-cards.mjs` for the cards in the chat (a computer's question, a command as administrator, checkpoints, a node for a crew, the "needs you" marks, file previews and tall screenshots); `e2e/sessions.mjs` for Sessions; `e2e/captures.mjs` for held captures, a run's live view, posters and what a computer can capture. Usage is in [05](05_UI_AND_UX.md#browser-regression).
 
 ## Where a change belongs
 

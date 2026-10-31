@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { alignmentCentres, dataCodewords, formatBits, qrEncode, qrPath, reedSolomon, versionFor } from "./qr";
+import { alignmentCentres, dataCodewords, formatBits, QR_QUIET, qrEncode, qrPath, qrPixels, qrScale, reedSolomon, versionFor } from "./qr";
 
 test("error correction is the standard's worked example (version 1-M)", () => {
   const data = [32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17];
@@ -37,4 +37,23 @@ test("a symbol has its finder patterns, timing and dark module, and a path for S
   const path = qrPath(code);
   assert.match(path, /^M4 4h7v1h-7z/);
   assert.throws(() => qrEncode("x".repeat(3000)), /too long/);
+});
+
+test("a card's short link at level Q is small, drawn with whole pixels per module, at least 200 px, dark on light with its quiet zone", () => {
+  const link = "https://node-test.ensemblework.com/c/0c1d2e3f-4a5b-4e6f-8a9b-5e1f2a3b4c5d";
+  const code = qrEncode(link, "Q");
+  assert.ok(code.version <= 6, `version ${code.version}: larger squares than the long link's version 7 at M`);
+  assert.equal(code.level, "Q");
+  for (const dpr of [1, 1.25, 2, 3]) {
+    const scale = qrScale(code.size, 200, dpr);
+    assert.ok(scale.cssSize >= 200 && scale.cssSize < 260, `at ${dpr}x: ${scale.cssSize} px`);
+    assert.equal(scale.devicePx, (code.size + 2 * QR_QUIET) * scale.modulePx, "a whole number of pixels per module");
+  }
+  const { width, data } = qrPixels(code, 3);
+  assert.equal(width, (code.size + 8) * 3);
+  const shade = (x: number, y: number) => data[(y * width + x) * 4];
+  for (let at = 0; at < QR_QUIET * 3; at += 1) assert.equal(shade(at, at), 255, "the quiet zone is light");
+  assert.equal(shade(QR_QUIET * 3, QR_QUIET * 3), 0, "the finder's corner is dark");
+  assert.equal(shade(QR_QUIET * 3 + 3, QR_QUIET * 3 + 3), 255, "its light ring");
+  assert.equal(data[3], 255, "opaque");
 });

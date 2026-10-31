@@ -4,6 +4,7 @@ import { ApiError, uploadResult } from "./api";
 import {
   addAttachments,
   attachNotice,
+  attachProblem,
   failUpload,
   fileAttachment,
   fileChipView,
@@ -123,4 +124,23 @@ test("sizes read like Files", () => {
   assert.equal(sizeLabel(2048), "2 KB");
   assert.equal(sizeLabel(1536), "1.5 KB");
   assert.equal(sizeLabel(25 * 1024 * 1024), "25 MB");
+  assert.equal(sizeLabel(150 * 1024 * 1024), "150 MB");
+  assert.equal(sizeLabel(3.25 * 1024 * 1024 * 1024), "3.3 GB");
+  assert.equal(sizeLabel(-1), "");
+});
+
+test("any file Ensemble keeps can be attached; programs, empty and too-large files are refused before uploading, in Ensemble's words", () => {
+  for (const name of ["notes.md", "analyse.py", "photo.HEIC", "deck.pptx", "data.csv", "site.zip", "song.mp3", "clip.mov", "Makefile", "report.pdf"]) {
+    assert.equal(attachProblem({ name, size: 10 }, 25 * 1024 * 1024), null, name);
+  }
+  assert.equal(attachProblem({ name: "setup.EXE", size: 10 }), ".exe files are programs or raw binary data, which Files does not keep.");
+  assert.equal(attachProblem({ name: "app.dmg", size: 10 }), ".dmg files are programs or raw binary data, which Files does not keep.");
+  assert.equal(attachProblem({ name: "empty.txt", size: 0 }), "This file is empty, so there is nothing to keep.");
+  assert.equal(attachProblem({ name: "video.mp4", size: 30 * 1024 * 1024 }, 25 * 1024 * 1024), "Files can be up to 25 MB here. For a larger file on your computer, tell your node where it is.");
+  assert.equal(attachProblem({ name: "video.mp4", size: 30 * 1024 * 1024 }, null), null, "without a known limit the server decides");
+  // Uploading again cannot help these: no Retry.
+  const row = { ...localAttachment("k", { name: "setup.exe", size: 10, type: "", lastModified: 1 }) };
+  assert.equal(failUpload([row], "k", "x", false)[0]!.local, false);
+  assert.equal(sendBlocker(failUpload([row], "k", "x", false)), "“setup.exe” did not upload. Remove it to send.");
+  assert.equal(failUpload([row], "k", "x")[0]!.local, true);
 });

@@ -118,7 +118,7 @@ export function HelperThreadView({ thread, id }: { thread: HelperThread; id?: st
                     ) : row.data?.deleted ? (
                       <p className="text-xs italic text-muted">Message deleted</p>
                     ) : (
-                      <RichText text={row.body} handles={handles} small {...(row.authorKind === "node" ? { refs: messageRefs(row.data), showIds: row.data.showIds === true } : {})} />
+                      <RichText text={row.body} handles={handles} small {...(row.authorKind === "node" ? { refs: messageRefs(row.data), showIds: row.data.showIds === true, kindLinks: true } : {})} />
                     )}
                   </div>
                 </li>

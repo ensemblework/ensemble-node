@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from "react";
 
 export type Toast = { id: number; text: string; tone: "info" | "ok" | "error" };
+export const TOAST_MS = 3000;
 
 let toasts: Toast[] = [];
 let next = 1;
@@ -22,7 +23,6 @@ export function toast(text: string, tone: Toast["tone"] = "info") {
   const id = next++;
   toasts = [...toasts.slice(-3), { id, text, tone }];
   emit();
-  setTimeout(() => dismissToast(id), tone === "error" ? 7000 : 3500);
 }
 
 export const toastError = (error: unknown) => toast(error instanceof Error ? error.message : String(error), "error");

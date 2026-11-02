@@ -46,7 +46,7 @@ export function SidebarFrame({ collapsed, width, onWidth, children }: { collapse
     <aside ref={ref} className="chat-sidebar relative hidden shrink-0 border-r border-line bg-panel md:block" style={{ width: collapsed ? 68 : shownWidth, minWidth: collapsed ? 68 : SIDEBAR_MIN, maxWidth: collapsed ? 68 : maxWidth }} data-sidebar-collapsed={collapsed} aria-label="Chat sidebar">
       {children}
       {!collapsed ? <div role="separator" aria-label="Conversation sidebar width" aria-orientation="vertical" aria-valuemin={SIDEBAR_MIN} aria-valuemax={maxWidth} aria-valuenow={shownWidth} tabIndex={0}
-        title="Drag to resize. Use arrow keys, or choose a width in the workspace menu."
+        title="Drag or use arrow keys to resize. Double-click to reset."
         className="sidebar-resize absolute -right-1 inset-y-0 z-30 w-2 cursor-col-resize touch-none"
         onDoubleClick={() => onWidth(SIDEBAR_DEFAULT)}
         onKeyDown={event => {

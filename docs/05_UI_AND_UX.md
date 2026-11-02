@@ -41,7 +41,7 @@ Chat-first teammates with familiar messenger navigation. Ensemble's flavour is S
 
 The sidebar is one recent list across direct chats, crews and rooms, sorted by the newest message, including pending sends. Helpers' rooms are not in it ([Helper threads](#helper-threads)). All / Unread / Groups and Search chats narrow it without changing server data. Each row keeps its timestamp, preview, typing or private indicator, and unread count. Selection uses a quiet surface, without a coloured side stripe. Refused sends are marked Not sent. A DM tooltip names its node and handle. New conversation and full message search sit at the top. The account button opens one workspace menu: Routines, Sessions, Invites, Connections, Activity, Appearance and Settings. A chat where something waits for you (a node's open card, or a run waiting on your answer) shows a "needs you" dot (on the rail too); phones keep an attention dot on the menu. The old Needs me address (`/needs-me`) goes home. Live changes update the preview immediately, not after a bootstrap refetch.
 
-On desktop the sidebar starts at 288 px. Drag its edge to resize it (248–420 px, at most 42% of the viewport); arrow keys resize it, Home/End reach the bounds, and a double-click restores the default. The workspace menu also offers click-only width presets. `node.sidebar-width` remembers the width. Collapse conversations becomes a 68 px rail with recent signatures and the workspace menu; `node.sidebar-collapsed` remembers that choice. Activity uses its own page, leaving the conversation full width.
+On desktop the sidebar starts at 288 px. Drag its edge to resize it (248–420 px, at most 42% of the viewport); arrow keys resize it, Home/End reach the bounds, and a double-click restores the default. Width is not a menu setting. `node.sidebar-width` remembers the width. Collapse conversations becomes a 68 px rail with recent signatures and the workspace menu; `node.sidebar-collapsed` remembers that choice. Activity uses its own page, leaving the conversation full width.
 
 The Sessions page shows the five most recently active sessions, with **Show more** to reveal all and **Show less** to fold them again. Search starts a fresh five-session view; opening or handing over a session works the same in either view.
 
@@ -51,11 +51,32 @@ Settings → Appearance (`components/appearance-settings.tsx`) offers System / L
 
 `node.appearance.v1` stores validated choices in this browser and synchronises open Node tabs. The document paints them before hydration; System follows device colour changes. Quiet mode disables node expressions, and the device's reduced-motion preference always wins. Preferences do not alter Ensemble's account settings or call its API.
 
-`NodeCompanion` gives the open DM or node profile a short, interruptible squash-and-tilt on click and one occasional idle blink. Only the profile's face follows a nearby mouse pointer; focusing the composer makes the header's eyes look towards it. Working faces move a little with long still intervals. Motion stops when hidden, off screen, paused or reduced; GSAP contexts clean up on unmount.
+`NodeCompanion` greets you when its DM or profile opens. Its header, profile and message portraits react to clicks or keyboard presses: a squash, jump and outline morph with happy eyes, a twinkle, a wink or a double blink. Repeated presses replace the previous expression and return to the saved shape. Only the open DM/profile has occasional idle blinks, double blinks and winks; message portraits stay still until pressed. Only the profile follows a nearby mouse pointer; focusing the composer makes the header's eyes look towards it.
+
+Working motion is different for each signature, with a visible movement followed by a quiet interval:
+
+| Shape | Working expression |
+| --- | --- |
+| Orb | A buoyant jelly bounce and squash |
+| Square | A soft, elastic tumble |
+| Spark | A full spin, tuck and stretch |
+| Hex | A rocking, faceted roll |
+| Leaf | An unfurl and sway |
+| Compass | A searching needle swing |
+
+Working faces keep their eyes upright and blink. The sidebar uses the existing live state and Activity's running sessions; the open conversation also reads its already-loaded plan/session cards. No cosmetic polling is added. Automatic motion stops when hidden, off screen, paused or reduced; GSAP contexts clean up on unmount.
 
 After four quiet days a node's sidebar face has sleepy eyes. Opening its DM gives it one short wake-up expression. The existing message timestamp and bounded, account-scoped `node.visits.v1:<account>` timestamps decide this locally; a visit writes once when the chat opens, with at most 128 node timestamps retained. These are cosmetic states, never real pausing or work status, and create no database reads, writes or model calls.
 
-Crews and rooms use graph portraits (`RoomAvatar`): their actual node signatures joined by fine edges, with the lead at the centre when idle. Live reply state and already-loaded running plan/session cards choose the working node in the open header. When several work, the centre changes every seven seconds; hovering, keyboard focus, hidden tabs and reduced/quiet motion stop rotation. Sidebar portraits do not rotate.
+Crews and rooms use graph portraits (`RoomAvatar`): their actual node signatures joined by fine edges, with the lead at the centre when idle. Live reply state and already-loaded running plan/session cards choose the working node in the open header. When several work, the centre changes every seven seconds. The same keyed portraits move and scale smoothly between their graph positions, rather than being replaced; hovering, keyboard focus, hidden tabs and reduced/quiet motion stop rotation. Sidebar portraits do not rotate.
+
+## Input and feedback
+
+The conversation composer annotates complete, valid `@handles` in the accent colour while typing or choosing a mention. Unknown or partial handles, email, links and code stay plain. The mirror preserves the draft's exact text; the native textarea retains its caret, selection, input methods, paste, scrolling and keyboard shortcuts. Only handles available in the current room/tab are marked. Posted messages use the same accent family.
+
+Search fields share `.search-field`: only the outside border/wash changes on focus. The inner input has no separate outline. This covers chat filtering, conversation and ⌘K search, models, connections, sessions, Files and room item/page searches; keyboard focus remains visible.
+
+Notifications (`ToastItem` in `components/ui.tsx`, `lib/toast.ts`) sit at the bottom with a three-second countdown bar, Pause/Resume and Dismiss. Hovering, keyboard focus, an explicit pause or a hidden tab pauses the remaining time and its bar. Leaving resumes from that point, not from three seconds again. Touch does not create a sticky hover. Errors keep their alert semantics; reduced motion uses a still bar. Timers are cleaned up when a notification leaves.
 
 ## Model and agent marks
 
@@ -343,7 +364,7 @@ The conversation scrolls independently of its header and composer. On phones the
 
 ## Browser regression
 
-`e2e/chat-ui.mjs` runs a stateful local API/SSE fixture, never a hosted account or model. Start `pnpm dev` on an unused port, then run it with `NODE_WEB`, `CHROME_PATH` and, when Playwright is supplied externally, `PLAYWRIGHT_MODULE` (the absolute module entry). `NODE_CHAT_SHOTS` optionally saves evidence outside the repository. It exercises five widths (320–1440 px), dark/light themes, Markdown tables (headers, linked cells, alignment, escaped pipes and keyboard scrolling), cross-kind recency, resize/rail persistence, workspace navigation, graph focus/rotation, sleeping faces, click and pointer expressions, local-only appearance persistence, doodles, quiet mode, group opening, streaming/scroll anchoring, optimistic sends and private text-draft restoration.
+`e2e/chat-ui.mjs` runs a stateful local API/SSE fixture, never a hosted account or model. Start `pnpm dev` on an unused port, then run it with `NODE_WEB`, `CHROME_PATH` and, when Playwright is supplied externally, `PLAYWRIGHT_MODULE` (the absolute module entry). `NODE_CHAT_SHOTS` optionally saves evidence outside the repository. `NODE_CHAT_WIDTHS=1440` selects one supported width; a comma-separated list selects several. It exercises five widths (320–1440 px), dark/light themes, Markdown tables (headers, linked cells, alignment, escaped pipes and keyboard scrolling), cross-kind recency, resize/rail persistence, workspace navigation, valid mention annotations while typing and choosing, outer-only search focus, graph focus/rotation with smooth keyed handoffs, sleeping faces, every shape's visible working motion and happy morph returning to its saved outline, click/wink/twinkle/double-blink and pointer expressions, notification hover/pause/resume timing and its bar, local-only appearance persistence, doodles, quiet mode, group opening, streaming/scroll anchoring, optimistic sends and private text-draft restoration.
 
 `e2e/runtime-cards.mjs` runs the same way and covers the runtime cards at phone and desktop widths: a plan card with held steps, attempts (what they built and tested), checks and the ledger (and the §4.11 brief shown once, on one line), a contract 1 card and a work card; a plan built in worktrees (its facts, an integration step and its links, a stale pass, a step waiting for its place); the session card folded to one line and opened, its settings, queue moves (one refused), cancel, Steer and Stop, the packet it was told, who manages it and Hand to…; an ended session no node manages given to one; a node's card asking to hand a session over; a run asked for its result; an ended run's report behind Show the work, its summary on the card once; evidence (SVG and HTML only as downloads, the lightbox's keys and focus); a node's media; the room's Stop and the "Working on" strip, with a routine's run opening its card; and a helper thread in place of its room in the list, what the helper may do, and keeping it as a node.
 

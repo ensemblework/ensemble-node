@@ -155,7 +155,7 @@ export default function Home() {
             {nodes.map((node) => {
               const dm = dmRoomOf(boot.data, node.id);
               return (
-                <Link key={node.id} href={dm ? `/r/${dm.id}` : `/n/${node.id}`} title={`@${node.slug}`} className="group flex min-w-0 items-center gap-3 rounded-xl p-3 transition-colors hover:bg-raised/60">
+                <Link key={node.id} href={dm ? `/r/${dm.id}` : `/n/${node.id}`} title={`@${node.slug}`} className="node-link group flex min-w-0 items-center gap-3 rounded-xl p-3 transition-colors hover:bg-raised/60">
                   <NodeAvatar node={node} size={42} dim={node.status === "paused"} />
                   <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{node.name}</span>

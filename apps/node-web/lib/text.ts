@@ -82,6 +82,23 @@ export function insertMention(value: string, start: number, cursor: number, hand
   return { value: next, cursor: start + handle.length + 2 };
 }
 
+/** A draft's exact text, with only complete, available handles marked; code, links and email stay plain. */
+export function draftMentionParts(value: string, handles: ReadonlySet<string>): Array<{ text: string; mention?: string }> {
+  const out: Array<{ text: string; mention?: string }> = [];
+  const tokens = /(```[\s\S]*?(?:```|$)|`[^`\n]*`|\[[^\]\n]*\]\([^)\n]*\)|https?:\/\/[^\s]+)|((?:^|(?<=[\s([{"'>,;*]))@[a-z0-9][a-z0-9_-]*)/gi;
+  let last = 0;
+  for (const match of value.matchAll(tokens)) {
+    const mention = match[2]?.slice(1).toLowerCase();
+    if (!mention || !handles.has(mention)) continue;
+    const at = match.index;
+    if (at > last) out.push({ text: value.slice(last, at) });
+    out.push({ text: match[0], mention });
+    last = at + match[0].length;
+  }
+  if (last < value.length) out.push({ text: value.slice(last) });
+  return out.length ? out : [{ text: value }];
+}
+
 /** Merges a message into a list ordered by seq: replaces the same id or clientId, never duplicates. */
 export function mergeMessage<T extends { id: string; seq: number; clientId?: string | null }>(list: readonly T[], message: T): T[] {
   const index = list.findIndex((row) => row.id === message.id || (message.clientId && row.clientId === message.clientId));

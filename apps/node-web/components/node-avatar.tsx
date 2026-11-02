@@ -14,6 +14,15 @@ const SHAPES: Record<Avatar["shape"], string> = {
   leaf: "M50 6c30 8 44 30 40 58-3 20-20 32-40 32S13 84 10 64C6 36 20 14 50 6z",
   compass: "M50 4l14 32 32 14-32 14-14 32-14-32L4 50l32-14z",
 };
+export const AVATAR_PATHS = SHAPES;
+export const AVATAR_MORPHS: Record<Avatar["shape"], string> = {
+  orb: "M50 14a46 36 0 1 1 0 72a46 36 0 1 1 0-72z",
+  square: "M34 8h32a26 26 0 0 1 26 26v32a26 26 0 0 1-26 26H34A26 26 0 0 1 8 66V34A26 26 0 0 1 34 8z",
+  spark: "M50 12l13 18 17-6-8 20 15 16-22 4 1 21-16-12-16 12 1-21-22-4 15-16-8-20 17 6z",
+  hex: "M50 10l42 19v42L50 90 8 71V29z",
+  leaf: "M50 12c34 2 44 26 37 52-5 18-18 25-37 25S17 80 13 64C6 38 16 17 50 12z",
+  compass: "M50 10l18 22 22 18-22 18-18 22-18-22L10 50l22-18z",
+};
 
 /**
  * Where the eyes sit on each shape: the face's centre, half the distance between the eyes and their
@@ -78,8 +87,8 @@ function Eyes({ look }: { look: Avatar }) {
     const spread = gap + scale;
     return (
       <>
-        <rect x={r2(x - spread - width / 2)} y={r2(y + 1.5 * scale - height / 2)} width={r2(width)} height={r2(height)} rx={r2(height / 2)} />
-        <rect x={r2(x + spread - width / 2)} y={r2(y + 1.5 * scale - height / 2)} width={r2(width)} height={r2(height)} rx={r2(height / 2)} />
+        <rect className="node-eye-left" x={r2(x - spread - width / 2)} y={r2(y + 1.5 * scale - height / 2)} width={r2(width)} height={r2(height)} rx={r2(height / 2)} />
+        <rect className="node-eye-right" x={r2(x + spread - width / 2)} y={r2(y + 1.5 * scale - height / 2)} width={r2(width)} height={r2(height)} rx={r2(height / 2)} />
       </>
     );
   }
@@ -87,15 +96,15 @@ function Eyes({ look }: { look: Avatar }) {
     const spread = gap + scale;
     return (
       <>
-        <ellipse cx={r2(x - spread)} cy={y} rx={r2(7 * scale)} ry={r2(9 * scale)} />
-        <ellipse cx={r2(x + spread)} cy={y} rx={r2(7 * scale)} ry={r2(9 * scale)} />
+        <ellipse className="node-eye-left" cx={r2(x - spread)} cy={y} rx={r2(7 * scale)} ry={r2(9 * scale)} />
+        <ellipse className="node-eye-right" cx={r2(x + spread)} cy={y} rx={r2(7 * scale)} ry={r2(9 * scale)} />
       </>
     );
   }
   return (
     <>
-      <circle cx={r2(x - gap)} cy={y} r={r2(5.5 * scale)} />
-      <circle cx={r2(x + gap)} cy={y} r={r2(5.5 * scale)} />
+      <circle className="node-eye-left" cx={r2(x - gap)} cy={y} r={r2(5.5 * scale)} />
+      <circle className="node-eye-right" cx={r2(x + gap)} cy={y} r={r2(5.5 * scale)} />
     </>
   );
 }
@@ -106,10 +115,11 @@ export function NodeAvatar({ node, avatar, size = 36, thinking = false, resting 
   const saved = avatar ?? node?.avatar;
   const look: Avatar = saved && SHAPES[saved.shape] ? { ...saved, eyes: saved.eyes === "line" || saved.eyes === "wide" ? saved.eyes : "dot", color: parse(saved.color ?? "") ? saved.color : DEFAULT_LOOK.color } : DEFAULT_LOOK;
   const tones = avatarTones(look.color);
+  const face = FACES[look.shape];
   // Each instance needs its own gradient, including avatars inside hidden drawers.
   const id = `node-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
-    <svg ref={ref} width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title ?? "Node"} data-node-avatar data-motion-active={motion || undefined} data-resting={resting || undefined} className={`${thinking ? "node-thinking" : ""} ${dim ? "opacity-50 grayscale" : ""} shrink-0`}>
+    <svg ref={ref} width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title ?? "Node"} data-node-avatar data-node-shape={look.shape} data-motion-active={motion || undefined} data-resting={resting || undefined} className={`${thinking ? "node-thinking" : ""} ${dim ? "opacity-50 grayscale" : ""} shrink-0`}>
       {title ? <title>{title}</title> : null}
       <defs>
         <radialGradient id={id} cx="35%" cy="30%" r="80%">
@@ -118,12 +128,24 @@ export function NodeAvatar({ node, avatar, size = 36, thinking = false, resting 
           <stop offset="1" stopColor={tones.shade} />
         </radialGradient>
       </defs>
-      <g className="node-work"><g className="node-body">
-        <path d={SHAPES[look.shape]} fill={`url(#${id})`} stroke={tones.edge} strokeWidth="2" strokeLinejoin="round" />
-        <g className="node-attention">
-          <g className="node-gaze">
-            <g className="node-eyes" fill={tones.eyes}><Eyes look={resting ? { ...look, eyes: "line" } : look} /></g>
+      <g className="node-work">
+        <g className="node-body">
+          <g className="node-form"><g className="node-pose">
+            <path key={look.shape} className="node-silhouette" d={SHAPES[look.shape]} fill={`url(#${id})`} stroke={tones.edge} strokeWidth="2" strokeLinejoin="round" />
           </g></g>
+          <g className="node-attention">
+            <g className="node-gaze">
+              <g className="node-eyes" fill={tones.eyes}><Eyes look={resting ? { ...look, eyes: "line" } : look} /></g>
+              <g className="node-happy-eyes" fill="none" stroke={tones.eyes} strokeWidth={4 * face.scale} strokeLinecap="round" opacity="0">
+                {[-1, 1].map(side => <path key={side} d={`M${face.x + side * face.gap - 5 * face.scale} ${face.y}q${5 * face.scale} ${-9 * face.scale} ${10 * face.scale} 0`} />)}
+              </g>
+              <path className="node-smile" d={`M${face.x - 6 * face.scale} ${face.y + 13 * face.scale}q${6 * face.scale} ${7 * face.scale} ${12 * face.scale} 0`} fill="none" stroke={tones.eyes} strokeWidth={3 * face.scale} strokeLinecap="round" opacity="0" />
+            </g>
+          </g>
+        </g>
+        <g fill={tones.base} stroke={tones.edge} strokeWidth="1" opacity="0" className="node-sparkles">
+          <path className="node-sparkle" d="m13 7 2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />
+          <path className="node-sparkle" d="m88 66 2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
         </g>
       </g>
     </svg>

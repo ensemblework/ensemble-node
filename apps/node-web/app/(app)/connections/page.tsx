@@ -99,7 +99,7 @@ export default function ConnectionsPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2 focus-within:border-accent">
+          <label className="search-field flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2">
             <Search size={15} className="text-muted" />
             <input value={q} onChange={(event) => setQ(event.target.value)} placeholder="Find an app" aria-label="Find an app" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted" />
           </label>

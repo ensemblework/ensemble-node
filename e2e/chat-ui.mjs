@@ -8,6 +8,8 @@ const shots = process.env.NODE_CHAT_SHOTS;
 if (shots) mkdirSync(shots, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true, args: ["--no-sandbox"] });
 const stamp = value => new Date(Date.UTC(2026, 9, 26, 12, value)).toISOString();
+const widths = process.env.NODE_CHAT_WIDTHS?.split(",").map(Number) ?? [320, 375, 768, 1024, 1440];
+assert.ok(widths.length && widths.every(width => [320, 375, 768, 1024, 1440].includes(width)), "NODE_CHAT_WIDTHS selects supported fixture widths.");
 
 function fixture() {
   const avatar = { shape: "orb", color: "#D7B56F", eyes: "dot" };
@@ -49,12 +51,12 @@ function fixture() {
   rooms[1].unread = 2;
   rooms[1].readSeq -= 2;
   const boot = { me: { id: "me", name: "Mira Chen", email: "mira@fieldnote.example", verified: true }, nodes, rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍", "❤️", "😂", "🎉", "👀", "✅", "🙏", "🔥"], declineBlockDays: 30 },
-    models: { default: "gpt-5-mini", options: nodes.map((node, index) => ({ provider: node.provider, model: node.model, label: index === 0 ? "GPT-5 mini" : index === 1 ? "Claude Sonnet" : "Grok 4.7", default: !index, group: index === 1 ? "keys" : "included" })) } };
+    models: { default: "gpt-5-mini", options: [...nodes.map((node, index) => ({ provider: node.provider, model: node.model, label: index === 0 ? "GPT-5 mini" : index === 1 ? "Claude Sonnet" : "Grok 4.7", default: !index, group: index === 1 ? "keys" : "included" })), ...Array.from({ length: 6 }, (_, index) => ({ provider: "ensemble", model: `gpt-fixture-${index}`, label: `Fixture model ${index}`, group: "included" }))] } };
   return { boot, messages, message };
 }
 
 try {
-  for (const width of [320, 375, 768, 1024, 1440]) {
+  for (const width of widths) {
     const state = fixture();
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width < 768, isMobile: width < 768, colorScheme: width === 375 ? "light" : "dark", reducedMotion: width === 1440 ? "no-preference" : "reduce" });
     await context.addInitScript(() => {
@@ -81,6 +83,8 @@ try {
       if (path === "/api/approvals") return json({ approvals: [] });
       if (path === "/api/devices") return json({ devices: [] });
       if (path === "/api/node/models") return json(state.boot.models);
+      if (path === "/api/connectors/catalog") return json({ entries: [] });
+      if (path === "/api/mcp-connections") return json({ connections: [] });
       // The owner's own Ensemble settings: the run profile a node's sessions use, and Node's browsing rule.
       if (path === "/api/settings") return json({ settings: { runProfiles: [], defaultRunProfileId: null, node: { askBeforeBrowsing: false } }, connectors: [] });
       if (path === "/api/documents") return json({ files: [], usage: { maxFileBytes: 25000000 } });
@@ -122,6 +126,13 @@ try {
     const openChats = async () => { if (width < 768) await page.getByRole("button", { name: "Open conversations", exact: true }).click(); };
     const closeChats = async () => { if (width < 768) await chats().getByRole("button", { name: "Close", exact: true }).click(); };
     const fits = async () => assert.equal(await page.locator("main").evaluate(el => el.scrollWidth <= el.clientWidth + 2), true, `${width}px fits`);
+    const searchFocus = async input => {
+      const field = input.locator("xpath=ancestor-or-self::*[contains(concat(' ',normalize-space(@class),' '),' search-field ')][1]");
+      await input.focus();
+      await page.waitForTimeout(180);
+      assert.equal(await input.evaluate(el => getComputedStyle(el).outlineStyle), "none", "search has no inner focus outline");
+      assert.notEqual(await field.evaluate(el => getComputedStyle(el).borderColor), await page.evaluate(() => `rgb(${getComputedStyle(document.documentElement).getPropertyValue("--line").trim().split(/\s+/).join(", ")})`), "the outer search boundary carries focus");
+    };
 
     await page.goto(`${WEB}/r/dm`);
     await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
@@ -147,6 +158,7 @@ try {
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/markdown-${width}.png` });
     await openChats();
+    await searchFocus(chats().getByRole("textbox", { name: "Filter conversations", exact: true }));
     assert.equal(await page.getByRole("complementary", { name: "Activity", exact: true }).count(), 0, "no right activity sidebar");
     assert.deepEqual(await chats().locator("[data-conversation]").evaluateAll(els => els.map(el => el.dataset.conversation)), ["crew", "group", "dm", "writer-dm"]);
     assert.equal(await chats().locator('[data-conversation="dm"]').evaluate(el => getComputedStyle(el, "::before").content), "none", "selected chats have no accent stripe");
@@ -156,6 +168,12 @@ try {
     assert.equal(await chats().locator("[data-conversation]").count(), 2);
     await chats().getByRole("button", { name: "All", exact: true }).click();
     await closeChats();
+    await page.keyboard.press("Control+k");
+    await searchFocus(page.getByRole("dialog", { name: "Search", exact: true }).getByRole("textbox", { name: "Search every conversation", exact: true }));
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Search this conversation", exact: true }).click();
+    await searchFocus(page.getByRole("textbox", { name: "Search this conversation", exact: true }));
+    await page.getByRole("button", { name: "Close search", exact: true }).click();
     assert.ok(await page.locator("header svg[data-node-avatar] .node-eyes").count(), "original Node signature in the chat header");
     assert.equal(await page.locator("[data-node-avatar] [data-model-brand]").count(), 0, "provider marks do not replace Node identities");
     assert.ok(await page.locator(".chat-timeline svg[data-node-avatar] .node-eyes").count(), "messages retain Node signatures too");
@@ -193,11 +211,32 @@ try {
     await page.getByRole("heading", { name: "Launch crew", exact: true }).waitFor();
     await page.locator('.chat-timeline [data-model-brand="copilot"]').waitFor();
     assert.ok(await page.locator("header .room-avatar").count(), "a crew has a graph avatar");
+    const crewDraft = page.getByRole("textbox", { name: "Message your crew", exact: true });
+    const tagged = "@scout please ask @writer, not @unknown.\nKeep this draft exactly as typed.";
+    await crewDraft.fill(tagged);
+    assert.deepEqual(await page.locator(".mention-mirror [data-mention]").allTextContents(), ["@scout", "@writer"]);
+    assert.equal(await crewDraft.inputValue(), tagged);
+    assert.equal(await crewDraft.evaluate(el => el.selectionEnd), tagged.length, "native text selection is preserved");
+    await crewDraft.fill("Ask @wri");
+    await page.keyboard.press("Enter");
+    assert.equal(await crewDraft.inputValue(), "Ask @writer ");
+    assert.equal(await page.locator('.mention-mirror [data-mention="writer"]').textContent(), "@writer");
+    if (shots) await page.screenshot({ path: `${shots}/mentions-${width}.png` });
+    await crewDraft.fill("");
     if (width === 1440) {
       await emit("node.status", { roomId: "crew", nodeId: "scout", state: "thinking" });
       await emit("node.status", { roomId: "crew", nodeId: "builder", state: "thinking" });
       await page.locator('header .room-avatar[aria-label*="Scout working"]').waitFor();
+      const builder = page.locator('header [data-graph-node="builder"]');
+      const sameBuilder = await builder.elementHandle();
+      const before = await builder.evaluate(el => getComputedStyle(el).transform);
       await page.locator('header .room-avatar[aria-label*="Builder working"]').waitFor({ timeout: 10000 });
+      await page.waitForTimeout(150);
+      const during = await builder.evaluate(el => getComputedStyle(el).transform);
+      await page.waitForTimeout(600);
+      const after = await builder.evaluate(el => getComputedStyle(el).transform);
+      assert.ok(await sameBuilder.evaluate(el => el.isConnected), "handoffs keep the same keyed node portrait mounted");
+      assert.ok(before !== during && during !== after, "the working node moves smoothly into focus instead of being replaced");
       await page.getByRole("button", { name: "Launch crew settings", exact: true }).focus();
       const focused = await page.locator("header .room-avatar").getAttribute("aria-label");
       await page.waitForTimeout(7300);
@@ -224,6 +263,7 @@ try {
     const details = page.getByRole("dialog", { name: "Node settings", exact: true });
     await details.getByRole("button", { name: /^Chat model:/ }).click();
     await page.getByRole("listbox", { name: "Chat model", exact: true }).waitFor();
+    await searchFocus(page.getByRole("textbox", { name: "Find a model", exact: true }));
     assert.ok(await page.getByRole("listbox").locator('[data-model-brand="claude"]').count(), "the picker uses real model marks too");
     await page.keyboard.press("Escape");
     assert.equal(await details.isVisible(), true, "Escape closes the picker before the drawer");
@@ -292,16 +332,82 @@ try {
       await page.waitForTimeout(80);
       assert.notEqual(await hello.locator(".node-body").evaluate(el => getComputedStyle(el).transform), "none", "a click gets a small response");
       const box = await hello.boundingBox();
-      await page.mouse.move(box.x + box.width - 4, box.y + box.height - 4);
+      await page.mouse.move(box.x + box.width - 8, box.y + box.height / 2 + 4);
       await page.waitForTimeout(400);
       const gaze = await hello.locator(".node-gaze").evaluate(el => getComputedStyle(el).transform);
       assert.ok(gaze !== "none" && gaze !== "matrix(1, 0, 0, 1, 0, 0)", "only the open profile follows the nearby pointer");
       await page.mouse.move(10, 10);
     }
     await settings.getByRole("button", { name: "Close", exact: true }).click();
+    if (width === 1440) {
+      await page.goto(`${WEB}/r/dm`);
+      await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
+      const headerAvatar = page.locator("header [data-node-avatar]");
+      const actor = page.locator("#m-dm-40 .node-companion-message");
+      const noCosmeticWrites = writes.length;
+      let clicks = 0;
+      for (const shape of ["orb", "square", "spark", "hex", "leaf", "compass"]) {
+        state.boot.nodes[0].avatar = { shape, color: "#B39DDB", eyes: "dot" };
+        await emit("node.room", { roomId: "dm" });
+        await page.waitForFunction(shape => document.querySelector("header [data-node-avatar]")?.dataset.nodeShape === shape, shape);
+        await emit("node.status", { roomId: "dm", nodeId: "scout", state: "thinking" });
+        await page.waitForFunction(() => document.querySelector("header [data-node-avatar]")?.dataset.motionActive === "true");
+        const form = headerAvatar.locator(".node-form");
+        assert.equal(await form.evaluate(el => getComputedStyle(el).animationName), `node-${shape}-work`);
+        const start = await form.evaluate(el => getComputedStyle(el).transform);
+        await page.waitForTimeout(220);
+        assert.notEqual(await form.evaluate(el => getComputedStyle(el).transform), start, `${shape} has visible working movement`);
+        if (shots) await page.screenshot({ path: `${shots}/working-${shape}.png` });
+        const outline = actor.locator(".node-silhouette");
+        while (clicks % 4) { await actor.click(); clicks++; }
+        const original = await outline.getAttribute("d");
+        await actor.click(); clicks++;
+        await page.waitForTimeout(220);
+        assert.notEqual(await outline.getAttribute("d"), original, `${shape} morphs when pressed`);
+        assert.ok(Number(await actor.locator(".node-happy-eyes").evaluate(el => getComputedStyle(el).opacity)) > .5, "a press shows happy eyes");
+        if (shots) await page.screenshot({ path: `${shots}/happy-${shape}.png` });
+        await page.waitForTimeout(1100);
+        assert.equal(await outline.getAttribute("d"), original, "the outline returns to its saved shape");
+        await emit("node.status", { roomId: "dm", nodeId: "scout", state: "idle" });
+      }
+      assert.equal(writes.length, noCosmeticWrites, "working and click expressions never call a mutation");
+      await actor.click(); clicks++;
+      assert.equal(await actor.getAttribute("data-expression"), "twinkle");
+      await actor.click(); clicks++;
+      assert.equal(await actor.getAttribute("data-expression"), "wink");
+      await actor.click(); clicks++;
+      assert.equal(await actor.getAttribute("data-expression"), "double-blink");
+      await page.waitForTimeout(1200);
+      await page.getByRole("button", { name: "Scout", exact: true }).click();
+      const thinking = settings.getByRole("radiogroup", { name: "Thinking", exact: true });
+      await thinking.getByRole("radio", { name: "Medium", exact: true }).click();
+      const note = page.locator(".node-toast").filter({ hasText: "Thinking saved." });
+      await note.waitFor();
+      await page.waitForTimeout(650);
+      await note.hover();
+      await note.locator(".toast-drain").evaluate(el => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const bar = await note.locator(".toast-drain").evaluate(el => getComputedStyle(el).transform);
+      await page.waitForTimeout(3300);
+      assert.ok(await note.isVisible(), "hover pauses the three-second notification timer");
+      assert.equal(await note.locator(".toast-drain").evaluate(el => getComputedStyle(el).transform), bar, "the countdown bar pauses with its timer");
+      if (shots) await page.screenshot({ path: `${shots}/notification-paused.png` });
+      await page.mouse.move(10, 10);
+      await note.waitFor({ state: "detached", timeout: 3300 });
+      await thinking.getByRole("radio", { name: "High", exact: true }).click();
+      await note.waitFor();
+      await note.getByRole("button", { name: "Pause notification timer", exact: true }).click();
+      await page.mouse.move(10, 10);
+      await page.waitForTimeout(3300);
+      assert.ok(await note.isVisible(), "the explicit pause button keeps the notification");
+      await note.getByRole("button", { name: "Resume notification timer", exact: true }).click();
+      await page.mouse.move(10, 10);
+      await note.waitFor({ state: "detached", timeout: 3300 });
+      await settings.getByRole("button", { name: "Close", exact: true }).click();
+    }
     await openChats();
     assert.equal(await chats().getByRole("link", { name: "Routines", exact: true }).count(), 0, "workspace links stay out of the chat list");
     await chats().getByRole("button", { name: "Workspace menu", exact: true }).click();
+    assert.equal(await chats().getByRole("combobox", { name: "Sidebar width", exact: true }).count(), 0, "resizing has no menu setting");
     await chats().getByRole("link", { name: "Appearance", exact: true }).click();
     const preferences = page.getByRole("region", { name: "Appearance", exact: true });
     await preferences.waitFor();
@@ -349,10 +455,12 @@ try {
     assert.equal(await page.locator("header .node-attention").evaluate(el => getComputedStyle(el).transform), "none", "quiet mode also disables typing reactions");
     await emit("node.status", { roomId: "dm", nodeId: "scout", state: "thinking" });
     await page.waitForTimeout(100);
-    assert.equal(await page.locator("header .node-work").evaluate(el => getComputedStyle(el).animationName), "none", "quiet mode does not animate working nodes");
+    assert.equal(await page.locator("header .node-form").evaluate(el => getComputedStyle(el).animationName), "none", "quiet mode does not animate working nodes");
     await emit("node.status", { roomId: "dm", nodeId: "scout", state: "idle" });
     if (shots) await page.screenshot({ path: `${shots}/quiet-chat-${width}.png` });
     await fits();
+    await page.goto(`${WEB}/connections`);
+    await searchFocus(page.getByRole("textbox", { name: "Find an app", exact: true }));
     assert.deepEqual(errors, [], "no client errors");
     assert.deepEqual(unexpected, [], "only the intended API reads/writes");
     console.log(`Node chat UX: ${width}px passed`);

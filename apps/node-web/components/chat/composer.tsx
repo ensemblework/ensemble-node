@@ -3,7 +3,7 @@
 import { ArrowUp, CornerUpLeft, ListChecks, Lock, Square, Users, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { leadsStatus } from "@/lib/rooms";
-import { insertMention, matchHandles, typingMention } from "@/lib/text";
+import { draftMentionParts, insertMention, matchHandles, typingMention } from "@/lib/text";
 import type { Avatar, MessageFile, NodePublic } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { AttachButton, AttachmentShelf, DropHint, pasteFiles, useAttachments, useFileDrop } from "./attachments";
@@ -64,10 +64,14 @@ export function Composer({
   const [index, setIndex] = useState(0);
   const [isPrivate, setPrivate] = useState(() => drafts.get(draftKey)?.private ?? false);
   const area = useRef<HTMLTextAreaElement>(null);
+  const mirror = useRef<HTMLDivElement>(null);
   const attachments = useAttachments();
   const canAttach = Boolean(attachHint) && !disabled;
   const drop = useFileDrop(attachments.addFiles, canAttach);
   const blockerId = useId();
+  const mentionId = useId();
+  const parts = draftMentionParts(value, new Set(options.map(option => option.handle.toLowerCase())));
+  const mentioned = [...new Set(parts.flatMap(part => part.mention ? [`@${part.mention}`] : []))];
   const typing = typingMention(value, cursor);
   const matches = typing ? matchHandles(options, typing.query) : [];
   // A public reply may not quote a private message, so a reply to one is private too; My crew is all private.
@@ -89,6 +93,7 @@ export function Composer({
     if (!element) return;
     element.style.height = "auto";
     element.style.height = `${Math.min(220, element.scrollHeight)}px`;
+    if (mirror.current) mirror.current.scrollTop = element.scrollTop;
   }, [value]);
   useEffect(() => setIndex(0), [typing?.query]);
 
@@ -136,7 +141,8 @@ export function Composer({
             <li key={option.handle}>
               <button
                 type="button"
-                onMouseDown={(event) => (event.preventDefault(), choose(option.handle))}
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => choose(option.handle)}
                 className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm ${at === index ? "bg-raised" : ""}`}
               >
                 {option.person ? <PersonAvatar name={option.label} size={24} /> : <NodeAvatar node={option.node} avatar={option.avatar} size={24} />}
@@ -179,6 +185,10 @@ export function Composer({
           </p>
         ) : null}
         <AttachmentShelf attachments={attachments} />
+        <div className="mention-editor relative min-w-0">
+        <div ref={mirror} aria-hidden className="mention-copy mention-mirror pointer-events-none absolute inset-0 overflow-hidden">
+          {parts.map((part, at) => part.mention ? <span key={at} className="draft-mention" data-mention={part.mention}>{part.text}</span> : <span key={at}>{part.text}</span>)}{"\n"}
+        </div>
         <textarea
           ref={area}
           value={value}
@@ -190,6 +200,7 @@ export function Composer({
             setCursor(event.target.selectionStart);
           }}
           onSelect={(event) => setCursor((event.target as HTMLTextAreaElement).selectionStart)}
+          onScroll={event => { if (mirror.current) { mirror.current.scrollTop = event.currentTarget.scrollTop; mirror.current.scrollLeft = event.currentTarget.scrollLeft; } }}
           onPaste={canAttach ? (event) => pasteFiles(event, attachments.addFiles) : undefined}
           onKeyDown={(event) => {
             if (matches.length) {
@@ -209,8 +220,11 @@ export function Composer({
             }
           }}
           aria-label={privateNow && privatePlaceholder ? privatePlaceholder : placeholder}
-          className="max-h-[220px] w-full resize-none bg-transparent px-3 py-2 text-[15px] outline-none placeholder:text-muted disabled:opacity-60"
+          aria-describedby={mentioned.length ? mentionId : undefined}
+          className="mention-copy relative block max-h-[220px] w-full resize-none bg-transparent outline-none placeholder:text-muted disabled:opacity-60"
         />
+        </div>
+        <span id={mentionId} className="sr-only" role="status">{mentioned.length ? `Valid mentions: ${mentioned.join(", ")}` : ""}</span>
         <div className="flex items-center justify-between gap-2 px-1">
           <div className="flex min-w-0 items-center gap-1">
             {attachHint ? <AttachButton attachments={attachments} hint={attachHint} disabled={disabled} /> : null}

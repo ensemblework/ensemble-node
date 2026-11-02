@@ -353,7 +353,7 @@ function FilesPicker({ open, onClose, attachments }: { open: boolean; onClose: (
   return (
     <Drawer open={open} onClose={onClose} title="Choose from your Files" side="top">
       <div className="space-y-3" onKeyDown={(event) => arrowKeys(event, list.current, input.current)}>
-        <label className="flex items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2 focus-within:border-accent">
+        <label className="search-field flex items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2">
           <Search size={16} className="shrink-0 text-muted" />
           <input
             ref={input}

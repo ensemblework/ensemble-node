@@ -151,7 +151,7 @@ export function ModelPicker({ value, onChange, variant = "field", disabled, labe
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Find a model"
                 aria-label="Find a model"
-                className="w-full rounded-lg border border-line bg-bg px-2.5 py-1.5 text-sm outline-none placeholder:text-muted focus:border-accent"
+                className="search-field w-full rounded-lg border border-line bg-bg px-2.5 py-1.5 text-sm outline-none placeholder:text-muted"
               />
             </div>
           ) : null}

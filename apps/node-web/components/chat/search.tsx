@@ -78,7 +78,7 @@ export function SearchPanel({ roomId, onPick, onClose, autoFocus = true }: { roo
   return (
     <div className="space-y-3" onKeyDown={onKey}>
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2 focus-within:border-accent">
+        <label className="search-field flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2">
           <Search size={16} className="shrink-0 text-muted" />
           <input
             ref={input}

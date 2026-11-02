@@ -51,7 +51,8 @@ ensemble-node/
 │   │   ├── appearance-provider.tsx, appearance-settings.tsx
 │   │   │                        browser-local mode, suite colours, chat backgrounds and quiet mode
 │   │   ├── node-life.tsx, node-companion.tsx, room-avatar.tsx
-│   │   │                        local visits, the open node's expressions, crew/room graph portraits
+│   │   │                        local visits, interactive node portraits, smooth crew/room graph handoffs
+│   │   ├── node-expressions.ts  bounded GSAP greetings, happy morphs, winks, blinks and twinkles
 │   │   ├── routines.tsx         routines: the list, the form (schedules in a time zone, events, webhooks),
 │   │   │                        a webhook's token shown once, runs and a run's card; a node's routines
 │   │   ├── sessions.tsx         sessions: search, each with who manages it and Hand to…, one opened
@@ -72,12 +73,13 @@ ensemble-node/
 │   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      Node signature faces (shape, a colour shaded in its own hue, eyes that fit the shape),
-│   │   │                        resting and visible working states, and the appearance picker
+│   │   │                        compatible morph outlines, shape-specific working motion, and the appearance picker
 │   │   ├── handle-input.tsx     a node's handle after its @
 │   │   ├── model-logo.tsx       canonical local model/vendor and agent marks
 │   │   ├── connector-logo.tsx, tool-icon.tsx
 │   │   │                        shared local vendor logos and generic tool fallbacks
-│   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, drawer, menus, toasts, External (new-tab links)
+│   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, drawer, menus, pausable notification timers,
+│   │   │                        External (new-tab links)
 │   ├── lib/
 │   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads, uploads to Files with
 │   │   │                        progress and cancel; URLs and links into Ensemble

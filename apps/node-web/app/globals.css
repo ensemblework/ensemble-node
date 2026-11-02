@@ -84,10 +84,44 @@ body {
   scrollbar-color: rgb(var(--line)) transparent;
 }
 
-@keyframes node-work {
-  0%, 35%, 75%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px) rotate(-2deg); }
-  62% { transform: translateY(-1px) rotate(1deg); }
+@keyframes node-orb-work {
+  0%, 52%, 100% { transform: translateY(0) scale(1); }
+  16% { transform: translateY(-9px) scale(.92, 1.1); }
+  31% { transform: translateY(3px) scale(1.16, .84); }
+  42% { transform: translateY(-3px) scale(.98, 1.03); }
+}
+@keyframes node-square-work {
+  0%, 60%, 100% { transform: rotate(0) scale(1); }
+  15% { transform: rotate(-15deg) scale(1.08, .9); }
+  32% { transform: rotate(18deg) scale(.9, 1.1); }
+  46% { transform: rotate(-5deg) scale(1.03, .97); }
+}
+@keyframes node-spark-work {
+  0% { transform: rotate(0) scale(1); }
+  14% { transform: rotate(65deg) scale(.84); }
+  34% { transform: rotate(365deg) scale(1.1); }
+  48%, 100% { transform: rotate(360deg) scale(1); }
+}
+@keyframes node-hex-work {
+  0%, 65%, 100% { transform: rotate(0) scale(1); }
+  18% { transform: rotate(-28deg) scale(.9, 1.08); }
+  40% { transform: rotate(30deg) scale(1.08, .93); }
+  53% { transform: rotate(-5deg) scale(1); }
+}
+@keyframes node-leaf-work {
+  0%, 65%, 100% { transform: rotate(0) skewX(0) scale(1); }
+  20% { transform: rotate(-18deg) skewX(-10deg) scale(.88, 1.12); }
+  43% { transform: rotate(12deg) skewX(6deg) scale(1.1, .94); }
+}
+@keyframes node-compass-work {
+  0%, 70%, 100% { transform: rotate(0) scale(1); }
+  14% { transform: rotate(-40deg) scale(.9); }
+  35% { transform: rotate(48deg) scale(1.05); }
+  52% { transform: rotate(-12deg) scale(1); }
+}
+@keyframes node-work-blink {
+  0%, 16%, 23%, 62%, 69%, 77%, 100% { transform: scaleY(1); }
+  19%, 65%, 73% { transform: scaleY(.1); }
 }
 @keyframes float-slow {
   0%,
@@ -98,14 +132,28 @@ body {
     transform: translateY(-8px);
   }
 }
-.node-thinking[data-motion-active="true"] .node-work { animation: node-work 6s ease-in-out infinite; }
-.node-work, .node-body, .node-eyes, .node-gaze, .node-attention {
+[data-node-avatar] { overflow: visible; --node-work-animation: node-orb-work; --node-work-duration: 3.8s; }
+[data-node-shape="square"] { --node-work-animation: node-square-work; --node-work-duration: 4.2s; }
+[data-node-shape="spark"] { --node-work-animation: node-spark-work; --node-work-duration: 4.8s; }
+[data-node-shape="hex"] { --node-work-animation: node-hex-work; --node-work-duration: 4.4s; }
+[data-node-shape="leaf"] { --node-work-animation: node-leaf-work; --node-work-duration: 4.6s; }
+[data-node-shape="compass"] { --node-work-animation: node-compass-work; --node-work-duration: 4.1s; }
+.node-thinking[data-motion-active="true"] .node-form { animation: var(--node-work-animation) var(--node-work-duration) ease-in-out infinite; }
+.node-thinking[data-motion-active="true"] .node-eyes { animation: node-work-blink 5.4s ease-in-out infinite; }
+.node-work, .node-body, .node-form, .node-pose, .node-eyes, .node-eye-left, .node-eye-right, .node-gaze, .node-attention, .node-sparkles, .node-sparkle {
   transform-box: fill-box;
   transform-origin: center;
 }
 .node-attention { transition: transform 240ms ease-out; }
 .chat-conversation:has(.chat-composer textarea:focus) .node-companion-header .node-attention { transform: translateY(3px); }
 .node-companion-profile:hover { background: rgb(var(--raised) / .5); }
+.node-companion > svg { pointer-events: none; }
+.node-companion-compact::before { content: ""; position: absolute; inset: -6px; border-radius: 50%; }
+.room-avatar[data-animated="true"] .graph-node { transition: transform 650ms cubic-bezier(.22, 1, .36, 1); }
+@media (prefers-reduced-motion: no-preference) {
+  :root:not([data-motion="off"]) .node-link .node-body { transition: transform 160ms ease-out; }
+  :root:not([data-motion="off"]) .node-link:active .node-body { transform: scale(1.12, .85) rotate(-8deg); }
+}
 
 .chat-shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 .chat-sidebar[data-resizing="true"] { user-select: none; }
@@ -116,6 +164,21 @@ body {
 .chat-composer:focus-within { box-shadow: 0 0 0 2px rgb(var(--accent) / .08); }
 .chat-composer textarea:focus-visible { outline: none; }
 .chat-composer:has(textarea:focus-visible) { outline: 2px solid rgb(var(--accent) / .75); outline-offset: 2px; }
+.search-field { transition: border-color 140ms ease, box-shadow 140ms ease; }
+.search-field:focus-within, .search-field:focus-visible { outline: none; border-color: rgb(var(--accent) / .8); box-shadow: 0 0 0 2px rgb(var(--accent) / .08); }
+.search-field input:focus-visible { outline: none; box-shadow: none; }
+.mention-copy { padding: .5rem .75rem; font-size: 15px; line-height: 1.5; letter-spacing: inherit; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 8; scrollbar-width: thin; scrollbar-gutter: stable; }
+.mention-editor textarea { color: transparent; caret-color: rgb(var(--ink)); }
+.draft-mention { color: rgb(var(--accent)); background: rgb(var(--accent) / .13); border-radius: .2em; box-decoration-break: clone; }
+@media (max-width: 767px) { .mention-copy { font-size: 16px; } }
+@media (forced-colors: active) {
+  .mention-mirror { display: none; }
+  .mention-editor textarea { color: CanvasText; caret-color: CanvasText; }
+}
+@keyframes toast-drain { to { transform: scaleX(0); } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.node-toast { animation: toast-in 180ms ease-out; }
+.toast-drain { animation-name: toast-drain; animation-timing-function: linear; animation-fill-mode: forwards; }
 .appearance-choice { transition: border-color 140ms ease, background-color 140ms ease; }
 .appearance-choice:hover { background-color: rgb(var(--raised) / .5); }
 .appearance-choice[aria-pressed="true"] { border-color: rgb(var(--accent)); background-color: rgb(var(--accent) / .06); }
@@ -154,13 +217,17 @@ body {
   animation: float-slow 6s ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
-  .node-thinking .node-work,
+  .node-thinking .node-form,
+  .node-thinking .node-eyes,
   .float-slow {
     animation: none;
   }
   .chat-conversation:has(.chat-composer textarea:focus) .node-companion-header .node-attention { transform: none; }
+  .graph-node { transition: none !important; }
+  .node-toast, .toast-drain { animation: none; }
 }
-:root[data-motion="off"] .node-work,
+:root[data-motion="off"] .node-form,
+:root[data-motion="off"] .node-eyes,
 :root[data-motion="off"] .float-slow,
 :root[data-motion="off"] .chat-message[data-new-message="true"] { animation: none; }
 :root[data-motion="off"] .node-attention { transition: none; transform: none !important; }

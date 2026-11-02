@@ -94,7 +94,7 @@ export function SessionsView() {
           <h1 className="text-2xl font-semibold">Sessions</h1>
           <p className="text-sm text-muted">Your agents&apos; sessions, most recently used first. Pick up work from Node, Ensemble or the CLI.</p>
         </div>
-        <label className="flex items-center gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2 text-muted focus-within:border-accent">
+        <label className="search-field flex items-center gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2 text-muted">
           <Search size={15} className="shrink-0" aria-hidden />
           <input aria-label="Search sessions" placeholder="Search by task, folder, agent or computer" value={typed} onChange={(event) => setTyped(event.target.value)} className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted sm:text-sm" />
           {list.isFetching && !list.isLoading ? <Spinner className="h-3.5 w-3.5" /> : null}

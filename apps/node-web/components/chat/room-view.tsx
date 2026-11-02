@@ -18,9 +18,9 @@ import { helperThread, helperThreads, looseThreads, placeThreads, threadLabel, t
 import { toast, toastError } from "@/lib/toast";
 import type { Bootstrap, Member, Message, MessageFile, NodeFull, Room } from "@/lib/types";
 import { workBoard, workingNodeIds } from "@/lib/work";
-import { NodeAvatar } from "../node-avatar";
 import { NodeCompanion } from "../node-companion";
 import { RoomAvatar } from "../room-avatar";
+import { useAppearance } from "../appearance-provider";
 import { ToolIcon } from "../tool-icon";
 import { Drawer, IconButton, MenuItem, Spinner, useDismiss } from "../ui";
 import { Composer, type ComposerDraft, type MentionOption } from "./composer";
@@ -84,6 +84,7 @@ function PeopleEmpty({ tab, title, onSuggest, disabled }: { tab: RoomTab; title:
 }
 
 export function RoomView({ roomId }: { roomId: string }) {
+  const { motion } = useAppearance();
   const client = useQueryClient();
   const boot = useBootstrap();
   const room = boot.data?.rooms.find((row) => row.id === roomId);
@@ -267,13 +268,13 @@ export function RoomView({ roomId }: { roomId: string }) {
   const reveal = useCallback((messageId: string) => {
     const element = document.getElementById(`m-${messageId}`);
     if (!element) return false;
-    element.scrollIntoView({ block: "center", behavior: "smooth" });
+    element.scrollIntoView({ block: "center", behavior: motion ? "smooth" : "auto" });
     stuck.current = false;
     setAtBottom(false);
     setHighlight(messageId);
     setTimeout(() => setHighlight((current) => (current === messageId ? null : current)), 2600);
     return true;
-  }, []);
+  }, [motion]);
 
   /** Scrolls to a message, loading earlier pages first when it is not loaded yet. */
   const jumpTo = useCallback(
@@ -743,11 +744,11 @@ export function RoomView({ roomId }: { roomId: string }) {
           ) : !list.length ? (
             <div className="flex flex-col items-center py-16 text-center">
               {dmNode ? (
-                <NodeAvatar node={dmNode} size={64} />
+                <NodeCompanion node={dmNode} size={64} />
               ) : (
                 <span className="flex -space-x-3">
                   {nodeMembers.slice(0, 5).map((row) => (
-                    <NodeAvatar key={row.id} node={row.node} size={48} />
+                    <NodeCompanion key={row.id} node={row.node} size={48} compact />
                   ))}
                 </span>
               )}
@@ -798,7 +799,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                 const node = ctx.nodes.get(row.nodeId);
                 return (
                   <div key={row.nodeId} className="mt-4 flex gap-3" data-live-row={row.waiting ? "waiting" : "thinking"}>
-                    <NodeAvatar node={node} size={32} thinking={!row.waiting} />
+                    <NodeCompanion node={node} size={32} thinking={!row.waiting} compact />
                     <div className="min-w-0 flex-1">
                       <div className="mb-0.5 text-sm">
                         <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="ml-1 text-xs text-muted">{row.waiting ? "" : row.text ? "Writing…" : "Thinking…"}</span>
@@ -863,7 +864,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           onClick={() => {
             stuck.current = true;
             setAtBottom(true);
-            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+            scroller.current?.scrollTo({ top: scroller.current.scrollHeight, behavior: motion ? "smooth" : "auto" });
           }}
           className="absolute -top-12 right-5 z-20 inline-flex h-10 items-center gap-1.5 rounded-full border border-line bg-panel px-3 text-sm shadow-xl hover:bg-raised md:right-8"
           aria-label={newBelow ? `Jump to the latest: ${newBelow} new` : "Jump to the latest"}

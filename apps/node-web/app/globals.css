@@ -45,6 +45,7 @@ body {
 
 button, a, summary, select { touch-action: manipulation; }
 button:not(:disabled), summary { cursor: pointer; }
+.file-divider::after { content: ""; position: absolute; inset: 0 -10px; }
 :where(button, a, summary, input, textarea, select, [tabindex="0"]):focus-visible {
   outline: 2px solid rgb(var(--accent));
   outline-offset: 3px;

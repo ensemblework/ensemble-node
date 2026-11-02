@@ -23,6 +23,7 @@ import { NodeLifeProvider, useNodeVisits } from "./node-life";
 import { RoomAvatar } from "./room-avatar";
 import { SidebarFrame, useSidebarWidth } from "./sidebar-frame";
 import { Drawer, IconButton, Spinner, Toaster, useDismiss } from "./ui";
+import { FileWorkspaceProvider, FileWorkspaceSurface } from "./files/workspace";
 
 export function dmRoomOf(boot: Bootstrap | undefined, nodeId: string): Room | undefined {
   return boot?.rooms.find((room) => room.kind === "dm" && room.members.some((member) => member.kind === "node" && member.node.id === nodeId));
@@ -171,6 +172,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const activity = useActivity();
   const [menu, setMenu] = useState(false);
   const [collapsed, toggleCollapsed] = useNavigationPreference("node.sidebar-collapsed", false);
+  const [autoCollapsed, setAutoCollapsed] = useState(false);
   const [width, setWidth] = useSidebarWidth();
   const [search, setSearch] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
@@ -261,10 +263,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <NodeLifeProvider key={boot.data.me.id} accountId={boot.data.me.id}>
+    <FileWorkspaceProvider key={boot.data.me.id} accountId={boot.data.me.id} roomId={pathname.startsWith("/r/") ? pathname.split("/")[2] ?? null : null} onAutoCollapse={setAutoCollapsed}>
     <div ref={frame} data-needs-you={waitingIn.size > 0} className="chat-shell flex overflow-hidden" style={{ height: "var(--node-viewport-height, 100dvh)" }}>
       <a href="#main-content" className="skip-link">Skip to conversation</a>
-      <SidebarFrame collapsed={collapsed} width={width} onWidth={setWidth}>
-        <Sidebar boot={boot.data} compact={collapsed} onCollapse={toggleCollapsed} onSearch={openSearch} waiting={waitingIn} runs={activity.data?.runs} />
+      <SidebarFrame collapsed={collapsed || autoCollapsed} width={width} onWidth={setWidth}>
+        <Sidebar boot={boot.data} compact={collapsed || autoCollapsed} onCollapse={() => { if (autoCollapsed) { setAutoCollapsed(false); if (collapsed) toggleCollapsed(); } else toggleCollapsed(); }} onSearch={openSearch} waiting={waitingIn} runs={activity.data?.runs} />
       </SidebarFrame>
       <Drawer open={menu} onClose={() => setMenu(false)} title="Chats" side="left"><Sidebar boot={boot.data} onNavigate={() => setMenu(false)} onSearch={openSearch} waiting={waitingIn} runs={activity.data?.runs} /></Drawer>
 
@@ -288,7 +291,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
         </div>
         <div className="relative flex min-h-0 flex-1">
-          <main id="main-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-hidden outline-none">{children}</main>
+          <main id="main-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-hidden outline-none"><FileWorkspaceSurface>{children}</FileWorkspaceSurface></main>
         </div>
       </div>
 
@@ -304,6 +307,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Drawer>
       <Toaster />
     </div>
+    </FileWorkspaceProvider>
     </NodeLifeProvider>
   );
 }

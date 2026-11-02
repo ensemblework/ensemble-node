@@ -1001,12 +1001,16 @@ export function useNodeEvents(enabled: boolean) {
       if (message.kind === "plan" && typeof message.data?.routine?.id === "string") laterRoutine(message.data.routine.id);
       // A plan for a task of a room's board shows on its row (`plan`, mine only): the board reads it again.
       if (message.kind === "plan" && message.private) void client.invalidateQueries({ queryKey: keys.board(message.roomId) });
-      if (message.authorNodeId) live.posted(message.roomId, message.authorNodeId);
+      if (message.authorNodeId && message.kind !== "files" && message.data?.type !== "file_tracking") live.posted(message.roomId, message.authorNodeId);
       if (message.kind === "approval" || message.kind === "run") void client.invalidateQueries({ queryKey: keys.activity });
       // A run card changed: its open view reads the job (and the work log, when open) again.
       if (message.kind === "run" && typeof message.data?.jobId === "string") {
         void client.invalidateQueries({ queryKey: keys.job(message.data.jobId) });
         void client.invalidateQueries({ queryKey: keys.runSteps(message.data.jobId) });
+        if (["succeeded", "failed", "cancelled", "interrupted", "stopped"].includes(message.data.status)) {
+          void client.invalidateQueries({ queryKey: ["node-originals"] });
+          window.dispatchEvent(new Event("node:originals-changed"));
+        }
       }
       if (message.kind === "run" && typeof message.data?.session?.id === "string") {
         void client.invalidateQueries({ queryKey: keys.session(message.data.session.id) });
@@ -1016,6 +1020,7 @@ export function useNodeEvents(enabled: boolean) {
     };
     source.addEventListener("node.message", onMessage as EventListener);
     source.addEventListener("node.message.updated", onMessage as EventListener);
+    source.addEventListener("node.files", ((event: MessageEvent<string>) => { void client.invalidateQueries({ queryKey: ["node-originals"] }); window.dispatchEvent(new CustomEvent("node:originals-changed", { detail: JSON.parse(event.data) })); }) as EventListener);
     source.addEventListener("node.status", ((event: MessageEvent<string>) => {
       const data = JSON.parse(event.data) as { roomId: string; nodeId: string; state: string; private?: boolean; cardId?: unknown };
       // `private`: the reply is for its owner's My crew in a room with other people. `waiting`: the node waits for its owner's answer on a card.

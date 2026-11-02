@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Download, Ellipsis, Handshake, KanbanSquare, Lock, MessagesSquare, Pause, Pin, Search, Settings2, ShieldCheck, UserRound, Users, X } from "lucide-react";
+import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Columns2, Download, Ellipsis, Files, Handshake, KanbanSquare, Lock, MessagesSquare, Pause, Pin, Search, Settings2, ShieldCheck, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { messageFiles, saveOnComputerAsk } from "@/lib/attachments";
 import { dayKey, dayLabel, firstUnread, inTimeline, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
@@ -35,6 +35,7 @@ import { RequestForm, TrustSheet } from "./room-people";
 import { RoomSettings } from "./room-settings";
 import { SearchPanel } from "./search";
 import { WorkStrip } from "./work-strip";
+import { useFileWorkspace } from "../files/workspace";
 
 const SUGGESTIONS: Record<Room["kind"], string[]> = {
   dm: ["What's on my plate today?", "Add a task to review the onboarding flow next Monday", "Make a page with notes from what I tell you next", "Fix the failing tests in my repo on my laptop"],
@@ -84,6 +85,7 @@ function PeopleEmpty({ tab, title, onSuggest, disabled }: { tab: RoomTab; title:
 }
 
 export function RoomView({ roomId }: { roomId: string }) {
+  const workspace = useFileWorkspace();
   const { motion } = useAppearance();
   const client = useQueryClient();
   const boot = useBootstrap();
@@ -103,6 +105,11 @@ export function RoomView({ roomId }: { roomId: string }) {
   // The room's Board: its space's tasks, pages and decisions, in place of the conversation.
   const [boardOpen, setBoardOpen] = useState(false);
   const meId = boot.data?.me.id ?? "";
+  const quoteKey = `${meId}:${roomId}${isPeople ? `:${tab}` : ""}`;
+  useEffect(() => {
+    workspace.setQuoteTarget(meId && !boardOpen ? quoteKey : null);
+    return () => workspace.setQuoteTarget(null);
+  }, [workspace.setQuoteTarget, meId, quoteKey, boardOpen]);
   const requests = useRoomRequests(roomId, isPeople);
   const space = useRoomSpace(roomId, isPeople && Boolean(room?.spaceId));
   const { mutate: shareMessage } = useShareToRoom();
@@ -221,6 +228,7 @@ export function RoomView({ roomId }: { roomId: string }) {
   );
   /** What is shown is read: the room's marker moves (in a room with other people, the shown tab's own). */
   const markSeen = useCallback(() => {
+    if (!scroller.current?.getClientRects().length || scroller.current.closest("[inert]")) return;
     if (!isPeople) {
       if (lastSeq) markRead(client, roomId, lastSeq);
       return;
@@ -378,7 +386,16 @@ export function RoomView({ roomId }: { roomId: string }) {
 
   useEffect(() => {
     if (lastSeq && stuck.current && document.visibilityState === "visible") markSeen();
-  }, [lastSeq, tabNewest, markSeen]);
+  }, [lastSeq, tabNewest, markSeen, workspace.mode, workspace.filesOpen]);
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry?.isIntersecting && stuck.current && document.visibilityState === "visible") markSeen();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [markSeen, messages.isLoading, boardOpen, Boolean(room)]);
 
   useEffect(() => {
     if (lastFilter.current === filter) return;
@@ -423,7 +440,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       onRetry: (message: Message) => sendMessage(resendInput(message)),
       onEdit: (message: Message) => {
         updateMessages(client, roomId, (list) => list.filter((row) => row.id !== message.id));
-        setDraft({ nonce: Date.now(), body: message.body, private: message.private, files: messageFiles(message) });
+        setDraft({ nonce: Date.now(), body: message.body, private: message.private, files: messageFiles(message), fileQuotes: message.data.fileQuotes });
         const quoted = message.data?.replyTo?.id;
         const target = quoted ? client.getQueryData<Message[]>(keys.messages(roomId, "all"))?.find((row) => row.id === quoted) : undefined;
         if (target) setReply(target);
@@ -595,6 +612,8 @@ export function RoomView({ roomId }: { roomId: string }) {
         <IconButton label="Search this conversation" onClick={() => setSearching(!searching)} className={searching ? "bg-raised text-ink" : ""}>
           <Search size={18} />
         </IconButton>
+        {workspace.active && workspace.mode === "chat" ? <IconButton label="Open editor" onClick={workspace.restore}><Columns2 size={18} /></IconButton> : null}
+        <IconButton label={workspace.filesOpen ? "Hide changed files" : "Show changed files"} aria-pressed={workspace.filesOpen} onClick={workspace.toggleFiles} className={workspace.filesOpen ? "bg-raised text-ink" : ""}><Files size={18} /></IconButton>
         <div ref={menuBox} className="relative">
           <IconButton label="More" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)} className={`relative ${menu ? "bg-raised text-ink" : ""}`}>
             <Ellipsis size={18} />
@@ -902,12 +921,12 @@ export function RoomView({ roomId }: { roomId: string }) {
         onCancelReply={() => setReply(null)}
         attachHint={attachHint}
         draft={draft}
-        onSend={(body, isPrivate, files) => {
+        onSend={(body, isPrivate, files, fileQuotes) => {
           stuck.current = true;
           setAtBottom(true);
           if (filter !== "all" && filter !== "people") setFilter("all");
           const privately = isPrivate || (isPeople && tab === "crew");
-          send.mutate({ body, private: privately, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}), ...(files.length ? { files } : {}) });
+          send.mutate({ body, private: privately, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}), ...(files.length ? { files } : {}), ...(fileQuotes.length ? { fileQuotes } : {}) });
           setReply(null);
           // Asking my nodes from the Room: the question and its answer are in My crew.
           if (isPeople && tab === "room" && privately) showTab("crew", "bottom");

@@ -58,10 +58,10 @@ async function blobWithProgress(response: Response, onProgress: (percent: number
  * Downloads a file from Ensemble's API with the session cookie, and saves it in the browser. With
  * `onProgress`, a large file says how much has come (its `expected` size when the server does not say).
  */
-export async function download(path: string, fallbackName: string, onProgress?: (percent: number) => void, expected?: number | null): Promise<void> {
+export async function downloadData(path: string, init: { body?: unknown } = {}, onProgress?: (percent: number) => void, expected?: number | null): Promise<{ blob: Blob; name: string | null }> {
   let response: Response;
   try {
-    response = await fetch(`${ENSEMBLE_API}${path}`, { credentials: "include" });
+    response = await fetch(`${ENSEMBLE_API}${path}`, { credentials: "include", ...(init.body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(init.body) }) });
   } catch {
     throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
   }
@@ -69,17 +69,24 @@ export async function download(path: string, fallbackName: string, onProgress?: 
     const data = (await response.json().catch(() => ({}))) as { error?: string };
     throw new ApiError(response.status, data.error ?? `Something went wrong (${response.status}).`);
   }
-  const name = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? fallbackName;
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const encoded = /filename\*=UTF-8''([^;]+)/i.exec(disposition)?.[1];
+  const name = encoded ? decodeURIComponent(encoded) : /filename="([^"]+)"/.exec(disposition)?.[1] ?? null;
   let blob: Blob;
   try {
     blob = onProgress ? await blobWithProgress(response, onProgress, expected) : await response.blob();
   } catch {
     throw new ApiError(0, "The download stopped before the whole file came. Check your connection and try again.");
   }
+  return { blob, name };
+}
+
+export async function download(path: string, fallbackName: string, onProgress?: (percent: number) => void, expected?: number | null, init: { body?: unknown } = {}): Promise<void> {
+  const { blob, name } = await downloadData(path, init, onProgress, expected);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = name;
+  link.download = name ?? fallbackName;
   document.body.appendChild(link);
   link.click();
   link.remove();

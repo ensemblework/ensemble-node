@@ -45,6 +45,22 @@ On desktop the sidebar starts at 288 px. Drag its edge to resize it (248–420 p
 
 The Sessions page shows the five most recently active sessions, with **Show more** to reveal all and **Show less** to fold them again. Search starts a fresh five-session view; opening or handing over a session works the same in either view.
 
+## Original files beside the chat
+
+The header's **Files** button opens a separate right-hand list: **This chat** or **All chats**, search and paginated Show more. All chats includes the owner's agent runs started in Ensemble or the CLI, even without a managing node. A node's direct file operations and commands collect original-file references on the computer and update one owner-only card per turn. Dependency/cache folders and secret paths are not collected.
+
+Click a changed file in a run card or an original-file card to open its editor beside the conversation. This does not open the list, and does not close one already open. Tabs retain their buffers when switching files, chats or panels. The editor is loaded only when opened.
+
+The first split is half chat, half editor, with minimum widths of 320 and 400 px. Dragging the divider collapses Nodes to its 68 px rail first; continuing past 70% gives the editor focus, and past 70% towards chat hides the editor. Restore split keeps the last comfortable ratio. Focus mode retains the Nodes rail. Opening Files temporarily collapses Nodes too, without overwriting the manual sidebar preference. The file list remains independent in every mode; drag or use arrow keys to resize it between 224 and 360 px. Its width alone is stored in `node.file-layout`.
+
+On narrow screens the editor replaces the chat and has **Back to chat**; the file list is a bounded overlay. Editor controls keep Files, focus/restore and Close available. Closing the panel preserves drafts. Closing a dirty file tab offers Keep editing, Save and close, or Discard draft in the app.
+
+Code, Markdown and UTF-8 text save to the original location on the connected computer, after 700 ms of quiet typing or Ctrl/Cmd+S. Saves are serialised and use the original byte hash; line endings, BOM and permissions are preserved. Offline and failed saves retain the draft. A conflict shows the latest computer version beside the retained draft and requires an explicit choice before replacement. Binary/large/key-bearing files are read-only; supported images, media and PDFs can be previewed, and safe originals downloaded. The computer must be online with Code API 3 (CLI or desktop 0.6.4+) and allow file browsing and web editing.
+
+The palette control applies Ensemble's canonical `@ensemble/ide-theme` conversion and built-ins, packaged under `vendor/` with their licence and attribution. Open VSX search and JSON/JSONC/VSIX import apply colour data only, never extension scripts. `node.editor-theme` stores the sanitised theme in this browser.
+
+Select text and choose **Quote selection** to add a removable file-and-line-range chip to the current chat composer. Sending includes the selected text and source reference in the node's actual transcript; an unsaved selection is labelled. Quotes follow the account/room/private-tab draft, retry, edit and Markdown export paths. Other people can read explicitly posted quoted lines but cannot open the original on someone else's computer. Original buffers and unsent quotes stay in memory, not browser storage or the cloud file store; explicitly sent quotes are part of chat history.
+
 ## Appearance and motion
 
 Settings → Appearance (`components/appearance-settings.tsx`) offers System / Light / Dark, Deep Petrol / Graphite / Juniper, five suite accents (Satin Gold, Indigo, Tide, Rose, Moss), and Plain / Constellation / Orbits / Botanical / Little things chat backgrounds. The default is System, Deep Petrol, Satin Gold and Plain. Colours use Ensemble's theme and accent families; Indigo is lifted slightly in dark mode to keep text readable on every Node surface. Doodles are sparse static local SVG masks, tinted by the theme, without scripts or network services.
@@ -365,6 +381,8 @@ The conversation scrolls independently of its header and composer. On phones the
 `InfoTip` makes longer model/permission explanations available on hover, focus or tap, without permanent paragraphs. Errors, privacy labels and approval controls stay visible.
 
 ## Browser regression
+
+`e2e/original-files.mjs` covers the original-file workspace at 375 and 1440 px with a stateful local fixture: card opening without forcing the list, text save acknowledgements, exact selected-line quotes on the message POST, independent list and editor focus, automatic Nodes collapse, offline draft retention, conflict comparison and explicit replacement, and discarding a dirty tab without saving it. The API's isolated original-file integration tests cover the corresponding real filesystem and model-transcript boundary.
 
 `e2e/chat-ui.mjs` runs a stateful local API/SSE fixture, never a hosted account or model. Start `pnpm dev` on an unused port, then run it with `NODE_WEB`, `CHROME_PATH` and, when Playwright is supplied externally, `PLAYWRIGHT_MODULE` (the absolute module entry). `NODE_CHAT_SHOTS` optionally saves evidence outside the repository. `NODE_CHAT_WIDTHS=1440` selects one supported width; a comma-separated list selects several. It exercises five widths (320–1440 px), dark/light themes, Markdown tables (headers, linked cells, alignment, escaped pipes and keyboard scrolling), cross-kind recency, resize/rail persistence, workspace navigation, valid mention annotations while typing and choosing, outer-only search focus, graph focus/rotation with smooth keyed handoffs, sleeping faces, every shape's visible working motion and happy morph returning to its saved outline, click/wink/twinkle/double-blink and pointer expressions, notification hover/pause/resume timing and its bar, local-only appearance persistence, doodles, quiet mode, group opening, streaming/scroll anchoring, optimistic sends and private text-draft restoration.
 

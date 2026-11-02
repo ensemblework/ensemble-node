@@ -13,7 +13,7 @@ import { useNodeVisits } from "./node-life";
 gsap.registerPlugin(useGSAP);
 
 /** Automatic personality belongs to the open chat; message portraits react only when pressed. */
-export function NodeCompanion({ node, avatar, size = 40, thinking = false, profile = false, lastActivity, visit = false, onActivate, compact = false }: {
+export function NodeCompanion({ node, avatar, size = 40, thinking = false, profile = false, lastActivity, visit = false, onActivate, compact = false, workingMotion = true }: {
   node?: { id: string; name: string; avatar: Avatar; status?: string };
   avatar?: Avatar;
   size?: number;
@@ -23,6 +23,7 @@ export function NodeCompanion({ node, avatar, size = 40, thinking = false, profi
   visit?: boolean;
   onActivate?: () => void;
   compact?: boolean;
+  workingMotion?: boolean;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
   const { motion } = useAppearance();
@@ -36,6 +37,7 @@ export function NodeCompanion({ node, avatar, size = 40, thinking = false, profi
   const gazeTo = useRef<{ x: ReturnType<typeof gsap.quickTo>; y: ReturnType<typeof gsap.quickTo> } | null>(null);
   const [entry, setEntry] = useState<"hello" | "wake" | null>(visit ? null : "hello");
   const paused = node?.status === "paused";
+  const still = paused || thinking && !workingMotion;
   const look = avatar ?? node?.avatar;
   useEffect(() => {
     if (!visit || !node || !life.ready || opened.current) return;
@@ -46,7 +48,7 @@ export function NodeCompanion({ node, avatar, size = 40, thinking = false, profi
   const { contextSafe } = useGSAP(() => {
     const button = ref.current;
     if (!button) return;
-    if (!motion || paused) { reaction.current?.kill(); delete button.dataset.expression; return; }
+    if (!motion || still) { reaction.current?.kill(); delete button.dataset.expression; return; }
     if (!visible) return;
     const eyes = button.querySelector(".node-eyes");
     if ((visit || profile) && entry && !greeted.current) {
@@ -68,10 +70,10 @@ export function NodeCompanion({ node, avatar, size = 40, thinking = false, profi
       gazeTo.current = { x: gsap.quickTo(gaze, "x", { duration: .3, ease: "power2.out" }), y: gsap.quickTo(gaze, "y", { duration: .3, ease: "power2.out" }) };
     }
     return () => { clearTimeout(timer); reaction.current?.kill(); delete button.dataset.expression; gazeTo.current = null; idle.current = []; };
-  }, { scope: ref, dependencies: [visible, motion, paused, entry, profile, visit, thinking, look?.shape, look?.eyes], revertOnUpdate: true });
+  }, { scope: ref, dependencies: [visible, motion, still, entry, profile, visit, thinking, look?.shape, look?.eyes], revertOnUpdate: true });
 
   const react = contextSafe(() => {
-    if (motion && !paused && !document.hidden && ref.current) {
+    if (motion && !still && !document.hidden && ref.current) {
       reaction.current?.kill();
       for (const timeline of idle.current) timeline.pause(0);
       reaction.current = nodeExpression(ref.current, CLICK_EXPRESSIONS[clicks.current++ % CLICK_EXPRESSIONS.length]!);
@@ -91,7 +93,7 @@ export function NodeCompanion({ node, avatar, size = 40, thinking = false, profi
       }}
       onPointerLeave={() => gaze(0, 0)} onBlur={() => gaze(0, 0)}
       style={{ minWidth: compact ? size : Math.max(44, size), minHeight: compact ? size : Math.max(44, size) }}>
-      <NodeAvatar node={node} avatar={avatar} size={size} thinking={visible && !paused && thinking} dim={paused} />
+      <NodeAvatar node={node} avatar={avatar} size={size} thinking={visible && !still && thinking} workZone={compact ? "chat" : undefined} dim={paused} />
     </button>
   );
 }

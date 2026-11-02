@@ -309,7 +309,6 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
   const canTakeOver = owner && working && takeoverReady(devices.data?.find((row) => row.id === detail?.deviceId)?.capabilities);
 
   const stopRun = () => {
-    if (!confirm("Stop this run? The agent stops where it is; what it changed so far stays.")) return;
     stop.mutate(jobId, { onSuccess: () => toast("Stopping the run.", "ok"), onError: toastError });
   };
 

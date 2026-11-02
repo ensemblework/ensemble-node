@@ -87,6 +87,7 @@ ensemble-node/
 │   │   ├── appearance.ts, node-life.ts, sidebar.ts
 │   │   │                        validated local preferences, pre-hydration theme, palette contrast,
 │   │   │                        bounded visits and four-day rest, sidebar width limits (tested)
+│   │   ├── working-motion.ts    one local working cue across visible sidebar/chat portraits (tested)
 │   │   ├── conversations.ts     cross-kind recency, live previews and read/snapshot reconciliation (tested)
 │   │   ├── model-brand.ts       actual model/provider signature identity (tested)
 │   │   ├── connector-logos.ts   catalog aliases, asset metadata and connector tool identity (tested)

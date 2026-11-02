@@ -505,11 +505,16 @@ try {
     await routineDrawer.waitFor({ state: "detached" });
     assert.ok(await strip.getByText("Ship the table fix and Needs me expiry, each verified").isVisible());
     assert.ok(await strip.getByText("Fix the login redirect").isVisible());
+    const beforeStop = dialogs.length;
+    await timeline.locator("#m-plan3").getByRole("button", { name: "Stop this plan", exact: true }).click();
+    await page.getByText("Plan stopped. What was changed so far stays.").waitFor();
+    assert.equal(dialogs.length, beforeStop, "stopping a plan is immediate, without a browser popup");
+    assert.deepEqual(state.calls.at(-1), { stop: "plans/plan3" });
     await page.getByRole("button", { name: "Stop this conversation's work" }).click();
-    await page.getByText("Stopped. What was changed so far stays.").waitFor();
-    assert.ok(dialogs.at(-1)?.startsWith("Stop this conversation's work?"), "it asks first while work runs");
+    await page.getByText("Stopped. What was changed so far stays.", { exact: true }).waitFor();
+    assert.equal(dialogs.length, beforeStop, "stopping the conversation is immediate");
     assert.deepEqual(state.calls.at(-1), { stop: "rooms/crew" });
-    // People only hides the cards, not the work: Stop still asks first.
+    // People only hides the cards, not the work: Stop still acts immediately.
     await page.getByRole("button", { name: "More", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "People only" }).click();
     await page.getByText("Showing people only").waitFor();
@@ -517,7 +522,7 @@ try {
     const stops = state.calls.filter((call) => call.stop).length;
     await page.getByRole("button", { name: "Stop this conversation's work" }).click();
     for (let wait = 0; wait < 100 && state.calls.filter((call) => call.stop).length === stops; wait += 1) await page.waitForTimeout(20);
-    assert.equal(dialogs.length, asked + 1, "a filtered view still asks before stopping running work");
+    assert.equal(dialogs.length, asked, "a filtered view does not add a stop confirmation");
     assert.equal(state.calls.filter((call) => call.stop).length, stops + 1);
     await page.getByRole("button", { name: "Show everything" }).click();
     await fits();

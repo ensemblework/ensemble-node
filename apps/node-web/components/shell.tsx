@@ -38,10 +38,10 @@ function RoomRow({ room, boot, busy, active, waiting = 0, compact = false, onNav
   if (room.kind === "dm") {
     const member = room.members.find((row) => row.kind === "node");
     const node = boot.nodes.find((row) => member?.kind === "node" && row.id === member.node.id);
-    icon = <NodeAvatar node={node} size={38} thinking={thinking && node?.status !== "paused"} resting={life.ready && !active && !thinking && node?.status !== "paused" && nodeIsResting(room.lastMessageAt, node ? life.visits[node.id] : undefined, Date.now())} dim={node?.status === "paused"} />;
+    icon = <NodeAvatar node={node} size={38} workZone="sidebar" thinking={thinking && node?.status !== "paused"} resting={life.ready && !active && !thinking && node?.status !== "paused" && nodeIsResting(room.lastMessageAt, node ? life.visits[node.id] : undefined, Date.now())} dim={node?.status === "paused"} />;
     if (node) title = `${node.name} (@${node.slug})${node.status === "paused" ? " · paused" : ""}`;
   } else {
-    icon = <RoomAvatar room={room} size={38} busy={busy} />;
+    icon = <RoomAvatar room={room} size={38} busy={busy} workZone="sidebar" />;
   }
   const needs = waiting ? `${waiting === 1 ? "Something waits" : `${waiting} things wait`} for you here` : null;
   return (

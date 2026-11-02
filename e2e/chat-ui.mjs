@@ -312,6 +312,30 @@ try {
     await page.goto(`${WEB}/n/scout`);
     const settings = page.getByRole("dialog", { name: "Node settings", exact: true });
     const appearance = settings.getByRole("group", { name: "Appearance", exact: true });
+    const drawerBody = settings.locator("[data-drawer-body]");
+    const drawerHeader = settings.locator("[data-drawer-header]");
+    let expectedDrawerWidth = 460;
+    const headerTop = (await drawerHeader.boundingBox()).y;
+    await drawerBody.evaluate(element => { element.scrollTop = 500; });
+    assert.equal((await drawerHeader.boundingBox()).y, headerTop, "the settings header stays outside the scrolling content");
+    assert.ok((await drawerHeader.boundingBox()).height >= 60, "the header covers the top edge without a gap");
+    assert.ok(!await drawerHeader.evaluate(element => getComputedStyle(element).backgroundColor.includes("rgba")), "the header is opaque");
+    if (width >= 768) {
+      const handle = settings.getByRole("separator", { name: "Settings panel width", exact: true });
+      await handle.focus();
+      await page.keyboard.press("ArrowLeft");
+      assert.equal(await handle.getAttribute("aria-valuenow"), "476");
+      expectedDrawerWidth = 476;
+      if (width === 1440) {
+        const edge = await handle.boundingBox();
+        await page.mouse.move(edge.x + edge.width / 2, edge.y + 160);
+        await page.mouse.down();
+        await page.mouse.move(edge.x + edge.width / 2 - 60, edge.y + 160, { steps: 6 });
+        await page.mouse.up();
+        expectedDrawerWidth = 536;
+        assert.equal(await handle.getAttribute("aria-valuenow"), String(expectedDrawerWidth), "the settings drawer resizes by dragging");
+      }
+    }
     await appearance.getByRole("button", { name: "hex", exact: true }).click();
     await appearance.getByRole("button", { name: "line eyes", exact: true }).click();
     await appearance.getByRole("button", { name: "Lavender", exact: true }).click();
@@ -324,6 +348,7 @@ try {
     await page.reload();
     await page.getByRole("button", { name: "Scout's settings", exact: true }).click();
     await appearance.waitFor();
+    if (width >= 768) assert.equal(await settings.getByRole("separator", { name: "Settings panel width", exact: true }).getAttribute("aria-valuenow"), String(expectedDrawerWidth), "drawer width persists");
     assert.equal(await appearance.getByRole("button", { name: "hex", exact: true }).getAttribute("aria-pressed"), "true");
     assert.equal(await appearance.getByRole("button", { name: "line eyes", exact: true }).getAttribute("aria-pressed"), "true");
     if (width === 1440) {
@@ -342,7 +367,6 @@ try {
     if (width === 1440) {
       await page.goto(`${WEB}/r/dm`);
       await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
-      const headerAvatar = page.locator("header [data-node-avatar]");
       const actor = page.locator("#m-dm-40 .node-companion-message");
       const noCosmeticWrites = writes.length;
       let clicks = 0;
@@ -351,8 +375,11 @@ try {
         await emit("node.room", { roomId: "dm" });
         await page.waitForFunction(shape => document.querySelector("header [data-node-avatar]")?.dataset.nodeShape === shape, shape);
         await emit("node.status", { roomId: "dm", nodeId: "scout", state: "thinking" });
-        await page.waitForFunction(() => document.querySelector("header [data-node-avatar]")?.dataset.motionActive === "true");
-        const form = headerAvatar.locator(".node-form");
+        await page.waitForFunction(() => document.querySelectorAll('[data-node-avatar][data-motion-active="true"]').length === 1);
+        const workingAvatar = page.locator('[data-node-avatar][data-motion-active="true"]');
+        assert.ok(["sidebar", "chat"].includes(await workingAvatar.getAttribute("data-work-zone")), "only the sidebar or chat receives working motion");
+        assert.equal(await page.locator("header [data-node-avatar]").getAttribute("data-motion-active"), null, "the top bar stays still while working");
+        const form = workingAvatar.locator(".node-form");
         assert.equal(await form.evaluate(el => getComputedStyle(el).animationName), `node-${shape}-work`);
         const start = await form.evaluate(el => getComputedStyle(el).transform);
         await page.waitForTimeout(220);
@@ -363,6 +390,15 @@ try {
         const original = await outline.getAttribute("d");
         await actor.click(); clicks++;
         await page.waitForTimeout(220);
+        const pose = await actor.evaluate(element => {
+          const bodyElement = element.querySelector(".node-body");
+          const body = new DOMMatrix(getComputedStyle(bodyElement).transform);
+          const [x, y] = bodyElement.getAttribute("data-svg-origin").split(" ").map(Number);
+          const shape = new DOMMatrix(getComputedStyle(element.querySelector(".node-pose")).transform);
+          return { y: body.m42 - y + body.b * x + body.d * y, rotation: Math.atan2(shape.b, shape.a) * 180 / Math.PI };
+        });
+        assert.ok(Math.abs(pose.y) <= 4.5, `${shape} keeps its happy jump low`);
+        assert.ok(Math.abs(pose.rotation) <= 5, `${shape} reacts without spinning`);
         assert.notEqual(await outline.getAttribute("d"), original, `${shape} morphs when pressed`);
         assert.ok(Number(await actor.locator(".node-happy-eyes").evaluate(el => getComputedStyle(el).opacity)) > .5, "a press shows happy eyes");
         if (shots) await page.screenshot({ path: `${shots}/happy-${shape}.png` });
@@ -371,6 +407,14 @@ try {
         await emit("node.status", { roomId: "dm", nodeId: "scout", state: "idle" });
       }
       assert.equal(writes.length, noCosmeticWrites, "working and click expressions never call a mutation");
+      await emit("node.status", { roomId: "dm", nodeId: "scout", state: "thinking" });
+      await page.waitForFunction(() => document.querySelectorAll('[data-node-avatar][data-motion-active="true"]').length === 1);
+      const firstCue = await page.locator('[data-node-avatar][data-motion-active="true"]').getAttribute("data-work-zone");
+      await page.waitForFunction(zone => {
+        const active = document.querySelectorAll('[data-node-avatar][data-motion-active="true"]');
+        return active.length === 1 && active[0].getAttribute("data-work-zone") !== zone;
+      }, firstCue, { timeout: 8500 });
+      await emit("node.status", { roomId: "dm", nodeId: "scout", state: "idle" });
       await actor.click(); clicks++;
       assert.equal(await actor.getAttribute("data-expression"), "twinkle");
       await actor.click(); clicks++;
@@ -392,16 +436,12 @@ try {
       assert.equal(await note.locator(".toast-drain").evaluate(el => getComputedStyle(el).transform), bar, "the countdown bar pauses with its timer");
       if (shots) await page.screenshot({ path: `${shots}/notification-paused.png` });
       await page.mouse.move(10, 10);
-      await note.waitFor({ state: "detached", timeout: 3300 });
+      await note.waitFor({ state: "detached", timeout: 4500 });
       await thinking.getByRole("radio", { name: "High", exact: true }).click();
       await note.waitFor();
-      await note.getByRole("button", { name: "Pause notification timer", exact: true }).click();
+      assert.equal(await note.getByRole("button", { name: /notification timer/ }).count(), 0, "notifications have no pause button");
       await page.mouse.move(10, 10);
-      await page.waitForTimeout(3300);
-      assert.ok(await note.isVisible(), "the explicit pause button keeps the notification");
-      await note.getByRole("button", { name: "Resume notification timer", exact: true }).click();
-      await page.mouse.move(10, 10);
-      await note.waitFor({ state: "detached", timeout: 3300 });
+      await note.waitFor({ state: "detached", timeout: 4500 });
       await settings.getByRole("button", { name: "Close", exact: true }).click();
     }
     await openChats();

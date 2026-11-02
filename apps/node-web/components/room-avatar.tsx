@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Room } from "@/lib/types";
+import type { WorkingZone } from "@/lib/working-motion";
 import { useVisibleMotion } from "./appearance-provider";
 import { NodeAvatar } from "./node-avatar";
 
 const POINTS = [[18, 24], [80, 19], [84, 78], [17, 81]] as const;
 const EMPTY: ReadonlySet<string> = new Set();
 
-export function RoomAvatar({ room, size = 40, busy = EMPTY, rotate = false }: { room: Room; size?: number; busy?: ReadonlySet<string>; rotate?: boolean }) {
+export function RoomAvatar({ room, size = 40, busy = EMPTY, rotate = false, workZone }: { room: Room; size?: number; busy?: ReadonlySet<string>; rotate?: boolean; workZone?: WorkingZone }) {
   const ref = useRef<HTMLSpanElement>(null);
   const visible = useVisibleMotion(ref, rotate);
   const [turn, setTurn] = useState(0);
@@ -46,7 +47,7 @@ export function RoomAvatar({ room, size = 40, busy = EMPTY, rotate = false }: { 
         const point = centre ? [50, 50] : POINTS[satellites.findIndex(row => row.id === node.id)]!;
         return <span key={node.id} className="graph-node absolute left-0 top-0 origin-center" data-graph-node={node.id} data-focused={centre || undefined} aria-hidden
           style={{ width: faceSize, height: faceSize, zIndex: centre ? 2 : 1, transform: `translate(${point[0]! * size / 100 - faceSize / 2}px, ${point[1]! * size / 100 - faceSize / 2}px) scale(${centre ? 1 : .45})` }}>
-          <NodeAvatar node={node} size={faceSize} thinking={centre && rotate && visible && busy.has(node.id)} />
+          <NodeAvatar node={node} size={faceSize} thinking={centre && busy.has(node.id)} workZone={workZone} />
         </span>;
       })}
       {!satellites.length ? POINTS.slice(0, 2).map((point, index) => <span key={index} aria-hidden className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-muted/40" style={{ left: `${point[0]}%`, top: `${point[1]}%`, width: size * .14, height: size * .14 }} />) : null}

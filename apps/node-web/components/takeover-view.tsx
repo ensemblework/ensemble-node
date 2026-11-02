@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { Check, ClipboardPaste, CornerDownLeft, Delete, Eye, EyeOff, Hand, Lock, MonitorSmartphone, MousePointerClick, Plus, Square, SquareTerminal, WifiOff, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { canExtend } from "@/lib/countdown";
-import { endedText, fitFrame, HOLD_MS, keyEvent, keyPress, pageLabel, pointOnFrame, reconnectDelay, retryable, takeoverControls, takeoverKind, TakeoverSession, TouchGesture, typingEvents, unsupported, type InputEvent, type NextFrame, type PageInfo, type TakeoverInfo, type TakeoverKind, type TakeoverSource } from "@/lib/takeover";
+import { endedText, fitFrame, HOLD_MS, keyEvent, keyPress, pageLabel, PointerMoves, pointOnFrame, reconnectDelay, retryable, takeoverControls, takeoverKind, TakeoverSession, TouchGesture, typingEvents, unsupported, type InputEvent, type NextFrame, type PageInfo, type TakeoverInfo, type TakeoverKind, type TakeoverSource } from "@/lib/takeover";
 import type { TerminalScreen } from "@/lib/terminal";
 import type { Message } from "@/lib/types";
 import { Countdown, useTimeLeft } from "./countdown";
@@ -22,6 +22,10 @@ const BUTTONS: Record<number, "left" | "middle" | "right"> = { 0: "left", 1: "mi
 const FRAMES_TIMEOUT_MS = 35_000;
 /** About three minutes of trying again before the view gives up on the connection. */
 const MAX_RECONNECTS = 24;
+/** A stream that fails this many times in a row gives way to one request per frame. */
+const STREAM_TRIES = 2;
+/** A stream that stayed open this long and then closed was cut for being long: it is opened again. */
+const STREAM_KEPT_MS = 30_000;
 
 /** Waits `ms`, or less when the network comes back or the view closes. */
 function pause(ms: number, signal: AbortSignal): Promise<void> {
@@ -45,8 +49,10 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
  * browser, live (the node keeps using it). The picture fits the width; a tap clicks, a drag scrolls and
  * a finger kept still presses and holds ("Press and hold" checks); the mouse, the wheel and the keyboard
  * work as usual. A box types into the page as you type, each key at once, with Enter, Tab, Backspace,
- * Esc and Paste. The header names the site shown ("accounts.google.com — popup") and the time left,
- * with "+15 min" in its last five minutes. A live browser starts watched: Take control to click and
+ * Esc and Paste. The header names the site shown, with a Popup badge when it is a window the page
+ * opened (a payment or sign-in popup), and the time left, with "+15 min" in its last five minutes.
+ * Frames come as a stream when the server and the network allow it, else one request at a time; the
+ * pointer is sent where it rests, and while a button is held at most 20 times a second. A live browser starts watched: Take control to click and
  * type (the node waits on that tab), Hand back to let it go on. A terminal shows its screen and types
  * into the shell. I'm done asks the computer to check a sign-in; Stop ends it. When the card it was
  * opened for is settled the view says so and closes itself; a lost connection is tried again.
@@ -107,6 +113,8 @@ export function TakeoverView({
   const send = useCallback((events: InputEvent[]) => {
     if (controlsRef.current) session.current?.send(events);
   }, []);
+  const moves = useRef<PointerMoves | null>(null);
+  moves.current ??= new PointerMoves((events) => send(events));
   const press = useCallback((key: string) => send(keyPress(key)), [send]);
   const opened = useRef({ source, computer, onEnded, kind: expected });
   opened.current.onEnded = onEnded;
@@ -123,6 +131,7 @@ export function TakeoverView({
     const held = touch.current;
     touch.current = null;
     if (held?.timer) clearTimeout(held.timer);
+    moves.current?.cancel();
     if (held?.gesture.isHolding) target?.send(held.gesture.cancel());
     setHolding(null);
   };
@@ -171,23 +180,10 @@ export function TakeoverView({
       const startedKind = takeoverKind(current.info, opened.current.kind);
       setTimeout(() => (startedKind === "terminal" ? stage.current?.querySelector<HTMLElement>("[data-terminal-screen]") : canvas.current)?.focus({ preventScroll: true }), 50);
       let attempt = 0;
-      let ahead = fetchNext();
-      while (!control.signal.aborted) {
-        const answer = await ahead;
-        if (control.signal.aborted) return;
-        if ("error" in answer) {
-          const error = answer.error;
-          if (!retryable(error) || attempt >= MAX_RECONNECTS) {
-            setPhase({ kind: "error", text: retryable(error) ? "The connection to your computer was lost. Open it again." : error instanceof Error ? error.message : String(error) });
-            return;
-          }
-          setPhase((now) => (now.kind === "live" || now.kind === "reconnecting" ? { kind: "reconnecting", offline: typeof navigator !== "undefined" && navigator.onLine === false } : now));
-          await pause(reconnectDelay(attempt), control.signal);
-          attempt += 1;
-          ahead = fetchNext();
-          continue;
-        }
-        const next = answer.next;
+      let streaming = true;
+      let streamFailures = 0;
+      /** Shows one frame; true when it says the takeover ended. */
+      const show = async (next: NextFrame): Promise<boolean> => {
         if (attempt) {
           attempt = 0;
           setPhase((now) => (now.kind === "reconnecting" ? { kind: "live" } : now));
@@ -196,29 +192,30 @@ export function TakeoverView({
           const reason = next.ended;
           setPhase((now) => (now.kind === "ended" ? now : { kind: "ended", text: endedText(reason, name), done: reason === "signed_in" || reason === "passed" }));
           opened.current.onEnded?.(reason);
-          return;
+          return true;
         }
-        // Asked for the next frame at once, while this one is drawn: the line to the computer is never idle.
-        ahead = fetchNext();
         if (next.terminal) {
           setScreen(next.terminal);
           setEcho("");
-          continue;
+          return false;
         }
         if (next.page) {
           const shownPage = next.page;
           setPage((now) => (now && now.url === shownPage.url && now.title === shownPage.title && now.popup === shownPage.popup ? now : shownPage));
         }
         const shown = next.frame;
-        if (!shown || !canvas.current) continue;
+        if (!shown || !canvas.current) return false;
         let bitmap: ImageBitmap;
         try {
           bitmap = await createImageBitmap(new Blob([shown.jpeg as BlobPart], { type: "image/jpeg" }));
         } catch {
-          continue;
+          return false;
         }
         const target = canvas.current;
-        if (!target) return;
+        if (!target) {
+          bitmap.close();
+          return false;
+        }
         if (target.width !== bitmap.width || target.height !== bitmap.height) {
           target.width = bitmap.width;
           target.height = bitmap.height;
@@ -230,6 +227,57 @@ export function TakeoverView({
         size.current = { width: shown.width || target.width, height: shown.height || target.height };
         const drawn = { width: target.width, height: target.height };
         setFrame((now) => (now && now.width === drawn.width && now.height === drawn.height ? now : drawn));
+        return false;
+      };
+      /** A lost connection: tried again, waiting longer each time; false when it gives up (the view says why). */
+      const lost = async (error: unknown): Promise<boolean> => {
+        if (!retryable(error) || attempt >= MAX_RECONNECTS) {
+          setPhase({ kind: "error", text: retryable(error) ? "The connection to your computer was lost. Open it again." : error instanceof Error ? error.message : String(error) });
+          return false;
+        }
+        setPhase((now) => (now.kind === "live" || now.kind === "reconnecting" ? { kind: "reconnecting", offline: typeof navigator !== "undefined" && navigator.onLine === false } : now));
+        await pause(reconnectDelay(attempt), control.signal);
+        attempt += 1;
+        return true;
+      };
+      while (!control.signal.aborted && streaming) {
+        let ended = false;
+        let brought = false;
+        const since = Date.now();
+        try {
+          const outcome = await current.stream(control.signal, async (next) => {
+            brought ||= Boolean(next.frame || next.terminal || next.page);
+            ended = (await show(next)) || ended;
+          });
+          if (control.signal.aborted || ended || outcome === "ended") return;
+          if (outcome === "unsupported") streaming = false;
+          else if (brought || Date.now() - since > STREAM_KEPT_MS) streamFailures = 0;
+          else {
+            // Closed at once without bringing anything (a proxy that cuts it): opened again a little later, then one request per frame.
+            streamFailures += 1;
+            if (streamFailures >= STREAM_TRIES) streaming = false;
+            else await pause(reconnectDelay(0), control.signal);
+          }
+        } catch (error) {
+          if (control.signal.aborted) return;
+          streamFailures += 1;
+          // A stream that keeps failing (a proxy that cuts it) gives way to one request per frame.
+          if (streamFailures >= STREAM_TRIES && retryable(error)) streaming = false;
+          if (!(await lost(error))) return;
+        }
+      }
+      let ahead = fetchNext();
+      while (!control.signal.aborted) {
+        const answer = await ahead;
+        if (control.signal.aborted) return;
+        if ("error" in answer) {
+          if (!(await lost(answer.error))) return;
+          ahead = fetchNext();
+          continue;
+        }
+        // Asked for the next frame at once, while this one is drawn: the line to the computer is never idle.
+        if (!answer.next.ended) ahead = fetchNext();
+        if (await show(answer.next)) return;
       }
     })(), 0);
     return () => {
@@ -288,7 +336,9 @@ export function TakeoverView({
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
       const point = pointOnFrame(event.clientX, event.clientY, target.getBoundingClientRect(), size.current);
-      if (point) send([{ t: "wheel", ...point, dx: Math.round(event.deltaX), dy: Math.round(event.deltaY) }]);
+      if (!point) return;
+      moves.current?.cancel();
+      send([{ t: "wheel", ...point, dx: Math.round(event.deltaX), dy: Math.round(event.deltaY) }]);
     };
     target.addEventListener("wheel", wheel, { passive: false });
     return () => target.removeEventListener("wheel", wheel);
@@ -380,8 +430,15 @@ export function TakeoverView({
       <header className="flex items-center gap-2 border-b border-line px-3 py-2">
         {terminal ? <SquareTerminal size={16} className="shrink-0 text-accent" aria-hidden /> : <MonitorSmartphone size={16} className="shrink-0 text-accent" aria-hidden />}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium" data-remote-site>
-            {label}
+          <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+            {!terminal && page?.popup ? (
+              <span className="shrink-0 rounded-full border border-accent/40 bg-accent/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-accent" data-remote-popup title="A window the page opened">
+                Popup
+              </span>
+            ) : null}
+            <span className="truncate" data-remote-site>
+              {label}
+            </span>
           </p>
           <p className="truncate text-xs text-muted">{subtitle.filter(Boolean).join(" · ")}</p>
         </div>
@@ -439,6 +496,7 @@ export function TakeoverView({
             canvas.current?.focus({ preventScroll: true });
             event.currentTarget.setPointerCapture(event.pointerId);
             clearTyped();
+            moves.current?.cancel();
             send([{ t: "mouse", type: "move", ...point }, { t: "mouse", type: "down", ...point, button: BUTTONS[event.button] ?? "left", clicks: event.detail > 1 ? Math.min(event.detail, 3) : 1 }]);
           }}
           onPointerMove={(event) => {
@@ -450,12 +508,17 @@ export function TakeoverView({
                 clearTimeout(held.timer);
                 held.timer = null;
               }
-              if (held.gesture.isHolding) setHolding(onStage(event));
+              if (held.gesture.isHolding) {
+                setHolding(onStage(event));
+                // A held finger drags: its moves go at most 20 times a second.
+                for (const item of events) if (item.t === "mouse" && item.type === "move") moves.current?.move({ x: item.x, y: item.y }, true);
+                return;
+              }
               send(events);
               return;
             }
             const point = at(event);
-            if (point) send([{ t: "mouse", type: "move", ...point }]);
+            if (point && typing) moves.current?.move(point, event.buttons !== 0);
           }}
           onPointerUp={(event) => {
             if (event.pointerType === "touch") {
@@ -466,11 +529,13 @@ export function TakeoverView({
               const events = held.gesture.up();
               // A tap is a click: the page's focus moves, so the box starts afresh.
               if (events.some((item) => item.t === "mouse" && item.type === "down")) clearTyped();
+              moves.current?.flush();
               send(events);
               setHolding(null);
               return;
             }
             const point = at(event);
+            moves.current?.flush();
             if (point) send([{ t: "mouse", type: "up", ...point, button: BUTTONS[event.button] ?? "left", clicks: event.detail > 1 ? Math.min(event.detail, 3) : 1 }]);
           }}
           onPointerCancel={(event) => {
@@ -478,6 +543,7 @@ export function TakeoverView({
             if (!held || held.id !== event.pointerId) return;
             touch.current = null;
             if (held.timer) clearTimeout(held.timer);
+            moves.current?.flush();
             send(held.gesture.cancel());
             setHolding(null);
           }}

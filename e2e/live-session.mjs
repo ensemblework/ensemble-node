@@ -125,7 +125,7 @@ function fixture() {
     message("c-web", 4, "node", "Live browser: Pricing — Fieldnote", { type: "live", kind: "browser", status: "open", liveId: "live-2", deviceId: "dev-1", computer: "Studio", title: "Pricing — Fieldnote", tab: "t7", startedAt: at(-3) }, -3),
   ];
   const boot = { me: { id: "me", name: "Mira", email: "mira@fieldnote.example", verified: true }, nodes: [lead], rooms: [room], computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
-  return { boot, messages, takeovers: new Map(), created: [], controls: [], ended: [] };
+  return { boot, messages, takeovers: new Map(), created: [], controls: [], ended: [], streams: 0, polls: 0, seen: [] };
 }
 
 try {
@@ -174,7 +174,7 @@ try {
         state.current = takeover;
         return json({ takeover: { id: takeover.id, computer: { id: "dev-1", name: "Studio" }, tab: takeover.tab, origin: terminal ? "terminal://pty-1" : "https://fieldnote.example", state: "created", startBy: at(2), endsAt: null, loginCardId: null, kind: takeover.kind, mode: "watch", sealKey }, controller: "cap-live" });
       }
-      const call = /^\/api\/node\/takeovers\/([^/]+)\/(start|frames|input|end|control|extend)$/.exec(path);
+      const call = /^\/api\/node\/takeovers\/([^/]+)\/(start|frames|stream|seen|input|end|control|extend)$/.exec(path);
       if (call) {
         const takeover = state.takeovers.get(call[1]);
         assert.ok(takeover, "a takeover this page opened");
@@ -187,20 +187,35 @@ try {
           takeover.keys = { d2w: channelKey(takeover.id, secret, "d2w"), w2d: channelKey(takeover.id, secret, "w2d") };
           return json({ takeover: info() });
         }
-        if (call[2] === "frames") {
-          const after = Number(url.searchParams.get("after") ?? 0);
+        /** The next frame after `after`, as the relay keeps it. */
+        const next = async (after) => {
           if (takeover.shell) {
             // A screen as soon as it changed (the computer sends the latest only), else nothing after a while.
             for (let waited = 0; takeover.shell.seq <= after && waited < 2000 && !takeover.ended; waited += 10) await sleep(10);
-            if (takeover.ended) return json({ state: "ended", reason: takeover.ended, frame: null });
-            if (takeover.shell.seq <= after) return json({ state: "live", frame: null });
+            if (takeover.ended) return { state: "ended", reason: takeover.ended, frame: null };
+            if (takeover.shell.seq <= after) return { state: "live", frame: null };
             const { header, payload } = takeover.shell.screen();
-            return json({ state: "live", frame: seal(takeover.id, takeover.keys.d2w, takeover.shell.seq, pack(header, payload)) });
+            return { state: "live", frame: seal(takeover.id, takeover.keys.d2w, takeover.shell.seq, pack(header, payload)) };
           }
-          if (takeover.ended) return json({ state: "ended", reason: takeover.ended, frame: null });
+          if (takeover.ended) return { state: "ended", reason: takeover.ended, frame: null };
           if (after >= takeover.frameSeq) await sleep(takeover.frameSeq ? 300 : 0);
           takeover.frameSeq = Math.max(takeover.frameSeq, after) + 1;
-          return json({ state: "live", frame: seal(takeover.id, takeover.keys.d2w, takeover.frameSeq, pack({ t: "frame", w: 1280, h: 800, url: "https://fieldnote.example/pricing", title: "Pricing — Fieldnote", popup: false }, JPEG)) });
+          return { state: "live", frame: seal(takeover.id, takeover.keys.d2w, takeover.frameSeq, pack({ t: "frame", w: 1280, h: 800, url: "https://fieldnote.example/pricing", title: "Pricing — Fieldnote", popup: false }, JPEG)) };
+        };
+        if (call[2] === "frames") {
+          state.polls += 1;
+          return json(await next(Number(url.searchParams.get("after") ?? 0)));
+        }
+        // The stream: a browser here gets its events in one body, so each brings what came next and closes; the page opens it again.
+        if (call[2] === "stream") {
+          state.streams += 1;
+          const got = await next(Number(url.searchParams.get("after") ?? 0));
+          const events = got.state === "ended" ? `event: end\ndata: ${JSON.stringify({ state: "ended", reason: got.reason })}\n\n` : got.frame ? `event: frame\nid: ${got.frame.seq}\ndata: ${JSON.stringify(got.frame)}\n\n` : "";
+          return route.fulfill({ status: 200, headers: { ...cors, "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store, no-transform" }, body: `: open\n\n${events}` });
+        }
+        if (call[2] === "seen") {
+          state.seen.push(request.postDataJSON().seq);
+          return json({ ok: true });
         }
         if (call[2] === "input") {
           const raw = request.postData() ?? "";
@@ -358,6 +373,8 @@ try {
 
     assert.deepEqual(errors, [], "no page errors");
     assert.deepEqual([...new Set(unexpected)], [], "no unmocked API calls");
+    assert.ok(state.streams > 0 && state.polls === 0, `frames came as a stream (${state.streams} streams, ${state.polls} polls)`);
+    assert.ok(state.seen.length > 0, "each frame shown was acknowledged");
     await context.close();
     console.log(`live sessions ok at ${width}px`);
   }

@@ -45,4 +45,7 @@ test("a live session's card names what it shows and where, and whether it still 
   assert.deepEqual(liveBadge({ status: "ended" }), { label: "Ended", tone: "muted" });
   assert.match(liveLine({ kind: "browser", status: "open" }, "lead"), /Take control to click and type: @lead waits on that tab/);
   assert.match(liveLine({ kind: "terminal", status: "open" }, "lead"), /type in it too: it is your shell/);
+  assert.equal(liveLine({ kind: "browser", status: "ended", endedBy: "node", endReason: "closed" }, "lead"), "Closed by @lead.");
+  assert.equal(liveLine({ kind: "browser", status: "ended", endedBy: "node", endReason: "stopped" }, "lead"), "@lead ended this live view. The tab stays open.");
+  assert.equal(liveLine({ kind: "browser", status: "ended" }, "lead"), "The browser session ended.");
 });

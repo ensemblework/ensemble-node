@@ -9,7 +9,7 @@
  * holding the mouse until it lifts (and the mouse held on a computer), a drag scrolling the page, a lost
  * connection (the view says so, frames resume and input sent meanwhile arrives once, in order), every
  * message numbered with the capability and nothing typed in the clear; then the view closing itself when
- * the card is settled ("Signed in — @lead is carrying on"), when the computer finished it, and I'm done.
+ * the card is settled ("Signed in. @lead is carrying on."), when the computer finished it, and I'm done.
  * Also the time left and "+15 min" (an older Ensemble without it), and a latency probe over a simulated
  * phone network with a computer drawing ten frames a second: each key posted at once with several on
  * their way, applied in order by the relay, and frames from the computer to their paint
@@ -456,7 +456,7 @@ try {
       const settled = cardOf();
       settled.data = { ...settled.data, status: "signed_in", via: "takeover", resolvedAt: at(0) };
       await emit("node.message.updated", settled);
-      await view.getByText("Signed in — @lead is carrying on").waitFor();
+      await view.getByText("Signed in. @lead is carrying on.").waitFor();
       assert.ok(await view.getByText("accounts.google.com — popup").isVisible(), "the same view, still naming its page");
       assert.equal(await view.getByRole("button", { name: "I'm done" }).isDisabled(), true, "nothing more to do there");
       assert.equal(await view.getByLabel("Type into the page").isDisabled(), true);
@@ -469,7 +469,7 @@ try {
       // The computer finished it itself (signed in, seen through): the view reads the card again and closes itself.
       state.takeover.ended = "signed_in";
       cardOf().data = { ...cardOf().data, status: "signed_in", via: "takeover", resolvedAt: at(0) };
-      await view.getByText("Signed in — @lead is carrying on").waitFor({ timeout: 10_000 });
+      await view.getByText("Signed in. @lead is carrying on.").waitFor({ timeout: 10_000 });
       await view.waitFor({ state: "detached", timeout: 5000 });
       await card.getByRole("button", { name: "Signed in to accounts.google.com" }).waitFor();
       assert.equal(state.takeovers.size, 1, "settling the card never opens the page again");

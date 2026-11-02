@@ -94,8 +94,8 @@ test("a sign-in and a human check say what they ask, and which statuses wait for
   assert.deepEqual(loginBadge({ status: "needs_code" }), { label: "Needs a code", tone: "warn" }, "a code to enter waits for the owner");
   assert.deepEqual(loginBadge({ status: "passed" }), { label: "Passed", tone: "ok" });
   assert.deepEqual(loginBadge({ status: "working" }), { label: "Working…", tone: "accent" });
-  assert.equal(remoteDoneText({ status: "signed_in" }, "lead"), "Signed in — @lead is carrying on");
-  assert.equal(remoteDoneText({ status: "passed", purpose: "human_check" }, "lead"), "Check passed — @lead is carrying on");
+  assert.equal(remoteDoneText({ status: "signed_in" }, "lead"), "Signed in. @lead is carrying on.");
+  assert.equal(remoteDoneText({ status: "passed", purpose: "human_check" }, "lead"), "Check passed. @lead is carrying on.");
   assert.equal(remoteDoneText({ status: "pending" }, "lead"), null);
   assert.equal(cardLink("https://node.ensemblework.com/", "c-login"), "https://node.ensemblework.com/c/c-login", "short, for a QR code");
   assert.equal(cardPage("5e1f2a3b", "c-login", true), "/r/5e1f2a3b?remote=1#m-c-login");

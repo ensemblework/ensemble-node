@@ -4,9 +4,10 @@
  * A coding run inside a conversation, and the session card of the agent session it belongs to. A
  * status line (engine, model, thinking level, computer, live time, Stop) with the settings asked for,
  * sent and reported, the latest progress, what the run asks you (answered right here), the session
- * (status, what it does now, its queue and controls: components/chat/session.tsx), the live view of
- * its browser tab while it works (owner only), the work log (read from the job's run while it is
- * open), the structured report, the evidence, the files it changed and its summary.
+ * (one line until opened: status, what it does now, its queue and controls: components/chat/session.tsx),
+ * the live view of its browser tab while it works (owner only), "Show the work" (the structured report
+ * and the work log, read from the job's run while it is open), the evidence, the files it changed and
+ * its summary.
  *
  * The status line and live timer are adapted from T3 Code's ThreadStatusLine, AgentElapsed and
  * WorkingTimer, the changed-file counts from its DiffStatLabel, and the inline approvals from its
@@ -19,6 +20,7 @@ import { ENSEMBLE_LINKS } from "@/lib/config";
 import { approvalCheckpoint, decisionCheckpoint, type Checkpoint } from "@/lib/checkpoints";
 import { answeredForJob, approvalsForRun, decisionsForJob } from "@/lib/decisions";
 import { previewText } from "@/lib/ensemble";
+import { checkTally, outcomeBadge } from "@/lib/plan";
 import { evidenceItems } from "@/lib/evidence";
 import { useAnsweredApprovals, useApprovals, useDecisions, useDevices, useJob, useRecentDecisions, useRunSteps, useStopJob } from "@/lib/hooks";
 import { sessionAgent } from "@/lib/session";
@@ -227,6 +229,12 @@ function sessionOf(value: unknown): RunSession | null {
   return raw && typeof raw.id === "string" ? { ...raw, id: raw.id, status: typeof raw.status === "string" ? raw.status : "", queue: Array.isArray(raw.queue) ? raw.queue : [] } : null;
 }
 
+/** A report in a few words for the "Show the work" line: its outcome and its checks. */
+function reportLine(report: StepReport): string {
+  const line = [outcomeBadge(report.outcome)?.label ?? null, checkTally(report.checks)].filter(Boolean).join(", ");
+  return line ? `Report: ${line}` : "Report";
+}
+
 /** A run's structured report (`data.report`), when it is one. */
 function reportOf(value: unknown): StepReport | null {
   const raw = value as Partial<StepReport> | null | undefined;
@@ -278,6 +286,8 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
 
   const progress = (detail?.progress ?? data.progress ?? "").trim();
   const summary = (detail?.summary ?? data.summary ?? log?.result ?? "").trim();
+  // What it did, in its own words: the report's summary when it reported (the rest of the report is behind "Show the work").
+  const reply = ended ? (report && jobId ? report.summary.trim() || summary : report ? "" : summary) : "";
   const error = (detail?.error ?? data.error ?? "").trim();
   const computer = detail?.deviceName ?? data.computer ?? null;
   // The engine, model, thinking and context: the job's once read, the card's own settings until then and for what the job leaves out.
@@ -391,7 +401,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
       <AnsweredList rows={answered} />
 
       {sessionPanel && session ? (
-        <SessionPanel session={session} jobId={jobId} cardId={message.id} runStatus={status} runTitle={message.body} onScreen={onScreen} owner={owner} told={told} handles={ctx.handles} nodes={ctx.nodes} />
+        <SessionPanel session={session} jobId={jobId} cardId={message.id} runStatus={status} runTitle={message.body} onScreen={onScreen} owner={owner} told={told} handles={ctx.handles} nodes={ctx.nodes} elapsed={!ended && detail?.startedAt ? <Elapsed since={detail.startedAt} /> : null} />
       ) : session && !quiet && ctx.sessionCardOf?.(session.id) === message.id ? (
         <SessionFooter session={session} cardId={message.id} owner={owner} nodes={ctx.nodes} />
       ) : null}
@@ -410,11 +420,13 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
             <span className="min-w-0 flex-1 truncate">
               {ended ? `Worked${took !== null ? ` for ${formatElapsed(took)}` : ""}` : "Working"}
               {detail ? ` · ${toolCalls} tool ${toolCalls === 1 ? "call" : "calls"}` : ""}
+              {report ? ` · ${reportLine(report)}` : ""}
             </span>
             <span className="hidden shrink-0 text-xs sm:inline">{open ? "Hide the work" : "Show the work"}</span>
           </button>
           {open ? (
             <div id={`work-${message.id}`} className="mt-1">
+              {report ? <ReportView report={report} handles={ctx.handles} summary={false} /> : null}
               {job.error ? (
                 <p className="px-1 text-xs text-danger">{job.error.message}</p>
               ) : !detail || (steps.isLoading && !steps.data) ? (
@@ -433,13 +445,13 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
         </div>
       ) : null}
 
-      {report ? <ReportView report={report} handles={ctx.handles} /> : null}
+      {report && !jobId ? <ReportView report={report} handles={ctx.handles} /> : null}
       {/* Inside a plan step, the step's own gallery already holds its runs' evidence. */}
       {evidence.length && !inStep ? <EvidenceGallery items={evidence} requirementOf={requirementOf} className="mt-3" /> : null}
       {detail?.files?.length ? <ChangedFiles files={detail.files} /> : null}
-      {summary && ended && !report ? (
+      {reply ? (
         <div className="mt-3">
-          <RichText text={summary} handles={ctx.handles} small />
+          <RichText text={reply} handles={ctx.handles} small kindLinks={Boolean(report)} />
         </div>
       ) : null}
       {error ? <p className="mt-2 break-words text-sm text-danger">{error}</p> : null}

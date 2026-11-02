@@ -152,8 +152,8 @@ export function loginBadge(data: { status?: unknown; [key: string]: unknown } | 
 /** What the remote view says when the card was settled while it was open: done, the node goes on. */
 export function remoteDoneText(data: LoginCardData | null | undefined, handle: string): string | null {
   const status = text(data?.status);
-  if (status === "signed_in") return `Signed in — @${handle} is carrying on`;
-  if (status === "passed") return `Check passed — @${handle} is carrying on`;
+  if (status === "signed_in") return `Signed in. @${handle} is carrying on.`;
+  if (status === "passed") return `Check passed. @${handle} is carrying on.`;
   return null;
 }
 

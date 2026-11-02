@@ -48,7 +48,7 @@ export function DeviceCodeCard({ message }: { message: Message }) {
           <>
             <div className="flex flex-wrap items-center gap-2">
               <span className="select-all rounded-xl border border-line bg-bg px-3 py-2 font-mono text-2xl font-semibold tracking-[0.18em] text-ink sm:text-3xl" data-device-code-value>
-                {code || "—"}
+                {code || "…"}
               </span>
               <Button size="sm" tone="ghost" onClick={copy} disabled={!code} aria-label="Copy the code">
                 {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? "Copied" : "Copy"}

@@ -366,7 +366,7 @@ export type Room = {
 export type Computer = { id: string; name: string; platform: string; online: boolean; lastSeenAt: string | null };
 export type Credits = { available: boolean; limit: number; used: number; remaining: number; resetsAt: string; paused: boolean } | null;
 
-export type NodeTemplate = { id: string; name: string; slug: string; role: string; summary: string; avatar: Avatar; charter: string };
+export type NodeTemplate = { id: string; name: string; slug: string; role: string; summary: string; avatar: Avatar; charter: string; hidden?: boolean };
 export type CrewTemplate = { id: string; title: string; summary: string; nodes: string[]; lead: string };
 /**
  * A model a node can use: included with Ensemble (credits), on the account's own API keys, or an AI

@@ -373,7 +373,16 @@ try {
     assert.ok(await card.getByText("not as asked").isVisible());
     assert.equal(await card.locator(width < 640 ? "dl" : "table").getByText("not reported").count(), 3, "observed settings the engine did not report");
     const sessionPanel = card.getByRole("region", { name: "Agent session" });
-    await sessionPanel.getByText("3 queued").waitFor();
+    // Folded to one line (its agent, status and time, and its queue on a wider screen) until opened.
+    const sessionLine = sessionPanel.getByRole("button", { name: /Show$/ });
+    await sessionLine.getByText("Claude Code").waitFor();
+    if (width >= 640) await sessionPanel.getByText("3 queued").waitFor();
+    assert.equal(await sessionLine.getAttribute("aria-expanded"), "false", "the session panel starts folded");
+    assert.equal(await sessionPanel.getByRole("button", { name: "Steer…" }).count(), 0, "its controls wait until it is opened");
+    if (shots) await card.screenshot({ path: `${shots}/session-folded-${width}.png` });
+    await sessionLine.click();
+    assert.equal(await sessionPanel.getByRole("button", { name: /Hide$/ }).getAttribute("aria-expanded"), "true");
+    await sessionPanel.getByRole("list", { name: "Queued messages" }).locator("li").nth(2).waitFor();
     await sessionPanel.getByRole("button", { name: "What it was told" }).click();
     const told = sessionPanel.getByRole("region", { name: "What the agent was told" });
     await told.getByText("Make the redirect return to the page you came from, query string and all.").waitFor();
@@ -462,10 +471,17 @@ try {
     if (shots) await parallel.screenshot({ path: `${shots}/parallel-${width}.png` });
     if (shots) await integration.screenshot({ path: `${shots}/integration-${width}.png` });
 
-    // A run's report, and a node's media.
-    const report = timeline.locator("#m-run-fail").getByRole("region", { name: "Report" });
+    // A run's report: its summary and outcome on the card, the rest behind "Show the work"; and a node's media.
+    const failed = timeline.locator("#m-run-fail");
+    assert.ok(await failed.getByText("The sign-up page breaks on phones.").isVisible(), "the report's summary is the run's reply");
+    assert.equal(await failed.getByRole("region", { name: "Report" }).count(), 0, "the report waits behind Show the work");
+    assert.ok(await failed.getByText(/Report: Fail, 1 of 3 checks passed/).isVisible(), "its outcome on the line that opens it");
+    if (shots) await failed.screenshot({ path: `${shots}/run-ended-${width}.png` });
+    await failed.getByRole("button", { name: /^Worked/ }).click();
+    const report = failed.getByRole("region", { name: "Report" });
     assert.ok(await report.getByText("1 of 3 checks passed · 1 failed · 1 blocked").isVisible());
     assert.ok(await report.getByText("The button is off screen at 390 px.").isVisible());
+    assert.equal(await failed.getByText("The sign-up page breaks on phones.").count(), 1, "its summary is said once");
     const media = timeline.locator("#m-media1").getByRole("region", { name: "Media" });
     await media.locator("img").first().waitFor();
     await media.getByRole("button", { name: /This video does not play here/ }).waitFor();

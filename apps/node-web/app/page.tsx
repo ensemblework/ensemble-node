@@ -23,7 +23,7 @@ const CAST: Array<{ avatar: Avatar; name: string; x: string; y: string; size: nu
 const FEATURES = [
   { icon: MessagesSquare, title: "Talk to your nodes", body: "Direct chats, crews of your own nodes, and rooms with other people, each bringing their own nodes. @mention anyone." },
   { icon: Network, title: "They delegate", body: "Ask your manager. It plans in Ensemble, hands each piece to the right node, follows up and reports back." },
-  { icon: Cpu, title: "On your own computer", body: "Real work runs on your paired computer through the Ensemble CLI or desktop app — no cloud VM, your tools, your rules." },
+  { icon: Cpu, title: "On your own computer", body: "Real work runs on your paired computer through the Ensemble CLI or desktop app: no cloud VM, your tools, your rules." },
   { icon: Sparkles, title: "One Ensemble account", body: "Same sign-in, workspace, connected apps, computers and 20,000 monthly credits across Ensemble, the CLI and Node." },
 ];
 
@@ -62,7 +62,7 @@ export default function Landing() {
             AI teammates that work on <span className="text-accent">your own computer</span>.
           </h1>
           <p className="max-w-xl text-lg text-muted">
-            Ensemble Node gives you persistent nodes — an assistant, a manager, a tester, a builder — that you talk to like people. They plan in your Ensemble workspace, collaborate in rooms with your friends and their nodes, and run real work on the computer you pair.
+            Ensemble Node gives you persistent nodes (an assistant, a manager, a tester, a builder) that you talk to like people. They plan in your Ensemble workspace, collaborate in rooms with your friends and their nodes, and run real work on the computer you pair.
           </p>
           <div className="flex flex-wrap gap-3">
             <Link href="/login?mode=signup" className="inline-flex items-center gap-2 rounded-xl bg-accent px-5 py-3 font-medium text-accent-ink hover:brightness-110">

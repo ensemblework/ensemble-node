@@ -13,7 +13,8 @@ ensemble-node/
 │   │       ├── r/[roomId]/      a conversation: messages, cards, search, pins, filters, composer
 │   │       ├── c/[cardId]/      a card's short address (a sign-in card's QR code): its conversation, its remote view
 │   │       ├── n/[nodeId]/      a node: look, charter, model, files on my computer, shared-room rule, memory, pause, delete
-│   │       ├── new/             create a node, a crew (from suggestions and existing nodes) or a room (with requests to join)
+│   │       ├── new/             create a node (from scratch or a template: handle, look, instructions), a crew (from
+│   │       │                    suggestions and existing nodes) or a room (with requests to join)
 │   │       ├── requests/        requests to join rooms: accept with 1–3 nodes and a lead, or decline
 │   │       ├── search/          search every conversation
 │   │       ├── computers/       opens Settings → Computers
@@ -65,7 +66,9 @@ ensemble-node/
 │   │   ├── qr-code.tsx          a QR code as a picture phones read (loaded only when shown)
 │   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
-│   │   ├── node-avatar.tsx      Node signature faces, shape/colour/eyes and thinking state
+│   │   ├── node-avatar.tsx      Node signature faces (shape, a colour shaded in its own hue, eyes that fit the shape),
+│   │   │                        thinking state, and the appearance picker
+│   │   ├── handle-input.tsx     a node's handle after its @
 │   │   ├── model-logo.tsx       canonical local model/vendor and agent marks
 │   │   ├── connector-logo.tsx, tool-icon.tsx
 │   │   │                        shared local vendor logos and generic tool fallbacks
@@ -125,7 +128,8 @@ ensemble-node/
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        what a message sends and a retry sends again, the attachment shelf and pasted
 │   │   │                        files, what Files refuses before an upload, who may open a file on a message,
-│   │   │                        model groups, crew drafts and unique names, connection status, how a run's
+│   │   │                        model groups, new nodes and crew drafts (unique names and handles, as Ensemble
+│   │   │                        makes them, and why one is refused), connection status, how a run's
 │   │   │                        question is answered and which run it belongs to, a run's steps as a work log
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send
 │   └── public/

@@ -9,12 +9,14 @@ import { api, ApiError } from "@/lib/api";
 import { CLI_COMMAND, ENSEMBLE_LINKS } from "@/lib/config";
 import { liveDevices } from "@/lib/ensemble";
 import { evidenceItems } from "@/lib/evidence";
-import { keys, useDevices, useNodeCaptures, useOwnerSettings } from "@/lib/hooks";
+import { handleProblem, refusedField } from "@/lib/crew";
+import { keys, useBootstrap, useDevices, useNodeCaptures, useOwnerSettings } from "@/lib/hooks";
 import { runProfileFor, runProfileLine } from "@/lib/owner-settings";
 import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { ModelPicker } from "./model-picker";
-import { AVATAR_COLORS, AVATAR_SHAPES, NodeAvatar } from "./node-avatar";
+import { HandleInput } from "./handle-input";
+import { AppearancePicker, NodeAvatar } from "./node-avatar";
 import { EvidenceGallery } from "./chat/evidence";
 import { NodeRoutines } from "./routines";
 import { Button, External, Field, Input, Notice, Segmented, Spinner, Switch, Textarea } from "./ui";
@@ -38,7 +40,7 @@ function Choice({ name, checked, onChange, title, hint }: { name: string; checke
     <label className="flex items-start gap-2 text-sm">
       <input type="radio" name={name} checked={checked} onChange={onChange} className="mt-1 accent-[rgb(var(--accent))]" />
       <span>
-        <strong>{title}</strong> <span className="text-muted">— {hint}</span>
+        <strong>{title}</strong><span className="text-muted">: {hint}</span>
       </span>
     </label>
   );
@@ -83,8 +85,6 @@ function AgentSessions({ node }: { node: NodeFull }) {
   );
 }
 
-const HANDLE = /^[a-z0-9][a-z0-9-]{0,23}$/;
-
 /** Helpers a node may have working at once: 4 unless its owner changes it; 0 is no limit. */
 const HELPER_COUNTS = [1, 2, 4, 6, 8, 12, 16];
 
@@ -107,6 +107,7 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
   const [busy, setBusy] = useState<string | null>(null);
   const memory = useQuery({ queryKey: keys.memory(node.id), queryFn: () => api<{ memories: Memory[] }>(`/api/node/nodes/${node.id}/memory`).then((result) => result.memories) });
   const devices = useDevices();
+  const boot = useBootstrap();
   const sharedRooms = node.autonomy?.sharedRooms ?? "ask";
   const computerFiles = node.autonomy?.computerFiles === true;
   const computerWork = node.autonomy?.computerWork ?? "auto";
@@ -115,7 +116,9 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
   const helperCounts = [...new Set([...HELPER_COUNTS, ...(helpers > 0 ? [helpers] : [])])].sort((a, b) => a - b);
   const paused = node.status === "paused";
   const folders = liveDevices(devices.data ?? []).flatMap((device) => device.folders.map((folder) => `${folder} (${device.name})`));
-  const handle = slug.trim().replace(/^@/, "").toLowerCase();
+  const handle = slug.trim();
+  const otherHandles = useMemo(() => new Set((boot.data?.nodes ?? []).filter((row) => row.id !== node.id).map((row) => row.slug)), [boot.data?.nodes, node.id]);
+  const slugProblem = handle !== node.slug ? handleProblem(handle, otherHandles) : null;
   const dirty = name.trim() !== node.name || handle !== node.slug || role.trim() !== node.role || charter !== node.charter || JSON.stringify(avatar) !== JSON.stringify(node.avatar);
   useEffect(() => setFieldError({}), [name, slug]);
 
@@ -123,7 +126,7 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
 
   const save = async () => {
     setError(null);
-    if (!HANDLE.test(handle)) return setFieldError({ slug: "Lowercase letters, digits and dashes, up to 24." });
+    if (slugProblem) return setFieldError({ slug: slugProblem });
     setBusy("save");
     try {
       await api(`/api/node/nodes/${node.id}`, {
@@ -133,7 +136,8 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
       await refresh();
       toast("Saved.", "ok");
     } catch (failure) {
-      if (failure instanceof ApiError && (failure.status === 409 || failure.status === 400)) setFieldError(/handle|mention/i.test(failure.message) ? { slug: failure.message } : { name: failure.message });
+      const field = failure instanceof ApiError ? refusedField(failure.status, failure.message) : null;
+      if (field) setFieldError({ [field]: (failure as Error).message });
       else setError(failure instanceof Error ? failure.message : String(failure));
     } finally {
       setBusy(null);
@@ -182,38 +186,20 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
           <Field label="Name" error={fieldError.name}>
             <Input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} />
           </Field>
-          <Field label="Handle" error={fieldError.slug} hint="How you @mention it.">
-            <Input value={slug} onChange={(event) => setSlug(event.target.value)} maxLength={25} className="font-mono" aria-label="Handle" />
+          <Field label="Handle" error={fieldError.slug ?? slugProblem} hint="How you @mention it.">
+            <HandleInput value={slug} onValue={setSlug} invalid={Boolean(fieldError.slug ?? slugProblem)} aria-label="Handle" />
           </Field>
         </div>
         <Field label="Role">
           <Input value={role} onChange={(event) => setRole(event.target.value)} maxLength={40} />
         </Field>
         <Field label="Appearance" group>
-          <div className="flex flex-wrap items-center gap-2">
-            {AVATAR_SHAPES.map((shape) => (
-              <button key={shape} type="button" onClick={() => setAvatar({ ...avatar, shape })} className={`rounded-xl p-1 ${avatar.shape === shape ? "ring-2 ring-accent" : "hover:bg-raised"}`} aria-label={shape} aria-pressed={avatar.shape === shape}>
-                <NodeAvatar avatar={{ ...avatar, shape }} size={30} />
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {AVATAR_COLORS.map((color) => (
-              <button key={color} type="button" onClick={() => setAvatar({ ...avatar, color })} className={`h-7 w-7 rounded-full ${avatar.color === color ? "ring-2 ring-accent ring-offset-2 ring-offset-bg" : ""}`} style={{ background: color }} aria-label={color} aria-pressed={avatar.color === color} />
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {(["dot", "line", "wide"] as const).map((eyes) => (
-              <button key={eyes} type="button" onClick={() => setAvatar({ ...avatar, eyes })} className={`rounded-xl p-1 ${avatar.eyes === eyes ? "ring-2 ring-accent" : "hover:bg-raised"}`} aria-label={`${eyes} eyes`} aria-pressed={avatar.eyes === eyes}>
-                <NodeAvatar avatar={{ ...avatar, eyes }} size={26} />
-              </button>
-            ))}
-          </div>
+          <AppearancePicker value={avatar} onChange={setAvatar} />
         </Field>
         <Field label="Instructions" hint="Private guidelines for this node: how it works, what it should care about.">
           <Textarea value={charter} onChange={(event) => setCharter(event.target.value)} rows={7} maxLength={8000} />
         </Field>
-        <Button onClick={() => void save()} busy={busy === "save"} disabled={!dirty || !name.trim() || !role.trim()}>
+        <Button onClick={() => void save()} busy={busy === "save"} disabled={!dirty || !name.trim() || !role.trim() || Boolean(slugProblem)}>
           Save
         </Button>
       </Section>

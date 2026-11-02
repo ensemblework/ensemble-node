@@ -240,7 +240,7 @@ try {
     const appearance = settings.getByRole("group", { name: "Appearance", exact: true });
     await appearance.getByRole("button", { name: "hex", exact: true }).click();
     await appearance.getByRole("button", { name: "line eyes", exact: true }).click();
-    await appearance.getByRole("button", { name: "#B39DDB", exact: true }).click();
+    await appearance.getByRole("button", { name: "Lavender", exact: true }).click();
     const preview = settings.locator("svg[data-node-avatar]").first();
     assert.equal(await preview.locator(".node-eyes rect").count(), 2);
     assert.equal(await preview.locator("stop").nth(1).getAttribute("stop-color"), "#B39DDB");

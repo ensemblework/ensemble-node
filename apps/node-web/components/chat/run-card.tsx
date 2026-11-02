@@ -20,7 +20,7 @@ import { ENSEMBLE_LINKS } from "@/lib/config";
 import { approvalCheckpoint, decisionCheckpoint, type Checkpoint } from "@/lib/checkpoints";
 import { answeredForJob, approvalsForRun, decisionsForJob } from "@/lib/decisions";
 import { previewText } from "@/lib/ensemble";
-import { checkTally, outcomeBadge } from "@/lib/plan";
+import { blockedReason, checkTally, outcomeBadge } from "@/lib/plan";
 import { evidenceItems } from "@/lib/evidence";
 import { useAnsweredApprovals, useApprovals, useDecisions, useDevices, useJob, useRecentDecisions, useRunSteps, useStopJob } from "@/lib/hooks";
 import { sessionAgent } from "@/lib/session";
@@ -446,6 +446,13 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
       ) : null}
 
       {report && !jobId ? <ReportView report={report} handles={ctx.handles} /> : null}
+      {/* A blocked run says what it needs even while its report is folded under "Show the work". */}
+      {report && jobId && !open && report.outcome === "blocked" && blockedReason(report.blockedBy) ? (
+        <p className="mt-2 flex items-center gap-2 text-[13px] text-warn" data-run-blocked>
+          <span className="h-1.5 w-1.5 rounded-full bg-warn" aria-hidden />
+          {blockedReason(report.blockedBy)}
+        </p>
+      ) : null}
       {/* Inside a plan step, the step's own gallery already holds its runs' evidence. */}
       {evidence.length && !inStep ? <EvidenceGallery items={evidence} requirementOf={requirementOf} className="mt-3" /> : null}
       {detail?.files?.length ? <ChangedFiles files={detail.files} /> : null}

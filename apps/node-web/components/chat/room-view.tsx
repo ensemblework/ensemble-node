@@ -200,7 +200,6 @@ export function RoomView({ roomId }: { roomId: string }) {
     ];
   }, [attached, threads, room]);
   const stopRoom = useCallback(async () => {
-    if (working && !confirm("Stop this conversation's work? Its plans, agent runs and the replies being written stop. What was changed so far stays.")) return;
     setStopping(true);
     try {
       const result = await api<{ stopped?: number } | undefined>(`/api/node/rooms/${roomId}/stop`, { body: {} });
@@ -210,7 +209,7 @@ export function RoomView({ roomId }: { roomId: string }) {
     } finally {
       setStopping(false);
     }
-  }, [roomId, working]);
+  }, [roomId]);
   // Paging counts every message loaded, the ones shown inside plan cards too.
   const lastSeq = all.reduce((max, row) => (row.sending || row.id.startsWith("local-") ? max : Math.max(max, row.seq)), 0);
   const firstReal = all.find((row) => !row.id.startsWith("local-"));
@@ -553,7 +552,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       <header className="chat-header flex shrink-0 items-center gap-2 border-b border-line bg-bg/95 px-3 py-2.5 md:gap-3 md:px-6">
         <IconButton label="Open conversations" className="chat-open-conversations relative md:hidden" onClick={() => window.dispatchEvent(new Event("node:open-chats"))}><ArrowLeft size={19} /></IconButton>
         {dmNode ? (
-          <NodeCompanion key={dmNode.id} node={dmNode} size={38} thinking={workingNodes.has(dmNode.id)} lastActivity={room.lastMessageAt} visit onActivate={() => setPanel("settings")} />
+          <NodeCompanion key={dmNode.id} node={dmNode} size={38} thinking={workingNodes.has(dmNode.id)} workingMotion={false} lastActivity={room.lastMessageAt} visit onActivate={() => setPanel("settings")} />
         ) : (
           <button type="button" className="flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-raised" aria-label={`${room.title} settings`} onClick={() => setPanel("settings")}><RoomAvatar room={room} size={40} busy={workingNodes} rotate /></button>
         )}

@@ -2,8 +2,9 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
 
-import { useId, useRef } from "react";
+import { useEffect, useId, useRef, useSyncExternalStore } from "react";
 import type { Avatar } from "@/lib/types";
+import { workingMotion, type WorkingZone } from "@/lib/working-motion";
 import { useVisibleMotion } from "./appearance-provider";
 
 const SHAPES: Record<Avatar["shape"], string> = {
@@ -109,17 +110,21 @@ function Eyes({ look }: { look: Avatar }) {
   );
 }
 
-export function NodeAvatar({ node, avatar, size = 36, thinking = false, resting = false, dim = false, title }: { node?: { avatar: Avatar } | null; avatar?: Avatar | null; size?: number; thinking?: boolean; resting?: boolean; dim?: boolean; title?: string }) {
+export function NodeAvatar({ node, avatar, size = 36, thinking = false, resting = false, dim = false, title, workZone }: { node?: { avatar: Avatar } | null; avatar?: Avatar | null; size?: number; thinking?: boolean; resting?: boolean; dim?: boolean; title?: string; workZone?: WorkingZone }) {
   const ref = useRef<SVGSVGElement>(null);
-  const motion = useVisibleMotion(ref, thinking);
+  const visible = useVisibleMotion(ref, thinking && !dim && Boolean(workZone));
   const saved = avatar ?? node?.avatar;
   const look: Avatar = saved && SHAPES[saved.shape] ? { ...saved, eyes: saved.eyes === "line" || saved.eyes === "wide" ? saved.eyes : "dot", color: parse(saved.color ?? "") ? saved.color : DEFAULT_LOOK.color } : DEFAULT_LOOK;
   const tones = avatarTones(look.color);
   const face = FACES[look.shape];
   // Each instance needs its own gradient, including avatars inside hidden drawers.
   const id = `node-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  useEffect(() => {
+    if (visible && workZone) return workingMotion.register(id, workZone);
+  }, [visible, workZone, id]);
+  const selected = useSyncExternalStore(workingMotion.subscribe, () => workingMotion.getSnapshot() === id, () => false);
   return (
-    <svg ref={ref} width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title ?? "Node"} data-node-avatar data-node-shape={look.shape} data-motion-active={motion || undefined} data-resting={resting || undefined} className={`${thinking ? "node-thinking" : ""} ${dim ? "opacity-50 grayscale" : ""} shrink-0`}>
+    <svg ref={ref} width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title ?? "Node"} data-node-avatar data-node-shape={look.shape} data-work-zone={workZone} data-motion-active={visible && selected || undefined} data-resting={resting || undefined} className={`${thinking ? "node-thinking" : ""} ${dim ? "opacity-50 grayscale" : ""} shrink-0`}>
       {title ? <title>{title}</title> : null}
       <defs>
         <radialGradient id={id} cx="35%" cy="30%" r="80%">

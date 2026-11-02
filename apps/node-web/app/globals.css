@@ -86,38 +86,37 @@ body {
 
 @keyframes node-orb-work {
   0%, 52%, 100% { transform: translateY(0) scale(1); }
-  16% { transform: translateY(-9px) scale(.92, 1.1); }
-  31% { transform: translateY(3px) scale(1.16, .84); }
-  42% { transform: translateY(-3px) scale(.98, 1.03); }
+  16% { transform: translateY(-3px) scale(.97, 1.04); }
+  31% { transform: translateY(1px) scale(1.06, .94); }
+  42% { transform: translateY(-1px) scale(.99, 1.01); }
 }
 @keyframes node-square-work {
   0%, 60%, 100% { transform: rotate(0) scale(1); }
-  15% { transform: rotate(-15deg) scale(1.08, .9); }
-  32% { transform: rotate(18deg) scale(.9, 1.1); }
-  46% { transform: rotate(-5deg) scale(1.03, .97); }
+  15% { transform: rotate(-5deg) scale(1.03, .97); }
+  32% { transform: rotate(6deg) scale(.97, 1.04); }
+  46% { transform: rotate(-2deg) scale(1.01, .99); }
 }
 @keyframes node-spark-work {
-  0% { transform: rotate(0) scale(1); }
-  14% { transform: rotate(65deg) scale(.84); }
-  34% { transform: rotate(365deg) scale(1.1); }
-  48%, 100% { transform: rotate(360deg) scale(1); }
+  0%, 48%, 100% { transform: scale(1); }
+  14% { transform: scale(.96); }
+  34% { transform: scale(1.05); }
 }
 @keyframes node-hex-work {
   0%, 65%, 100% { transform: rotate(0) scale(1); }
-  18% { transform: rotate(-28deg) scale(.9, 1.08); }
-  40% { transform: rotate(30deg) scale(1.08, .93); }
-  53% { transform: rotate(-5deg) scale(1); }
+  18% { transform: rotate(-7deg) scale(.97, 1.03); }
+  40% { transform: rotate(8deg) scale(1.03, .98); }
+  53% { transform: rotate(-2deg) scale(1); }
 }
 @keyframes node-leaf-work {
   0%, 65%, 100% { transform: rotate(0) skewX(0) scale(1); }
-  20% { transform: rotate(-18deg) skewX(-10deg) scale(.88, 1.12); }
-  43% { transform: rotate(12deg) skewX(6deg) scale(1.1, .94); }
+  20% { transform: rotate(-6deg) skewX(-3deg) scale(.96, 1.04); }
+  43% { transform: rotate(4deg) skewX(2deg) scale(1.03, .98); }
 }
 @keyframes node-compass-work {
   0%, 70%, 100% { transform: rotate(0) scale(1); }
-  14% { transform: rotate(-40deg) scale(.9); }
-  35% { transform: rotate(48deg) scale(1.05); }
-  52% { transform: rotate(-12deg) scale(1); }
+  14% { transform: rotate(-10deg) scale(.97); }
+  35% { transform: rotate(12deg) scale(1.02); }
+  52% { transform: rotate(-4deg) scale(1); }
 }
 @keyframes node-work-blink {
   0%, 16%, 23%, 62%, 69%, 77%, 100% { transform: scaleY(1); }
@@ -152,11 +151,12 @@ body {
 .room-avatar[data-animated="true"] .graph-node { transition: transform 650ms cubic-bezier(.22, 1, .36, 1); }
 @media (prefers-reduced-motion: no-preference) {
   :root:not([data-motion="off"]) .node-link .node-body { transition: transform 160ms ease-out; }
-  :root:not([data-motion="off"]) .node-link:active .node-body { transform: scale(1.12, .85) rotate(-8deg); }
+  :root:not([data-motion="off"]) .node-link:active .node-body { transform: scale(1.04, .96) rotate(-3deg); }
 }
 
 .chat-shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 .chat-sidebar[data-resizing="true"] { user-select: none; }
+.resizable-drawer[data-resizing="true"] { user-select: none; }
 .sidebar-resize::after { content: ""; position: absolute; inset: 0 3px; background: transparent; transition: background-color 140ms ease; }
 .sidebar-resize:hover::after, .sidebar-resize:focus-visible::after, [data-resizing="true"] .sidebar-resize::after { background: rgb(var(--accent) / .5); }
 .chat-room-row { transition: background-color 140ms ease; }

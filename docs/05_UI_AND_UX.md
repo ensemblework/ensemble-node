@@ -51,18 +51,20 @@ Settings → Appearance (`components/appearance-settings.tsx`) offers System / L
 
 `node.appearance.v1` stores validated choices in this browser and synchronises open Node tabs. The document paints them before hydration; System follows device colour changes. Quiet mode disables node expressions, and the device's reduced-motion preference always wins. Preferences do not alter Ensemble's account settings or call its API.
 
-`NodeCompanion` greets you when its DM or profile opens. Its header, profile and message portraits react to clicks or keyboard presses: a squash, jump and outline morph with happy eyes, a twinkle, a wink or a double blink. Repeated presses replace the previous expression and return to the saved shape. Only the open DM/profile has occasional idle blinks, double blinks and winks; message portraits stay still until pressed. Only the profile follows a nearby mouse pointer; focusing the composer makes the header's eyes look towards it.
+`NodeCompanion` greets you when its DM or profile opens. Its header, profile and message portraits react to clicks or keyboard presses: a soft squash, low hop and outline morph with happy eyes, a twinkle, a wink or a double blink. There are no spins. Repeated presses replace the previous expression and return to the saved shape. Only the open DM/profile has occasional idle blinks, double blinks and winks; message portraits stay still until pressed. Only the profile follows a nearby mouse pointer; focusing the composer makes the header's eyes look towards it.
 
 Working motion is different for each signature, with a visible movement followed by a quiet interval:
 
 | Shape | Working expression |
 | --- | --- |
-| Orb | A buoyant jelly bounce and squash |
-| Square | A soft, elastic tumble |
-| Spark | A full spin, tuck and stretch |
-| Hex | A rocking, faceted roll |
-| Leaf | An unfurl and sway |
-| Compass | A searching needle swing |
+| Orb | A low jelly bounce and soft squash |
+| Square | A small elastic tilt |
+| Spark | A quiet pulse, tuck and stretch |
+| Hex | A gentle faceted rock |
+| Leaf | A soft unfurl and sway |
+| Compass | A small searching needle tilt |
+
+Only one visible working portrait moves at a time, chosen locally between the sidebar and chat. When both places have a visible working portrait, the cue alternates between them after a random 4.5–7.5 seconds, choosing a portrait randomly within that place. The top bar stays still while work runs. A lone visible portrait needs no switching timer; hidden, stopped and reduced/quiet portraits leave the rotation. `lib/working-motion.ts` owns this single browser timer, with no database operations.
 
 Working faces keep their eyes upright and blink. The sidebar uses the existing live state and Activity's running sessions; the open conversation also reads its already-loaded plan/session cards. No cosmetic polling is added. Automatic motion stops when hidden, off screen, paused or reduced; GSAP contexts clean up on unmount.
 
@@ -76,7 +78,7 @@ The conversation composer annotates complete, valid `@handles` in the accent col
 
 Search fields share `.search-field`: only the outside border/wash changes on focus. The inner input has no separate outline. This covers chat filtering, conversation and ⌘K search, models, connections, sessions, Files and room item/page searches; keyboard focus remains visible.
 
-Notifications (`ToastItem` in `components/ui.tsx`, `lib/toast.ts`) sit at the bottom with a three-second countdown bar, Pause/Resume and Dismiss. Hovering, keyboard focus, an explicit pause or a hidden tab pauses the remaining time and its bar. Leaving resumes from that point, not from three seconds again. Touch does not create a sticky hover. Errors keep their alert semantics; reduced motion uses a still bar. Timers are cleaned up when a notification leaves.
+Notifications (`ToastItem` in `components/ui.tsx`, `lib/toast.ts`) sit at the bottom with a three-second countdown bar and Dismiss, without a pause button. Hovering, keyboard focus or a hidden tab pauses the remaining time and its bar. Leaving resumes from that point, not from three seconds again. Touch does not create a sticky hover. Errors keep their alert semantics; reduced motion uses a still bar. Timers are cleaned up when a notification leaves.
 
 ## Model and agent marks
 
@@ -258,7 +260,7 @@ Under a conversation's header, a one-line strip lists what is working there, fro
 
 ### Stopping work
 
-While your work runs in a conversation (a live plan or work card, a live agent run, or a reply being written), its header has **Stop**; More always has "Stop this conversation's work". Both, and the composer's stop button while a node writes, call `POST /api/node/rooms/:id/stop`, which stops your nodes' replies, plans and their runs there. They ask first only when plans or runs are going on; stopping a reply being written does not ask. The result shows in a note ("Stopped. What was changed so far stays." or "Nothing was running here."). A plan or work card has its own Stop while it runs (`POST /api/node/plans/:id/stop`, after a confirm), and a session's Stop keeps or drops its queue.
+While your work runs in a conversation (a live plan or work card, a live agent run, or a reply being written), its header has **Stop**; More always has "Stop this conversation's work". Both, and the composer's stop button while a node writes, call `POST /api/node/rooms/:id/stop`, which stops your nodes' replies, plans and their runs there immediately, without a browser confirmation. The result shows in a note ("Stopped. What was changed so far stays." or "Nothing was running here."). A plan or work card has its own immediate Stop while it runs (`POST /api/node/plans/:id/stop`), as does a standalone run; a session's Stop keeps or drops its queue through its existing controls. Deleting content still asks separately.
 
 ## Rooms with other people
 
@@ -358,7 +360,7 @@ Links that leave Node (Ensemble, ensemblework.com, vendors, links in messages) o
 
 Phones open Chats as a left sheet; selecting a conversation closes it and opens that group's timeline, not a separate form. A conversation uses one header with back-to-chats; other pages retain the global menu/Search/Activity bar. From 768 px the collapsible, resizable sidebar stays beside the current page. Drawers trap keyboard focus, close on Escape/backdrop and restore the opener. The web manifest makes it installable to a Home Screen (start URL `/chat`). `public/sw.js` is ready for web push (v1).
 
-The conversation scrolls independently of its header and composer. On phones the shell and drawers follow the visual viewport when the keyboard opens; the composer includes the bottom safe area. Form fields use at least 16 px text to avoid Safari's focus zoom. Long names, model/computer metadata, answers and message text wrap within their cards, while fenced code and tool output retain their own horizontal scrolling. The model menu stays inside the phone viewport. Drawers scroll their own content and keep Close in a sticky header.
+The conversation scrolls independently of its header and composer. On phones the shell and drawers follow the visual viewport when the keyboard opens; the composer includes the bottom safe area. Form fields use at least 16 px text to avoid Safari's focus zoom. Long names, model/computer metadata, answers and message text wrap within their cards, while fenced code and tool output retain their own horizontal scrolling. The model menu stays inside the phone viewport. Right-side drawers have a full-width opaque header outside their scrolling body, with no gap above the title. On desktop their left edge resizes by dragging or arrow keys (360–800 px, capped at 85% of the viewport); double-click resets 460 px. `node.drawer-width` stores only the width. Phones use the full available width.
 
 `InfoTip` makes longer model/permission explanations available on hover, focus or tap, without permanent paragraphs. Errors, privacy labels and approval controls stay visible.
 

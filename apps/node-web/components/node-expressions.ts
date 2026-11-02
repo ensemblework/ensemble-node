@@ -27,7 +27,7 @@ export function nodeExpression(root: HTMLElement, expression: NodeExpression): g
 
   if (expression === "wink" || expression === "double-blink") {
     const target = expression === "wink" ? left : eyes;
-    timeline.to(body, { rotation: expression === "wink" ? -12 : 5, y: -3, duration: .18 })
+    timeline.to(body, { rotation: expression === "wink" ? -4 : 2, y: -1, duration: .18 })
       .to(target, { scaleY: .06, duration: .1 }, .1)
       .to(target, { scaleY: 1, duration: .16 }, .22);
     if (expression === "double-blink") timeline.to(target, { scaleY: .06, duration: .09 }, .46).to(target, { scaleY: 1, duration: .18 }, .6);
@@ -36,18 +36,18 @@ export function nodeExpression(root: HTMLElement, expression: NodeExpression): g
   }
 
   const wake = expression === "wake";
-  timeline.to(body, { scaleX: 1.18, scaleY: .8, y: 4, rotation: wake ? -12 : -7, duration: .16 })
+  timeline.to(body, { scaleX: 1.07, scaleY: .93, y: 1.5, rotation: wake ? -4 : -3, duration: .16 })
     .to(outline, { attr: { d: AVATAR_MORPHS[shape] }, duration: .24, ease: "sine.inOut" }, 0)
-    .to(body, { scaleX: .94, scaleY: 1.12, y: -12, rotation: 8, duration: .25, ease: "power2.out" })
-    .to(body, { scaleX: 1, scaleY: 1, y: 0, rotation: 0, duration: .6, ease: "elastic.out(1, .5)" })
+    .to(body, { scaleX: .98, scaleY: 1.04, y: -4, rotation: 3, duration: .25, ease: "power2.out" })
+    .to(body, { scaleX: 1, scaleY: 1, y: 0, rotation: 0, duration: .6, ease: "back.out(1.2)" })
     .to(outline, { attr: { d: AVATAR_PATHS[shape] }, duration: .45, ease: "power2.out" }, .4);
   if (wake) timeline.fromTo(eyes, { scaleY: .08 }, { scaleY: 1.2, duration: .4, ease: "power2.out", immediateRender: false }, .12).to(eyes, { scaleY: 1, duration: .2 }, .65);
   else timeline.to(eyes, { opacity: 0, duration: .08 }, .14).to([happy, smile], { opacity: 1, duration: .1 }, .14)
     .to([happy, smile], { opacity: 0, duration: .2 }, .85).to(eyes, { opacity: 1, duration: .15 }, .9);
   if (expression === "delight" || expression === "twinkle") {
-    const rotation = shape === "spark" ? 360 : shape === "hex" ? 60 : shape === "compass" ? 90 : shape === "leaf" ? -18 : 12;
-    timeline.to(pose, { rotation, duration: .7, ease: "back.out(1.2)" }, .15)
-      .to(pose, { rotation: rotation >= 60 ? rotation : 0, duration: .3 }, .85)
+    const rotation = shape === "spark" ? 0 : shape === "leaf" ? -4 : 3;
+    timeline.to(pose, { rotation, duration: .7, ease: "sine.inOut" }, .15)
+      .to(pose, { rotation: 0, duration: .3 }, .85)
       .fromTo(sparkles, { opacity: 0, scale: .5 }, { opacity: 1, scale: 1.1, duration: .25, immediateRender: false }, .2)
       .to(sparkles, { opacity: 0, scale: 1.3, duration: .35 }, .65);
   }

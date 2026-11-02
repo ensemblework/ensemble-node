@@ -90,8 +90,6 @@ function RoutineChip({ routine }: { routine: PlanRoutine }) {
 export function useStopPlan(planId: string, what: "plan" | "work") {
   const [stopping, setStopping] = useState(false);
   const stop = async () => {
-    const question = what === "plan" ? "Stop this plan? Its steps stop, with the agent runs they started. What was changed so far stays." : "Stop this work? What was changed so far stays.";
-    if (!confirm(question)) return;
     setStopping(true);
     try {
       const result = await api<{ stopped?: number } | undefined>(`/api/node/plans/${planId}/stop`, { body: {} });

@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AVATAR_SHAPES, NodeAvatar } from "../components/node-avatar";
+import { AVATAR_SHAPES, avatarTones, NodeAvatar } from "../components/node-avatar";
 import { ModelLogo } from "../components/model-logo";
 import { MODEL_BRANDS, modelBrand } from "./model-brand";
 import manifest from "../public/providers/manifest.json";
@@ -66,4 +66,33 @@ test("an unspecified node keeps the original default face and status styling", (
   assert.match(markup, /stop-color="#D7B56F"/);
   assert.equal([...markup.matchAll(/<circle /g)].length, 2);
   assert.doesNotMatch(markup, /data-model-brand|providers\//);
+});
+
+test("a face is shaded in its own hue, opaque, with a darker edge and eyes that contrast with it", () => {
+  const gold = avatarTones("#D7B56F");
+  assert.deepEqual([gold.light, gold.shade, gold.edge, gold.eyes], ["#EBDAB7", "#C2A364", "#977F4E", "#14110C"]);
+  assert.equal(avatarTones("#2B3A67").eyes, "#FBF8F1", "light eyes on a dark colour");
+  const markup = renderToStaticMarkup(createElement(NodeAvatar, { avatar: { shape: "orb", color: "#F2CC8F", eyes: "dot" } }));
+  assert.doesNotMatch(markup, /stop-opacity|#ffffff/i, "no see-through white highlight");
+  assert.match(markup, /stroke="#A98F64"/);
+  assert.match(markup, /class="node-eyes" fill="#14110C"/);
+});
+
+test("eyes sit inside every shape, the narrow spark and compass included", () => {
+  // The largest distance from the centre each shape's body keeps all around (inner ring, inner square), less its edge.
+  const inside: Record<string, (x: number, y: number) => boolean> = {
+    spark: (x, y) => Math.hypot(x - 50, y - 50) <= 18,
+    compass: (x, y) => Math.abs(y - 50) <= 13 && Math.abs(x - 50) <= 26 - Math.abs(y - 50),
+  };
+  for (const shape of ["spark", "compass"] as const) {
+    for (const eyes of ["dot", "line", "wide"] as const) {
+      const markup = renderToStaticMarkup(createElement(NodeAvatar, { avatar: { shape, color: "#B39DDB", eyes } }));
+      const points: Array<[number, number]> = [];
+      for (const [, cx, cy, r] of markup.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"/g)) points.push([+cx! - +r!, +cy!], [+cx! + +r!, +cy!], [+cx!, +cy! - +r!], [+cx!, +cy! + +r!]);
+      for (const [, cx, cy, rx, ry] of markup.matchAll(/<ellipse cx="([\d.]+)" cy="([\d.]+)" rx="([\d.]+)" ry="([\d.]+)"/g)) points.push([+cx! - +rx!, +cy!], [+cx! + +rx!, +cy!], [+cx!, +cy! - +ry!], [+cx!, +cy! + +ry!]);
+      for (const [, x, y, w, h] of markup.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)) points.push([+x!, +y!], [+x! + +w!, +y!], [+x!, +y! + +h!], [+x! + +w!, +y! + +h!]);
+      assert.equal(points.length, 8, `${shape} ${eyes}`);
+      for (const [x, y] of points) assert.ok(inside[shape]!(x, y), `${shape} ${eyes} eye point ${x},${y}`);
+    }
+  }
 });

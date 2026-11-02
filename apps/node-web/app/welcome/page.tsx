@@ -11,7 +11,7 @@ import { NodeAvatar } from "@/components/node-avatar";
 import { Button, External, Field, Input, Notice, Spinner } from "@/components/ui";
 import { api, ApiError } from "@/lib/api";
 import { ENSEMBLE_LINKS } from "@/lib/config";
-import { uniqueName } from "@/lib/crew";
+import { handleForName, uniqueName } from "@/lib/crew";
 import { keys, useMe } from "@/lib/hooks";
 import type { Bootstrap, NodeFull, Room } from "@/lib/types";
 
@@ -87,7 +87,9 @@ export default function Welcome() {
         const result = await api<{ room: Room }>("/api/node/crews", { body: { title: uniqueName(chosenCrew.title, taken, 80), nodeIds: made.map((node) => node.id), ...(lead ? { leadNodeId: lead.id } : {}) } });
         setCreated(result.room.id);
       } else {
-        const result = await api<{ room: Room }>("/api/node/nodes", { body: { templateId: pick, ...(name.trim() ? { name: name.trim() } : {}) } });
+        // A name of their own gets a handle from it, not the template's.
+        const handles = new Set(boot.data.nodes.map((node) => node.slug));
+        const result = await api<{ room: Room }>("/api/node/nodes", { body: { templateId: pick, ...(name.trim() ? { name: name.trim(), slug: handleForName(name, chosen, handles) } : {}) } });
         setCreated(result.room.id);
       }
       await client.invalidateQueries({ queryKey: keys.bootstrap });
@@ -174,7 +176,7 @@ export default function Welcome() {
             <h1 className="text-2xl font-semibold">Pick your first node</h1>
             <p className="text-muted">A node is a teammate with a role and a charter. You can change everything later, and add more.</p>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {templates.nodes.map((template) => (
+              {templates.nodes.filter((template) => !template.hidden).map((template) => (
                 <button key={template.id} onClick={() => (setPick(template.id), setName(""))} className={`flex gap-3 rounded-xl border p-3 text-left transition ${pick === template.id ? "border-accent bg-accent/10" : "border-line bg-bg hover:border-muted"}`}>
                   <NodeAvatar avatar={template.avatar} size={40} />
                   <span>

@@ -798,7 +798,7 @@ export function RoutineForm({ boot, routine, nodeId, lockNode = false, onDone, o
             <label key={row.id} className="flex items-start gap-2 text-sm">
               <input type="radio" name={`${formId}-notify`} checked={draft.notify === row.id} onChange={() => set({ notify: row.id })} className="mt-1 accent-[rgb(var(--accent))]" />
               <span>
-                <strong>{row.title}</strong> <span className="text-muted">— {row.hint}</span>
+                <strong>{row.title}</strong><span className="text-muted">: {row.hint}</span>
               </span>
             </label>
           ))}

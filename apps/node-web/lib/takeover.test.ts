@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createDecipheriv, createHash, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync } from "node:crypto";
 import test, { mock } from "node:test";
 import { ApiError } from "./api";
-import { batchEvents, endedText, fitFrame, keyEvent, keyPress, MAX_IN_FLIGHT, pageInfo, pageLabel, pointOnFrame, reconnectDelay, retryable, takeoverControls, takeoverKind, TakeoverSession, TouchGesture, typingEvents, unsupported } from "./takeover";
+import { batchEvents, DRAG_MS, endedText, EventStreamParser, fitFrame, keyEvent, keyPress, MAX_IN_FLIGHT, pageInfo, pageLabel, PointerMoves, pointOnFrame, reconnectDelay, REST_MS, retryable, takeoverControls, takeoverKind, TakeoverSession, TouchGesture, typingEvents, unsupported, type InputEvent } from "./takeover";
 import { channelFromBase64Url, openMessage, packMessage, sealMessage, takeoverKeys, type ChannelMessage } from "./takeover-channel";
 
 test("a pointer on the picture is a fraction of the page, also when the picture is letterboxed; outside it, nothing", () => {
@@ -130,13 +130,13 @@ test("a finger on the picture: a tap clicks, a drag scrolls the page as far as i
   assert.deepEqual(new TouchGesture(start, 3).cancel(), [], "a cancelled tap does nothing");
 });
 
-test("the picture fits the space; the header names the page's site, and a popup as one", () => {
+test("the picture fits the space; the header names the page's site", () => {
   assert.deepEqual(fitFrame({ width: 1280, height: 800 }, { width: 390, height: 600 }), { width: 390, height: 243 }, "a phone: the whole width");
   assert.deepEqual(fitFrame({ width: 1280, height: 800 }, { width: 1400, height: 700 }), { width: 1120, height: 700 }, "a wide window: as tall as it fits");
   assert.equal(fitFrame({ width: 0, height: 0 }, { width: 390, height: 600 }), null);
-  assert.equal(pageLabel({ url: "https://accounts.google.com/v3/signin/identifier?x=1", popup: true }), "accounts.google.com — popup");
-  assert.equal(pageLabel({ url: "https://www.walmart.com/blocked", popup: false }), "www.walmart.com");
-  assert.equal(pageLabel({ url: "", popup: false }), null);
+  assert.equal(pageLabel({ url: "https://accounts.google.com/v3/signin/identifier?x=1" }), "accounts.google.com", "a popup's badge is the view's own");
+  assert.equal(pageLabel({ url: "https://www.walmart.com/blocked" }), "www.walmart.com");
+  assert.equal(pageLabel({ url: "" }), null);
   assert.deepEqual(pageInfo({ t: "frame", w: 1, h: 1, url: "https://x.example/a" }), { url: "https://x.example/a", title: null, popup: false }, "an older computer says only the address");
   assert.deepEqual(pageInfo({ t: "frame", url: "https://accounts.google.com/", title: " Sign in ", popup: true }), { url: "https://accounts.google.com/", title: "Sign in", popup: true });
   assert.deepEqual(pageInfo({ t: "frame", page: { url: "https://appleid.apple.com/", kind: "popup" } }), { url: "https://appleid.apple.com/", title: null, popup: true });
@@ -350,4 +350,117 @@ test("a terminal's frame is its screen; the next frame is asked for the newest n
   await session.next();
   assert.match(fake.state.calls.filter((call) => call.path.includes("/frames")).at(-1)!.path, /after=4$/);
   session.close();
+});
+
+test("the pointer is sent where it comes to rest, and while a button is held at most 20 times a second, the latest", () => {
+  let now = 0;
+  const timers: Array<{ at: number; run: () => void; id: number }> = [];
+  let ids = 0;
+  const clock = {
+    now: () => now,
+    set: (run: () => void, ms: number) => {
+      ids += 1;
+      timers.push({ at: now + ms, run, id: ids });
+      return ids;
+    },
+    clear: (id: unknown) => {
+      const index = timers.findIndex((timer) => timer.id === id);
+      if (index >= 0) timers.splice(index, 1);
+    },
+  };
+  const advance = (ms: number) => {
+    const until = now + ms;
+    for (let next = timers.sort((a, b) => a.at - b.at)[0]; next && next.at <= until; next = timers.sort((a, b) => a.at - b.at)[0]) {
+      timers.splice(timers.indexOf(next), 1);
+      now = next.at;
+      next.run();
+    }
+    now = until;
+  };
+  const sent: InputEvent[][] = [];
+  const moves = new PointerMoves((events) => sent.push(events), clock);
+  // Hovering across the page: nothing while it moves, then where it rests.
+  for (let step = 0; step < 30; step += 1) {
+    moves.move({ x: step / 100, y: 0.5 }, false);
+    advance(16);
+  }
+  assert.equal(sent.length, 0, "no message per move");
+  advance(REST_MS);
+  assert.deepEqual(sent, [[{ t: "mouse", type: "move", x: 0.29, y: 0.5 }]]);
+  // A drag: about every 50 ms, the latest point each time.
+  sent.length = 0;
+  advance(200);
+  for (let step = 0; step < 60; step += 1) {
+    moves.move({ x: 0.3 + step / 1000, y: 0.5 }, true);
+    advance(5);
+  }
+  assert.ok(sent.length >= 5 && sent.length <= 1 + Math.ceil(300 / DRAG_MS), `${sent.length} moves in 300 ms`);
+  assert.deepEqual(sent[0], [{ t: "mouse", type: "move", x: 0.3, y: 0.5 }], "the first goes at once");
+  // The button goes up: the last place goes first.
+  moves.move({ x: 0.9, y: 0.9 }, true);
+  moves.flush();
+  assert.deepEqual(sent.at(-1), [{ t: "mouse", type: "move", x: 0.9, y: 0.9 }]);
+  // A press carries its own place: a move that waits is dropped.
+  sent.length = 0;
+  moves.move({ x: 0.1, y: 0.1 }, false);
+  moves.cancel();
+  advance(REST_MS * 2);
+  assert.deepEqual(sent, []);
+});
+
+test("server-sent events are read as they come: split anywhere, comments left out, several lines of data joined", () => {
+  const parser = new EventStreamParser();
+  assert.deepEqual(parser.push(": open\n\nevent: fra"), []);
+  assert.deepEqual(parser.push('me\nid: 4\ndata: {"seq":4}\n\n: keep-alive\n\n'), [{ event: "frame", data: '{"seq":4}', id: "4" }]);
+  assert.deepEqual(parser.push("event: end\r\ndata: {\r\ndata: }\r\n\r\n"), [{ event: "end", data: "{\n}" }]);
+});
+
+/** A response whose body comes in the chunks given, as fetch gives a stream. */
+function streamed(chunks: string[], init: { status?: number; type?: string } = {}): Response {
+  const encoder = new TextEncoder();
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+      controller.close();
+    },
+  });
+  return new Response(body, { status: init.status ?? 200, headers: { "content-type": init.type ?? "text/event-stream; charset=utf-8" } });
+}
+
+test("frames come as a stream: each opened in order and acknowledged once shown; its end says why; an older server or a proxy that holds it back means one request per frame", async () => {
+  const device = computer();
+  const id = "c2637485-9fa0-4b12-934e-5f6071829304";
+  const fake = relay(device, id, () => 1);
+  const asked: Array<{ path: string; headers: Record<string, string> }> = [];
+  let answer: (path: string) => Promise<Response> = async () => streamed([]);
+  const session = new TakeoverSession(fake.api as never, { liveCardId: "live-4" }, (path, init) => {
+    asked.push({ path, headers: init.headers });
+    return answer(path);
+  });
+  await session.open("https://node.example");
+  const keys = fake.keys()!;
+  const frame = async (seq: number, title: string) => JSON.stringify(await sealMessage(keys.d2w, id, "d2w", seq, packMessage({ t: "frame", w: 1280, h: 800, url: `https://shop.example/${title}`, title, popup: title === "Payment" }, new Uint8Array([0xff, 0xd8, seq]))));
+  const one = await frame(2, "Cart");
+  const two = await frame(3, "Payment");
+  answer = async () => streamed([": open\n\n", `event: frame\nid: 2\ndata: ${one.slice(0, 20)}`, `${one.slice(20)}\n\nevent: frame\nid: 3\ndata: ${two}\n\n`, 'event: end\ndata: {"state":"ended","reason":"closed_by_node"}\n\n']);
+  const shown: Array<{ title?: string | null; popup?: boolean; ended?: string; frame: boolean }> = [];
+  const outcome = await session.stream(new AbortController().signal, (next) => void shown.push({ title: next.page?.title, popup: next.page?.popup, ended: next.ended, frame: Boolean(next.frame) }));
+  assert.equal(outcome, "ended");
+  assert.deepEqual(shown, [{ title: undefined, popup: undefined, ended: undefined, frame: false }, { title: "Cart", popup: false, ended: undefined, frame: true }, { title: "Payment", popup: true, ended: undefined, frame: true }, { title: undefined, popup: undefined, ended: "closed_by_node", frame: false }]);
+  assert.equal(asked[0]!.path, `/api/node/takeovers/${id}/stream?after=0`);
+  assert.equal(asked[0]!.headers["x-ensemble-takeover"], "cap", "the capability is a header, so the stream is a fetch");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(fake.state.calls.filter((call) => call.path.endsWith("/seen")).map((call) => (call.body as { seq: number }).seq), [2, 3], "each shown frame is acknowledged");
+  assert.equal(endedText("closed_by_node", "Studio"), "The node closed this tab.");
+
+  const older = new TakeoverSession(fake.api as never, { liveCardId: "live-4" }, async () => new Response(JSON.stringify({ error: "Not found" }), { status: 404 }));
+  await older.open("https://node.example");
+  assert.equal(await older.stream(new AbortController().signal, () => undefined), "unsupported");
+  const buffered = new TakeoverSession(fake.api as never, { liveCardId: "live-4" }, async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+  await buffered.open("https://node.example");
+  assert.equal(await buffered.stream(new AbortController().signal, () => undefined), "unsupported");
+  const refused = new TakeoverSession(fake.api as never, { liveCardId: "live-4" }, async () => new Response(JSON.stringify({ error: "Only the browser that opened it can control it.", code: "controller" }), { status: 403 }));
+  await refused.open("https://node.example");
+  await assert.rejects(refused.stream(new AbortController().signal, () => undefined), (error: unknown) => error instanceof ApiError && error.status === 403 && !retryable(error));
+  for (const item of [session, older, buffered, refused]) item.close();
 });

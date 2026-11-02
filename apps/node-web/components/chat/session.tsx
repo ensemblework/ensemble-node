@@ -8,12 +8,12 @@
  * another node. Each control calls the same code as the node's own session tools, so the node always
  * knows. Changes show at once; refusals show here.
  */
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowRightLeft, ChevronDown, ScrollText, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowRightLeft, ChevronDown, ChevronRight, ScrollText, SlidersHorizontal, SquareTerminal, X } from "lucide-react";
 import Link from "next/link";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useBootstrap, useHandOver, useSession, useSessionControl, useSessionQueue } from "@/lib/hooks";
 import { requestJump } from "@/lib/jump";
-import { cardLink, handOverChoices, observedMissing, queuedLine, queueOrder, sessionActions, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows } from "@/lib/session";
+import { cardLink, handOverChoices, observedMissing, queuedLine, queueOrder, sessionActions, sessionAgent, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows } from "@/lib/session";
 import { ago, RUN_LABEL } from "@/lib/text";
 import { toast } from "@/lib/toast";
 import type { NodePublic, RunSession, RunSettings, SessionAction, SessionRunRow, SessionSummary } from "@/lib/types";
@@ -75,15 +75,15 @@ export function SettingsView({ settings }: { settings: RunSettings | null | unde
                 <dd className="mt-0.5 flex flex-wrap gap-x-2.5 break-all">
                   <span>
                     <span className="text-muted">Requested </span>
-                    {row.requested ?? "—"}
+                    {row.requested ?? "not set"}
                   </span>
                   <span className={row.mismatch ? "text-warn" : ""}>
                     <span className="text-muted">Resolved </span>
-                    {row.resolved ?? "—"}
+                    {row.resolved ?? "not set"}
                   </span>
                   <span className={row.observed === "not reported" ? "italic text-muted" : row.mismatch ? "text-warn" : ""}>
                     <span className="not-italic text-muted">Observed </span>
-                    {row.observed ?? "—"}
+                    {row.observed ?? "not set"}
                   </span>
                 </dd>
               </div>
@@ -116,9 +116,9 @@ export function SettingsView({ settings }: { settings: RunSettings | null | unde
                       {row.label}
                     </span>
                   </th>
-                  <td className="break-all px-2 py-1">{row.requested ?? "—"}</td>
-                  <td className={`break-all px-2 py-1 ${row.mismatch ? "text-warn" : ""}`}>{row.resolved ?? "—"}</td>
-                  <td className={`break-all px-2 py-1 ${row.observed === "not reported" ? "italic text-muted" : row.mismatch ? "text-warn" : ""}`}>{row.observed ?? "—"}</td>
+                  <td className="break-all px-2 py-1">{row.requested ?? "not set"}</td>
+                  <td className={`break-all px-2 py-1 ${row.mismatch ? "text-warn" : ""}`}>{row.resolved ?? "not set"}</td>
+                  <td className={`break-all px-2 py-1 ${row.observed === "not reported" ? "italic text-muted" : row.mismatch ? "text-warn" : ""}`}>{row.observed ?? "not set"}</td>
                 </tr>
               ))}
             </tbody>
@@ -379,6 +379,7 @@ function SessionCore({
   cardId,
   handles,
   nodes,
+  heading = true,
 }: {
   sessionId: string;
   status: string;
@@ -393,6 +394,8 @@ function SessionCore({
   cardId?: string | null;
   handles: ReadonlySet<string>;
   nodes: ReadonlyMap<string, NodePublic>;
+  /** False inside a run card's folded panel, whose own line already names the session and its status. */
+  heading?: boolean;
 }) {
   const [mode, setMode] = useState<Mode | null>(null);
   const [showTold, setShowTold] = useState(false);
@@ -412,16 +415,22 @@ function SessionCore({
   const announce = (text: string) => setMoved(text);
   return (
     <>
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-        <span className="font-semibold uppercase tracking-wide text-muted">Session</span>
-        <Pill tone={badge.tone}>{badge.label}</Pill>
-        {queue.queue.length ? <span className="text-muted">{queue.queue.length} queued</span> : null}
-        {where ? (
-          <span className="min-w-0 truncate text-muted" title={where}>
-            {where}
-          </span>
-        ) : null}
-      </div>
+      {heading ? (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          <span className="font-semibold uppercase tracking-wide text-muted">Session</span>
+          <Pill tone={badge.tone}>{badge.label}</Pill>
+          {queue.queue.length ? <span className="text-muted">{queue.queue.length} queued</span> : null}
+          {where ? (
+            <span className="min-w-0 truncate text-muted" title={where}>
+              {where}
+            </span>
+          ) : null}
+        </div>
+      ) : where ? (
+        <p className="truncate text-xs text-muted" title={where}>
+          {where}
+        </p>
+      ) : null}
       <SessionManager sessionId={sessionId} managerId={managerId} cardId={cardId} owner={owner} nodes={nodes} />
       {now ? (
         <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 text-[13px]">
@@ -558,6 +567,7 @@ export function SessionPanel({
   told,
   handles,
   nodes,
+  elapsed,
 }: {
   session: RunSession;
   jobId: string;
@@ -569,7 +579,11 @@ export function SessionPanel({
   told?: string | null;
   handles: ReadonlySet<string>;
   nodes: ReadonlyMap<string, NodePublic>;
+  /** The run's time so far, ticking. */
+  elapsed?: ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
   const live = sessionPanelShows(runStatus);
   const query = useSession(session.id, { enabled: owner && onScreen && live, poll: owner && onScreen && live });
   const detail = query.data;
@@ -607,23 +621,51 @@ export function SessionPanel({
     );
   }
 
+  const badge = sessionStatus(status);
+  const agent = sessionAgent(session, detail);
+  // Folded to one line until opened: the run card's own parts (what it asks you, its result) stay outside.
   return (
-    <section className="mt-3 rounded-xl border border-line bg-bg/60 px-2.5 py-2" aria-label="Agent session">
-      <SessionCore
-        sessionId={session.id}
-        status={status}
-        where={sessionPlace({ folder: detail?.folder ?? session.folder, computer: detail?.computer ?? session.computer })}
-        now={running?.title || runTitle}
-        told={told}
-        prompt={running?.prompt}
-        queue={queue}
-        control={control}
-        owner={owner}
-        managerId={managerId}
-        cardId={cardId}
-        handles={handles}
-        nodes={nodes}
-      />
+    <section className="mt-3 rounded-xl border border-line bg-bg/60 px-2.5 py-1" aria-label="Agent session">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        className="flex min-h-8 w-full items-center gap-2 rounded-md text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      >
+        <ChevronRight size={13} className={`shrink-0 text-muted transition-transform ${open ? "rotate-90" : ""}`} aria-hidden />
+        <SquareTerminal size={13} className="shrink-0 text-muted sm:hidden" aria-hidden />
+        <span className="hidden shrink-0 font-semibold uppercase tracking-wide text-muted sm:inline">Session</span>
+        <span className="flex min-w-0 flex-1 items-center gap-x-2 overflow-hidden whitespace-nowrap">
+          {agent.name ? <span className="min-w-[2.5rem] truncate font-medium text-ink/90">{agent.name}</span> : null}
+          <span className="shrink-0">
+            <Pill tone={badge.tone}>{badge.label}</Pill>
+          </span>
+          {elapsed ? <span className="shrink-0 text-muted">{elapsed}</span> : null}
+          {queue.queue.length ? <span className="hidden shrink-0 text-muted sm:inline">{queue.queue.length} queued</span> : null}
+        </span>
+        <span className="shrink-0 text-accent">{open ? "Hide" : "Show"}</span>
+      </button>
+      {open ? (
+        <div id={panelId} className="pb-1.5">
+          <SessionCore
+            sessionId={session.id}
+            status={status}
+            where={sessionPlace({ folder: detail?.folder ?? session.folder, computer: detail?.computer ?? session.computer })}
+            now={running?.title || runTitle}
+            told={told}
+            prompt={running?.prompt}
+            queue={queue}
+            control={control}
+            owner={owner}
+            managerId={managerId}
+            cardId={cardId}
+            handles={handles}
+            nodes={nodes}
+            heading={false}
+          />
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -17,6 +17,7 @@ export type DeviceCodeData = {
   deviceId?: string | null;
   operation?: string | null;
   expiresAt?: string | null;
+  note?: string | null;
 };
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
@@ -28,6 +29,7 @@ const STATES: Record<string, Badge> = {
   pending: { label: "Waiting for you", tone: "warn" },
   done: { label: "Signed in", tone: "ok" },
   expired: { label: "Expired", tone: "muted" },
+  replaced: { label: "Replaced", tone: "muted" },
 };
 
 export function deviceCodeBadge(data: Pick<DeviceCodeData, "status"> | null | undefined): Badge {
@@ -72,5 +74,6 @@ export function deviceCodeOutcome(data: DeviceCodeData): string {
   const on = text(data.computer) ? ` on ${text(data.computer)}` : "";
   if (data.status === "done") return `Signed in: ${command}${on} finished.`;
   if (data.status === "expired") return `The code for ${command}${on} is no longer valid: it expired, or the command ended before it was used.`;
-  return "";
+  if (data.status === "replaced") return text(data.note) || `Replaced by a newer sign-in: ${command}${on}.`;
+  return text(data.note);
 }

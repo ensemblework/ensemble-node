@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AVATAR_SHAPES, avatarTones, NodeAvatar } from "../components/node-avatar";
+import { AVATAR_MORPHS, AVATAR_PATHS, AVATAR_SHAPES, avatarTones, NodeAvatar } from "../components/node-avatar";
 import { ModelLogo } from "../components/model-logo";
 import { MODEL_BRANDS, modelBrand } from "./model-brand";
 import manifest from "../public/providers/manifest.json";
@@ -53,9 +53,16 @@ test("signature shape and eyes remain editable without sharing SVG gradients", (
   const markup = renderToStaticMarkup(createElement(Fragment, null, ...faces));
   const gradients = [...markup.matchAll(/<radialGradient id="([^"]+)"/g)].map(match => match[1]);
   assert.equal(new Set(gradients).size, faces.length);
-  assert.equal(new Set([...markup.matchAll(/<path d="([^"]+)"/g)].map(match => match[1])).size, faces.length);
+  assert.equal(new Set([...markup.matchAll(/<path\b(?=[^>]*class="node-silhouette")[^>]*\bd="([^"]+)"/g)].map(match => match[1])).size, faces.length);
   for (const id of gradients) assert.ok(markup.includes(`fill="url(#${id})"`));
   for (const element of ["circle", "rect", "ellipse"]) assert.equal([...markup.matchAll(new RegExp(`<${element} `, "g"))].length, 4);
+});
+
+test("each outline can morph and return without changing its SVG command structure", () => {
+  for (const shape of AVATAR_SHAPES) {
+    assert.deepEqual(AVATAR_PATHS[shape].match(/[a-z]/gi), AVATAR_MORPHS[shape].match(/[a-z]/gi), shape);
+    assert.equal(AVATAR_PATHS[shape].match(/-?\d+(?:\.\d+)?/g)?.length, AVATAR_MORPHS[shape].match(/-?\d+(?:\.\d+)?/g)?.length, shape);
+  }
 });
 
 test("an unspecified node keeps the original default face and status styling", () => {
@@ -88,9 +95,9 @@ test("eyes sit inside every shape, the narrow spark and compass included", () =>
     for (const eyes of ["dot", "line", "wide"] as const) {
       const markup = renderToStaticMarkup(createElement(NodeAvatar, { avatar: { shape, color: "#B39DDB", eyes } }));
       const points: Array<[number, number]> = [];
-      for (const [, cx, cy, r] of markup.matchAll(/<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"/g)) points.push([+cx! - +r!, +cy!], [+cx! + +r!, +cy!], [+cx!, +cy! - +r!], [+cx!, +cy! + +r!]);
-      for (const [, cx, cy, rx, ry] of markup.matchAll(/<ellipse cx="([\d.]+)" cy="([\d.]+)" rx="([\d.]+)" ry="([\d.]+)"/g)) points.push([+cx! - +rx!, +cy!], [+cx! + +rx!, +cy!], [+cx!, +cy! - +ry!], [+cx!, +cy! + +ry!]);
-      for (const [, x, y, w, h] of markup.matchAll(/<rect x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)) points.push([+x!, +y!], [+x! + +w!, +y!], [+x!, +y! + +h!], [+x! + +w!, +y! + +h!]);
+      for (const [, cx, cy, r] of markup.matchAll(/<circle\b[^>]*cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"/g)) points.push([+cx! - +r!, +cy!], [+cx! + +r!, +cy!], [+cx!, +cy! - +r!], [+cx!, +cy! + +r!]);
+      for (const [, cx, cy, rx, ry] of markup.matchAll(/<ellipse\b[^>]*cx="([\d.]+)" cy="([\d.]+)" rx="([\d.]+)" ry="([\d.]+)"/g)) points.push([+cx! - +rx!, +cy!], [+cx! + +rx!, +cy!], [+cx!, +cy! - +ry!], [+cx!, +cy! + +ry!]);
+      for (const [, x, y, w, h] of markup.matchAll(/<rect\b[^>]*x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)) points.push([+x!, +y!], [+x! + +w!, +y!], [+x!, +y! + +h!], [+x! + +w!, +y! + +h!]);
       assert.equal(points.length, 8, `${shape} ${eyes}`);
       for (const [x, y] of points) assert.ok(inside[shape]!(x, y), `${shape} ${eyes} eye point ${x},${y}`);
     }

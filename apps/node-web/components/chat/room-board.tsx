@@ -271,7 +271,7 @@ function AddPage({ roomId, spaceId, editor, followed, onDone }: { roomId: string
     <div className="space-y-2 rounded-xl border border-line bg-bg/60 p-2.5">
       <div className="flex items-center gap-2">
         <Search size={14} className="shrink-0 text-muted" aria-hidden />
-        <Input autoFocus aria-label="Find a page of the room's space" placeholder="Find a page of the room's space" value={q} onChange={(event) => (setQ(event.target.value), setPicked(null))} className="py-1.5" />
+        <Input autoFocus aria-label="Find a page of the room's space" placeholder="Find a page of the room's space" value={q} onChange={(event) => (setQ(event.target.value), setPicked(null))} className="search-field py-1.5" />
         <button type="button" aria-label="Close" onClick={onDone} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink">
           <X size={14} />
         </button>

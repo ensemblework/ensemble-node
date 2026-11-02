@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ago, insertMention, linkTarget, matchHandles, mergeMessage, modelLabel, pieces, typingMention } from "./text";
+import { ago, draftMentionParts, insertMention, linkTarget, matchHandles, mergeMessage, modelLabel, pieces, typingMention } from "./text";
 
 test("time ago is short", () => {
   const now = Date.parse("2026-10-19T12:00:00Z");
@@ -35,6 +35,24 @@ test("the composer finds the @ being typed and inserts the chosen handle", () =>
   ];
   assert.deepEqual(matchHandles(options, "m").map((row) => row.handle), ["manager", "mira"]);
   assert.deepEqual(matchHandles(options, "writer").map((row) => row.handle), ["docs"]);
+});
+
+test("draft annotations preserve every character and mark only complete, valid room handles", () => {
+  const handles = new Set(["node-1", "writer", "everyone"]);
+  const value = "@NODE-1 can you ask (@writer)?\n@node-10 @stranger mira@writer.example @everyone";
+  const parts = draftMentionParts(value, handles);
+  assert.equal(parts.map(part => part.text).join(""), value);
+  assert.deepEqual(parts.flatMap(part => part.mention ?? []), ["node-1", "writer", "everyone"]);
+  assert.deepEqual(draftMentionParts("@writ", handles), [{ text: "@writ" }]);
+  assert.deepEqual(draftMentionParts("@nodes", handles), [{ text: "@nodes" }], "a reserved handle must still be offered in this room");
+});
+
+test("typing mentions never annotates code, email or a URL, or changes raw Markdown in the draft", () => {
+  const value = "`@writer` https://example.com/@writer mira@writer.example\n```ts\n@writer\n```\n**@writer** and [a link](https://example.com/@writer)";
+  const parts = draftMentionParts(value, new Set(["writer"]));
+  assert.equal(parts.map(part => part.text).join(""), value);
+  assert.deepEqual(parts.flatMap(part => part.mention ?? []), ["writer"], "the mention inside emphasis is valid, unlike code and URLs");
+  assert.deepEqual(draftMentionParts("```\n@writer", new Set(["writer"])), [{ text: "```\n@writer" }]);
 });
 
 test("messages merge by id or clientId, in seq order", () => {

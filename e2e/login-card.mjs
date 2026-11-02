@@ -174,14 +174,14 @@ try {
     await card.getByText("@lead needs you to sign in to ledger.example.com").waitFor();
     assert.ok(await card.getByText("On Mira's laptop · Why: the page has a password field.").isVisible());
     assert.ok(await card.getByText("only you").isVisible(), "owner only");
-    const answers = await card.getByRole("button").allInnerTexts();
+    const answers = await card.locator("[data-owner-card]").getByRole("button").allInnerTexts();
     assert.deepEqual(answers.map((text) => text.trim()).filter((text) => !/Open on your phone/.test(text)), ["Sign in here", "Type my login", "Use saved login", "Not now"], "the remote view first, then the rest");
     assert.equal(await card.getByRole("button", { name: "Use the window on Mira's laptop" }).count(), 0, "no screen there: no window to use");
     // The time left to sign in, ticking.
     const timer = card.getByRole("timer");
-    assert.match(await timer.innerText(), /^1:59:\d\d left$/, "the card's two hours, counting down");
     const first = await timer.getAttribute("data-countdown");
     await page.waitForFunction((before) => document.querySelector('#m-c-login [role="timer"]')?.getAttribute("data-countdown") !== before, first, { timeout: 3000 });
+    assert.match(await timer.innerText(), /^1:59:\d\d left$/, "the card's two hours, counting down");
     assert.match(await timer.getAttribute("aria-label"), /^1 hour 59 minutes left to sign in$/);
     if (phone) {
       assert.equal(await card.getByText(/Works on your phone too/).count(), 0, "on a phone it is already one");
@@ -266,7 +266,7 @@ try {
     // A human check: only the remote view, the window on the computer, and Not now.
     const check = page.locator("#m-c-check");
     await check.getByText("@lead needs you to pass a human check on www.walmart.com").waitFor();
-    assert.deepEqual((await check.getByRole("button").allInnerTexts()).map((text) => text.trim()).filter((text) => !/Open on your phone/.test(text)), ["Open it here", "Use the window on Mira's laptop", "Not now"]);
+    assert.deepEqual((await check.locator("[data-owner-card]").getByRole("button").allInnerTexts()).map((text) => text.trim()).filter((text) => !/Open on your phone/.test(text)), ["Open it here", "Use the window on Mira's laptop", "Not now"]);
     if (shots) await check.screenshot({ path: `${shots}/login-v2-human-check-${width}.png` });
     await check.getByRole("button", { name: "Use the window on Mira's laptop" }).click();
     await check.getByText(/It is open on Mira's laptop/).waitFor();

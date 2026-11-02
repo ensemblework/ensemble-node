@@ -449,7 +449,7 @@ try {
     assert.ok(await perm.getByText("Run python3 search.py?").isVisible());
     assert.ok(await perm.getByLabel("Command").getByText(RUN_COMMAND).isVisible());
     assert.ok(await perm.getByText("/home/akash/.agents/skills/web-search").isVisible(), "the folder");
-    assert.deepEqual((await perm.getByRole("button").allInnerTexts()).map((text) => text.trim()), ["In the run “Fix the flaky price parser”", "Allow once", "Don't allow"], "once only, on a paired computer");
+    assert.deepEqual((await perm.locator("[data-owner-card]").getByRole("button").allInnerTexts()).map((text) => text.trim()), ["In the run “Fix the flaky price parser”", "Allow once", "Don't allow"], "once only, on a paired computer");
     const question = timeline.locator('[id="m-c-run-ask"]');
     await question.getByText("GitHub Copilot asks you").waitFor();
     assert.ok(await question.getByRole("button", { name: /Use main/ }).getByText("Recommended").isVisible());

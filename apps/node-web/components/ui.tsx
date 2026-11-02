@@ -1,9 +1,9 @@
 "use client";
 
-import { ExternalLink, Info, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, ExternalLink, Info, Pause, Play, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type AnchorHTMLAttributes, type RefObject, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
-import { dismissToast, useToasts } from "@/lib/toast";
+import { dismissToast, TOAST_MS, useToasts, type Toast } from "@/lib/toast";
 
 type Tone = "primary" | "ghost" | "danger" | "quiet";
 
@@ -178,21 +178,66 @@ export function Segmented<T extends string>({ value, onChange, options, label, s
   );
 }
 
-/** Toasts from `lib/toast`, at the bottom of the screen. */
+function ToastItem({ row }: { row: Toast }) {
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [held, setHeld] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  const remaining = useRef(TOAST_MS);
+  const paused = hovered || focused || held || hidden;
+  useEffect(() => {
+    const sync = () => setHidden(document.hidden);
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
+  useEffect(() => {
+    if (paused) return;
+    const started = performance.now();
+    const timer = window.setTimeout(() => dismissToast(row.id), remaining.current);
+    return () => {
+      window.clearTimeout(timer);
+      remaining.current = Math.max(0, remaining.current - (performance.now() - started));
+    };
+  }, [paused, row.id]);
+  const Icon = row.tone === "error" ? AlertCircle : row.tone === "ok" ? CheckCircle2 : Info;
+  const tone = row.tone === "error" ? "text-danger" : row.tone === "ok" ? "text-ok" : "text-accent";
+  return (
+    <div role={row.tone === "error" ? "alert" : "status"} className="node-toast pointer-events-auto relative flex w-full max-w-[420px] items-center gap-2.5 overflow-hidden rounded-xl border border-line bg-panel px-3 py-2 text-sm text-ink shadow-lg"
+      data-paused={paused || undefined}
+      onPointerEnter={event => { if (event.pointerType === "mouse") setHovered(true); }} onPointerLeave={() => setHovered(false)}
+      onFocus={event => setFocused(event.target.matches(":focus-visible"))}
+      onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}>
+      <Icon size={17} className={`shrink-0 ${tone}`} aria-hidden />
+      <span className="min-w-0 flex-1 break-words">{row.text}</span>
+      <button type="button" className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink" aria-label={held ? "Resume notification timer" : "Pause notification timer"} aria-pressed={held} onClick={event => { setHeld(value => !value); if (event.detail > 0) setFocused(false); }}>
+        {held ? <Play size={14} className="pointer-events-none" aria-hidden /> : <Pause size={14} className="pointer-events-none" aria-hidden />}
+      </button>
+      <button type="button" className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink" aria-label="Dismiss notification" onClick={() => dismissToast(row.id)}><X size={15} className="pointer-events-none" aria-hidden /></button>
+      <span className={`toast-drain absolute inset-x-0 bottom-0 h-0.5 origin-left ${row.tone === "error" ? "bg-danger/60" : "bg-accent/60"}`} style={{ animationDuration: `${TOAST_MS}ms`, animationPlayState: paused ? "paused" : "running" }} aria-hidden />
+    </div>
+  );
+}
+
+/** One local countdown per visible notification, paused while it is being read. */
 export function Toaster() {
   const toasts = useToasts();
+  const current = useRef(toasts);
+  const mounted = useRef(false);
+  current.current = toasts;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      const ids = current.current.map(row => row.id);
+      // Strict Mode's immediate remount keeps its notifications; leaving the app does not.
+      queueMicrotask(() => { if (!mounted.current) for (const id of ids) dismissToast(id); });
+    };
+  }, []);
   if (!toasts.length) return null;
-  const tones = { info: "border-line bg-panel text-ink", ok: "border-ok/40 bg-panel text-ok", error: "border-danger/40 bg-panel text-danger" };
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-3 z-[60] flex flex-col items-center gap-2 px-4" aria-live="polite">
-      {toasts.map((row) => (
-        <div key={row.id} role={row.tone === "error" ? "alert" : "status"} className={`pointer-events-auto flex max-w-md items-start gap-2 rounded-xl border px-3 py-2 text-sm shadow-xl ${tones[row.tone]}`}>
-          <span className="min-w-0 flex-1">{row.text}</span>
-          <button className="text-muted hover:text-ink" aria-label="Dismiss" onClick={() => dismissToast(row.id)}>
-            <X size={14} />
-          </button>
-        </div>
-      ))}
+    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[70] flex flex-col items-center gap-2 px-4">
+      {toasts.map(row => <ToastItem key={row.id} row={row} />)}
     </div>
   );
 }

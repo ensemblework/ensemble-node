@@ -16,7 +16,8 @@ import { toast, toastError } from "@/lib/toast";
 import type { HeldCall, Member, Message, MessageFile, NodePublic, PeerRequest, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { messageTask } from "@/lib/work";
 import { toolChipSummary } from "@/lib/work-log";
-import { NodeAvatar, PersonAvatar } from "../node-avatar";
+import { PersonAvatar } from "../node-avatar";
+import { NodeCompanion } from "../node-companion";
 import { SecretBox } from "../secret-box";
 import { LoginBox } from "../login-box";
 import { ToolIcon } from "../tool-icon";
@@ -667,7 +668,7 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
       <MessageActions message={message} ctx={ctx} mine={false} open={press.open} setOpen={press.setOpen} />
       <div className="w-9 shrink-0">
         {grouped ? null : node ? (
-          <NodeAvatar node={node} size={32} title={node.name} />
+          <NodeCompanion node={node} size={32} compact />
         ) : asker ? (
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-raised text-accent" title={`${asker}'s request`}>
             <Handshake size={16} aria-hidden />

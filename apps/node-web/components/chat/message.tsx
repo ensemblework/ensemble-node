@@ -37,6 +37,7 @@ import { PlanCard } from "./plan-card";
 import { CrewAddCard, DisclosureCard, NodeProposalCard, RequestCard, RequestDraftCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
 import { DecisionLine, DeclinedLine, DigestCard, PageRoleLine, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
 import { SudoCard } from "./sudo-card";
+import { OriginalFilesCard, SentFileQuotes } from "../files/cards";
 
 export type MessageContext = {
   meId: string;
@@ -613,6 +614,7 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
         <div className="min-w-0 max-w-[88%] md:max-w-[78%]">
           {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine /> : null}
           {deleted ? null : <SharedLine message={message} ctx={ctx} mine />}
+          {deleted ? null : <SentFileQuotes quotes={message.data.fileQuotes} own />}
           {deleted || message.body ? (
             <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
               {deleted ? <Deleted /> : <RichText text={message.body} handles={ctx.handles} />}
@@ -696,11 +698,14 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
           </div>
         )}
         {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine={false} /> : null}
+        {deleted ? null : <SentFileQuotes quotes={message.data.fileQuotes} own={message.authorAccountId === ctx.meId} />}
         <div className={`rounded-2xl transition ${ring}`}>
           {message.kind === "approval" ? (
             <ApprovalCard message={message} ctx={ctx} node={node} />
           ) : message.kind === "run" ? (
             <RunCard message={message} ctx={ctx} node={node} />
+          ) : message.kind === "files" ? (
+            <OriginalFilesCard message={message} />
           ) : message.kind === "plan" ? (
             <PlanCard message={message} ctx={ctx} />
           ) : message.kind === "request" ? (

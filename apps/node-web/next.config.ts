@@ -6,6 +6,11 @@ const problems = environmentProblems(process.env);
 if (problems.length) throw new Error(`Ensemble Node build settings:\n- ${problems.join("\n- ")}`);
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["@ensemble/ide-theme"],
+  webpack(config) {
+    config.resolve.extensionAlias = { ...config.resolve.extensionAlias, ".js": [".ts", ".tsx", ".js"] };
+    return config;
+  },
   // The commit this build is published from (set by .github/actions/vercel-deploy); /health reports it.
   env: { ENSEMBLE_NODE_COMMIT: process.env.ENSEMBLE_NODE_COMMIT ?? "" },
   devIndicators: false,

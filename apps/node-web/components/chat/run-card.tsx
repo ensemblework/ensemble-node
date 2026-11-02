@@ -14,7 +14,7 @@
  * ComposerPendingApprovalPanel (MIT License, Copyright (c) 2026 T3 Tools Inc.).
  */
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
-import { ChevronRight, CircleStop, ExternalLink, Hammer } from "lucide-react";
+import { ArrowUpRight, ChevronRight, CircleStop, ExternalLink, FileCode2, Hammer } from "lucide-react";
 import { pageAddress, takeoverReady } from "@/lib/captures";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { approvalCheckpoint, decisionCheckpoint, type Checkpoint } from "@/lib/checkpoints";
@@ -40,6 +40,7 @@ import { SessionFooter, SessionPanel, sessionPanelShows, SettingsView, ToldDiscl
 import { WorkLogView } from "./work-log";
 import { ModelLogo } from "../model-logo";
 import { TakeoverView } from "../takeover-view";
+import { useFileWorkspace } from "../files/workspace";
 
 const RUN_TONE: Record<string, "ok" | "warn" | "danger" | "accent" | "muted"> = {
   succeeded: "ok",
@@ -106,7 +107,8 @@ function DiffStat({ added, removed }: { added: number; removed: number }) {
   );
 }
 
-function ChangedFiles({ files }: { files: Array<{ path: string; added: number; removed: number }> }) {
+function ChangedFiles({ files, jobId, deviceId }: { files: Array<{ path: string; added: number; removed: number }>; jobId: string; deviceId?: string | null }) {
+  const workspace = useFileWorkspace();
   const [all, setAll] = useState(false);
   const shown = all ? files : files.slice(0, 6);
   const added = files.reduce((sum, file) => sum + (file.added || 0), 0);
@@ -121,11 +123,11 @@ function ChangedFiles({ files }: { files: Array<{ path: string; added: number; r
       </div>
       <ul className="mt-1 space-y-0.5">
         {shown.map((file) => (
-          <li key={file.path} className="flex items-center justify-between gap-3 font-mono text-[11px]">
-            <span className="min-w-0 truncate text-muted" title={file.path}>
-              {shortPath(file.path, 60)}
-            </span>
-            <DiffStat added={file.added || 0} removed={file.removed || 0} />
+          <li key={file.path}>
+            <button type="button" onClick={() => workspace.open({ source: { kind: "job", id: jobId, path: file.path }, deviceId })} className="group flex min-h-10 w-full items-center gap-2 rounded-lg px-1.5 text-left text-xs hover:bg-raised" title={`Open original: ${file.path}`}>
+              <FileCode2 size={14} className="shrink-0 text-accent/80" /><span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted">{shortPath(file.path, 60)}</span>
+              <DiffStat added={file.added || 0} removed={file.removed || 0} /><ArrowUpRight size={12} className="shrink-0 text-muted" />
+            </button>
           </li>
         ))}
       </ul>
@@ -454,7 +456,7 @@ export function RunCard({ message, ctx, node, requirementOf, inStep = false }: {
       ) : null}
       {/* Inside a plan step, the step's own gallery already holds its runs' evidence. */}
       {evidence.length && !inStep ? <EvidenceGallery items={evidence} requirementOf={requirementOf} className="mt-3" /> : null}
-      {detail?.files?.length ? <ChangedFiles files={detail.files} /> : null}
+      {detail?.files?.length ? <ChangedFiles files={detail.files} jobId={jobId} deviceId={detail.deviceId} /> : null}
       {reply ? (
         <div className="mt-3">
           <RichText text={reply} handles={ctx.handles} small kindLinks={Boolean(report)} />

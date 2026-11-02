@@ -1,4 +1,5 @@
 import type { EntityRef } from "./entity-text";
+import type { FileQuote } from "./original-files";
 /** What Ensemble's `/api/node/*` routes send (Ensemble docs/35). */
 
 export type AvatarShape = "orb" | "square" | "spark" | "hex" | "leaf" | "compass";
@@ -35,7 +36,7 @@ export type Member = NodeMember | PersonMember;
  * plan: a lead's plan for its crew, with its steps; cards of the steps carry its id in `planId`.
  * request: a peer request's public card in a room with other people, updated in place.
  */
-export type MessageKind = "text" | "approval" | "run" | "status" | "error" | "plan" | "request";
+export type MessageKind = "text" | "approval" | "run" | "status" | "error" | "plan" | "request" | "files";
 
 export type PlanStepStatus = "waiting" | "working" | "done" | "blocked" | "skipped" | "stopped";
 export type StepKind = "build" | "verify" | "write" | "research" | "other";
@@ -304,7 +305,7 @@ export type Message = {
   body: string;
   /** `files` on a person's message; `replyTo`, `tools`, `reactions`, card fields and more by kind. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: Record<string, any> & { files?: MessageFile[]; replyTo?: ReplyTo };
+  data: Record<string, any> & { files?: MessageFile[]; replyTo?: ReplyTo; fileQuotes?: FileQuote[] };
   private: boolean;
   mentions: Array<{ kind: "human" | "node"; id: string }>;
   rootMessageId: string | null;

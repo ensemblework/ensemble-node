@@ -24,6 +24,8 @@ ensemble-node/
 │   │       ├── activity/        approvals, runs, turns, computers, credits
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, computers, browsing, sign out
 │   ├── components/
+│   │   ├── files/               split workspace and file list (workspace.tsx), lazy original editor,
+│   │   │                        file/selection cards, canonical theme mapping and theme picker
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
 │   │   │                        run card and its work log (run-card.tsx, work-log.tsx), the session parts of a run
 │   │   │                        card (session.tsx: settings, queue, controls), a worker's report (report.tsx),
@@ -81,6 +83,8 @@ ensemble-node/
 │   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, drawer, menus, pausable notification timers,
 │   │   │                        External (new-tab links)
 │   ├── lib/
+│   │   ├── original-files.ts, file-buffers.ts
+│   │   │                        original references, line quotes, pane bounds and memory-only save queues (tested)
 │   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads, uploads to Files with
 │   │   │                        progress and cancel; URLs and links into Ensemble
 │   │   ├── environment.ts       testing or production; refuses a build that mixes them (tested)

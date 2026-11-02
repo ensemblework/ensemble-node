@@ -1,21 +1,23 @@
 "use client";
 
-import { ArrowUp, CornerUpLeft, ListChecks, Lock, Square, Users, X } from "lucide-react";
+import { ArrowUp, CornerUpLeft, ListChecks, Lock, Quote, Square, Users, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { leadsStatus } from "@/lib/rooms";
 import { draftMentionParts, insertMention, matchHandles, typingMention } from "@/lib/text";
 import type { Avatar, MessageFile, NodePublic } from "@/lib/types";
+import { fileName, type FileQuote } from "@/lib/original-files";
+import { toastError } from "@/lib/toast";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { AttachButton, AttachmentShelf, DropHint, pasteFiles, useAttachments, useFileDrop } from "./attachments";
 
 export type MentionOption = { handle: string; label: string; detail: string; avatar?: Avatar; node?: NodePublic; person?: boolean };
-const drafts = new Map<string, { body: string; private: boolean }>();
+const drafts = new Map<string, { body: string; private: boolean; fileQuotes: FileQuote[] }>();
 
 /** The message being replied to, shown above the composer. */
 export type ComposerReply = { id: string; author: string; excerpt: string; private: boolean };
 
 /** A message put back into the composer (a failed one, to edit). A new `nonce` puts it back again. */
-export type ComposerDraft = { nonce: number; body: string; private: boolean; files: MessageFile[] };
+export type ComposerDraft = { nonce: number; body: string; private: boolean; files: MessageFile[]; fileQuotes?: FileQuote[] };
 
 /**
  * Who reads what is sent. none: a chat with only my nodes. choice: a room's shared thread, where I send
@@ -56,10 +58,11 @@ export function Composer({
   /** Turns attachments on; says who can read what is attached here. */
   attachHint?: string;
   draft?: ComposerDraft | null;
-  onSend: (body: string, isPrivate: boolean, files: MessageFile[]) => void;
+  onSend: (body: string, isPrivate: boolean, files: MessageFile[], fileQuotes: FileQuote[]) => void;
   onStop: () => void;
 }) {
   const [value, setValue] = useState(() => drafts.get(draftKey)?.body ?? "");
+  const [fileQuotes, setFileQuotes] = useState<FileQuote[]>(() => drafts.get(draftKey)?.fileQuotes ?? []);
   const [cursor, setCursor] = useState(0);
   const [index, setIndex] = useState(0);
   const [isPrivate, setPrivate] = useState(() => drafts.get(draftKey)?.private ?? false);
@@ -79,9 +82,24 @@ export function Composer({
   const privateNow = isPrivate || lockedPrivate;
   const statusAsk = privacy !== "none" && leadsStatus(value);
   useEffect(() => {
-    if (value) drafts.set(draftKey, { body: value, private: privateNow });
+    if (value || fileQuotes.length) drafts.set(draftKey, { body: value, private: privateNow, fileQuotes });
     else drafts.delete(draftKey);
-  }, [draftKey, value, privateNow]);
+  }, [draftKey, value, privateNow, fileQuotes]);
+  useEffect(() => {
+    const quoted = (event: Event) => {
+      const { draftKey: target, quote } = (event as CustomEvent<{ draftKey: string; quote: FileQuote }>).detail;
+      if (target !== draftKey) return;
+      setFileQuotes(current => {
+        if (current.length >= 4 || quote.text.length > 12_000 || current.reduce((sum, item) => sum + item.text.length, quote.text.length) > 24_000) {
+          toastError(new Error("Add up to four selections, with at most 24,000 characters in total.")); return current;
+        }
+        return [...current, quote];
+      });
+      requestAnimationFrame(() => area.current?.focus());
+    };
+    window.addEventListener("node:file-quote", quoted);
+    return () => window.removeEventListener("node:file-quote", quoted);
+  }, [draftKey]);
 
   const replyId = reply?.id;
   useEffect(() => {
@@ -107,6 +125,7 @@ export function Composer({
     setValue((current) => (current.trim() ? `${current}\n${restored.body}` : restored.body));
     setPrivate(restored.private);
     if (restored.files.length) addExisting(restored.files);
+    if (restored.fileQuotes?.length) setFileQuotes(restored.fileQuotes);
     area.current?.focus();
   }, [draftNonce, addExisting]);
 
@@ -123,14 +142,16 @@ export function Composer({
 
   const files = attachments.files;
   const blocker = attachments.blocker;
-  const canSend = Boolean(value.trim() || files.length) && !blocker && !disabled;
+  const canSend = Boolean(value.trim() || files.length || fileQuotes.length) && !blocker && !disabled;
 
   const send = () => {
     if (!canSend) return;
-    onSend(value.trim(), privateNow, files);
+    drafts.delete(draftKey);
+    onSend(value.trim(), privateNow, files, fileQuotes);
     setValue("");
     setCursor(0);
     attachments.clear();
+    setFileQuotes([]);
   };
 
   return (
@@ -185,6 +206,11 @@ export function Composer({
           </p>
         ) : null}
         <AttachmentShelf attachments={attachments} />
+        {fileQuotes.length ? <div className="mx-1 mb-2 space-y-1.5" aria-label="Quoted file selections">{fileQuotes.map((quote, index) => <div key={index} className="flex items-start gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2">
+          <Quote size={14} className="mt-0.5 shrink-0 text-accent" />
+          <span className="min-w-0 flex-1" title={quote.location ?? quote.source.path}><span className="block truncate text-xs font-medium">{fileName(quote.source.path)} <span className="font-normal text-muted">· {quote.from === quote.to ? `line ${quote.from}` : `lines ${quote.from}–${quote.to}`}{quote.draft ? " · unsaved" : ""}</span></span><span className="mt-0.5 line-clamp-2 whitespace-pre-wrap font-mono text-[11px] leading-5 text-muted">{quote.text}</span></span>
+          <button type="button" aria-label={`Remove quoted selection from ${fileName(quote.source.path)}`} onClick={() => setFileQuotes(current => current.filter((_, at) => at !== index))} className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink"><X size={13} /></button>
+        </div>)}<p className="px-1 text-[10px] text-muted">These selected lines and their file reference will be included in your message.</p></div> : null}
         <div className="mention-editor relative min-w-0">
         <div ref={mirror} aria-hidden className="mention-copy mention-mirror pointer-events-none absolute inset-0 overflow-hidden">
           {parts.map((part, at) => part.mention ? <span key={at} className="draft-mention" data-mention={part.mention}>{part.text}</span> : <span key={at}>{part.text}</span>)}{"\n"}

@@ -10,7 +10,7 @@
  */
 import Link from "next/link";
 import { MessageSquare, Search, SquareTerminal } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { nodesById, useBootstrap, useSessionList } from "@/lib/hooks";
 import { requestJump } from "@/lib/jump";
 import { cardLink, runsCount, sessionLatest, sessionPlace, sessionStatus } from "@/lib/session";
@@ -73,6 +73,7 @@ export function SessionsView() {
   const boot = useBootstrap();
   const [typed, setTyped] = useState("");
   const [q, setQ] = useState("");
+  const [expandedQuery, setExpandedQuery] = useState<string | null>(null);
   const list = useSessionList(q);
   const [open, setOpen] = useState<SessionSummary | null>(null);
   const nodes = nodesById(boot.data);
@@ -81,7 +82,9 @@ export function SessionsView() {
     const timer = setTimeout(() => setQ(typed.trim()), 250);
     return () => clearTimeout(timer);
   }, [typed]);
-  const rows = list.data ?? [];
+  const rows = useMemo(() => [...(list.data ?? [])].sort((a, b) => (Date.parse(b.lastActiveAt) || 0) - (Date.parse(a.lastActiveAt) || 0)), [list.data]);
+  const expanded = expandedQuery === q;
+  const shown = expanded ? rows : rows.slice(0, 5);
   // The open session follows the list (who manages it, its state) while it is open.
   const opened = open ? (rows.find((row) => row.id === open.id) ?? open) : null;
   return (
@@ -89,7 +92,7 @@ export function SessionsView() {
       <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 md:px-8">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">Sessions</h1>
-          <p className="text-sm text-muted">Your coding agents&apos; sessions on your computers, the most recently active first: the ones your nodes manage, and the ones started in Ensemble or the CLI. Hand one to another node, or give one no node manages to a node, so it carries the work on.</p>
+          <p className="text-sm text-muted">Your agents&apos; sessions, most recently used first. Pick up work from Node, Ensemble or the CLI.</p>
         </div>
         <label className="flex items-center gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2 text-muted focus-within:border-accent">
           <Search size={15} className="shrink-0" aria-hidden />
@@ -103,11 +106,17 @@ export function SessionsView() {
         ) : list.error ? (
           <Notice tone="error">{list.error.message}</Notice>
         ) : rows.length ? (
+          <div className="space-y-4">
           <ul className="space-y-2" aria-label="Sessions">
-            {rows.map((row) => (
+            {shown.map((row) => (
               <SessionRow key={row.id} row={row} nodes={nodes} onOpen={() => setOpen(row)} />
             ))}
           </ul>
+          {rows.length > 5 ? <div className="flex items-center justify-between gap-3 text-xs text-muted">
+            <span>{expanded ? rows.length : 5} of {rows.length} sessions</span>
+            <Button tone="quiet" size="sm" aria-expanded={expanded} onClick={() => setExpandedQuery(expanded ? null : q)}>{expanded ? "Show less" : `Show more (${rows.length - 5})`}</Button>
+          </div> : null}
+          </div>
         ) : (
           <div className="flex items-center gap-3 rounded-2xl border border-dashed border-line px-4 py-6 text-sm text-muted">
             <SquareTerminal size={20} className="shrink-0" aria-hidden />

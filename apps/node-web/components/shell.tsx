@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Activity as ActivityIcon, Inbox, Lock, Menu, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Plug, Repeat, Search, Settings, SquarePen, SquareTerminal, Users } from "lucide-react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { Activity as ActivityIcon, Ellipsis, Inbox, Lock, Menu, Palette, PanelLeftClose, PanelLeftOpen, Plug, Repeat, Search, Settings, SquarePen, SquareTerminal } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { requestJump } from "@/lib/jump";
@@ -14,12 +14,16 @@ import { messagePreview } from "@/lib/chat";
 import { recentConversations, roomKindName, waitingRooms, type ConversationFilter } from "@/lib/conversations";
 import { toastError } from "@/lib/toast";
 import { ago } from "@/lib/text";
+import { nodeIsResting } from "@/lib/node-life";
+import { SIDEBAR_MAX, SIDEBAR_MIN } from "@/lib/sidebar";
 import type { Bootstrap, Room } from "@/lib/types";
-import { ActivityPanel } from "./activity";
 import { Mark } from "./brand";
 import { SearchPanel } from "./chat/search";
 import { NodeAvatar, PersonAvatar } from "./node-avatar";
-import { Drawer, IconButton, Spinner, Toaster } from "./ui";
+import { NodeLifeProvider, useNodeVisits } from "./node-life";
+import { RoomAvatar } from "./room-avatar";
+import { SidebarFrame, useSidebarWidth } from "./sidebar-frame";
+import { Drawer, IconButton, Spinner, Toaster, useDismiss } from "./ui";
 
 export function dmRoomOf(boot: Bootstrap | undefined, nodeId: string): Room | undefined {
   return boot?.rooms.find((room) => room.kind === "dm" && room.members.some((member) => member.kind === "node" && member.node.id === nodeId));
@@ -27,6 +31,7 @@ export function dmRoomOf(boot: Bootstrap | undefined, nodeId: string): Room | un
 
 /** A conversation in the list. `waiting`: how many things wait for me there (its cards, runs that wait on my answer): a "needs you" dot. */
 function RoomRow({ room, boot, busy, active, waiting = 0, compact = false, onNavigate }: { room: Room; boot: Bootstrap; busy: Set<string>; active: boolean; waiting?: number; compact?: boolean; onNavigate?: () => void }) {
+  const life = useNodeVisits();
   const thinking = room.members.some(member => member.kind === "node" && busy.has(member.node.id));
   const preview = thinking ? "Thinking…" : room.last ? `${room.last.failed ? "Not sent · " : room.last.sending ? "Sending · " : ""}${messagePreview(room.last)}` : "Start a conversation";
   let icon: ReactNode;
@@ -34,15 +39,15 @@ function RoomRow({ room, boot, busy, active, waiting = 0, compact = false, onNav
   if (room.kind === "dm") {
     const member = room.members.find((row) => row.kind === "node");
     const node = boot.nodes.find((row) => member?.kind === "node" && row.id === member.node.id);
-    icon = <NodeAvatar node={node} size={38} thinking={thinking} dim={node?.status === "paused"} />;
+    icon = <NodeAvatar node={node} size={38} resting={life.ready && !active && !thinking && node?.status !== "paused" && nodeIsResting(room.lastMessageAt, node ? life.visits[node.id] : undefined, Date.now())} dim={node?.status === "paused"} />;
     if (node) title = `${node.name} (@${node.slug})${node.status === "paused" ? " · paused" : ""}`;
   } else {
-    icon = <span className="flex size-[38px] shrink-0 items-center justify-center rounded-[13px] border border-line bg-raised text-muted"><Users size={18} strokeWidth={1.7} /></span>;
+    icon = <RoomAvatar room={room} size={38} busy={busy} />;
   }
   const needs = waiting ? `${waiting === 1 ? "Something waits" : `${waiting} things wait`} for you here` : null;
   return (
     <Link href={`/r/${room.id}`} onClick={onNavigate} title={needs ? `${title} · ${needs}` : title} aria-label={`${room.title}${room.unread ? `, ${room.unread} unread` : ""}${waiting ? ", needs you" : ""}`} aria-current={active ? "page" : undefined}
-      data-conversation={room.id} data-needs-you={waiting || undefined} className={`chat-room-row relative flex items-center gap-3 rounded-2xl ${compact ? "justify-center px-1 py-2" : "px-3 py-3"} ${active ? "bg-accent/10" : "hover:bg-raised/70"}`}>
+      data-conversation={room.id} data-needs-you={waiting || undefined} className={`chat-room-row relative flex items-center gap-3 rounded-xl ${compact ? "justify-center px-1 py-2" : "px-3 py-3"} ${active ? "bg-raised" : "hover:bg-raised/60"}`}>
       {icon}
       {compact && waiting ? <span className="absolute bottom-1.5 right-1 size-2.5 rounded-full bg-warn ring-2 ring-panel" aria-hidden /> : null}
       {!compact ? <span className="min-w-0 flex-1">
@@ -76,14 +81,55 @@ function NavLink({ href, icon: Icon, label, badge, active, compact, onNavigate }
   );
 }
 
-function Sidebar({ boot, onNavigate, onSearch, waiting, compact = false, onCollapse }: { boot: Bootstrap; onNavigate?: () => void; onSearch: () => void; waiting: ReadonlyMap<string, { count: number }>; compact?: boolean; onCollapse?: () => void }) {
+function SidebarWorkspace({ boot, compact, waiting, onNavigate, width, onWidth }: { boot: Bootstrap; compact: boolean; waiting: number; onNavigate?: () => void; width?: number; onWidth?: (value: number) => void }) {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const id = useId();
+  const close = useCallback(() => setOpen(false), []);
+  useDismiss(open, close, ref);
+  useEffect(() => {
+    if (open) ref.current?.querySelector<HTMLAnchorElement>("nav a")?.focus();
+  }, [open]);
+  const navigate = () => { setOpen(false); onNavigate?.(); };
+  return (
+    <div ref={ref} className="relative shrink-0 border-t border-line p-2" onKeyDown={event => { if (event.key === "Escape" && open) { event.stopPropagation(); setOpen(false); trigger.current?.focus(); } }}>
+      {open ? <nav id={id} aria-label="Workspace" className={`scroll-thin absolute bottom-full left-2 z-40 mb-2 max-h-[65dvh] overflow-y-auto rounded-2xl border border-line bg-panel p-1.5 shadow-xl ${compact ? "w-60" : "right-2"}`}>
+        <div className="px-2.5 py-2 text-[11px] font-medium text-muted">Workspace</div>
+        <NavLink href="/routines" icon={Repeat} label="Routines" active={pathname === "/routines"} onNavigate={navigate} />
+        <NavLink href="/sessions" icon={SquareTerminal} label="Sessions" active={pathname === "/sessions"} onNavigate={navigate} />
+        <NavLink href="/requests" icon={Inbox} label="Invites" badge={boot.invites?.length ?? 0} active={pathname === "/requests"} onNavigate={navigate} />
+        <NavLink href="/connections" icon={Plug} label="Connections" active={pathname === "/connections"} onNavigate={navigate} />
+        <NavLink href="/activity" icon={ActivityIcon} label="Activity" badge={waiting} active={pathname === "/activity"} onNavigate={navigate} />
+        <div className="my-1 border-t border-line" />
+        <NavLink href="/settings#appearance" icon={Palette} label="Appearance" active={false} onNavigate={navigate} />
+        <NavLink href="/settings" icon={Settings} label="Settings" active={pathname === "/settings"} onNavigate={navigate} />
+        {width !== undefined && onWidth ? <label className="mt-1 flex items-center justify-between gap-2 border-t border-line px-2.5 py-2 text-xs text-muted">
+          Sidebar width
+          <select aria-label="Sidebar width" value={width} onChange={event => onWidth(Number(event.target.value))} className="min-w-0 rounded-lg border border-line bg-bg p-1.5 text-xs text-ink">
+            {![SIDEBAR_MIN, 288, 360, SIDEBAR_MAX].includes(width) ? <option value={width}>Custom</option> : null}
+            <option value={SIDEBAR_MIN}>Compact</option><option value={288}>Comfortable</option><option value={360}>Wide</option><option value={SIDEBAR_MAX}>Extra wide</option>
+          </select>
+        </label> : null}
+      </nav> : null}
+      <button ref={trigger} type="button" aria-label="Workspace menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(value => !value)} className={`relative flex min-h-12 w-full min-w-0 items-center gap-2.5 rounded-xl hover:bg-raised ${compact ? "justify-center" : "px-2"}`}>
+        <PersonAvatar name={boot.me.name || boot.me.email} size={30} />
+        {!compact ? <><span className="min-w-0 flex-1 truncate text-left text-sm font-medium">{boot.me.name || boot.me.email}</span><Ellipsis size={18} className="shrink-0 text-muted" aria-hidden /></> : null}
+        {boot.invites?.length || waiting ? <span className="absolute right-2 top-1 size-2 rounded-full bg-accent" aria-hidden /> : null}
+      </button>
+    </div>
+  );
+}
+
+function Sidebar({ boot, onNavigate, onSearch, waiting, compact = false, onCollapse, width, onWidth }: { boot: Bootstrap; onNavigate?: () => void; onSearch: () => void; waiting: ReadonlyMap<string, { count: number }>; compact?: boolean; onCollapse?: () => void; width?: number; onWidth?: (value: number) => void }) {
   const pathname = usePathname();
   const busy = useBusyNodes();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ConversationFilter>("all");
   const rooms = recentConversations(boot.rooms, compact ? "all" : filter, compact ? "" : query);
   return (
-    <div className="scroll-thin flex h-full min-h-0 flex-col overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-col">
       <div className={`flex shrink-0 items-center gap-1 pb-3 pt-4 ${compact ? "flex-col px-2" : "px-4"}`}>
         {!compact && onCollapse ? <Link href="/chat" onClick={onNavigate} className="flex min-w-0 flex-1 items-center gap-2 text-lg font-semibold"><Mark size={23} />Chats</Link> : null}
         {onCollapse ? <IconButton label={compact ? "Expand conversations" : "Collapse conversations"} onClick={onCollapse}>{compact ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</IconButton> : null}
@@ -92,29 +138,14 @@ function Sidebar({ boot, onNavigate, onSearch, waiting, compact = false, onColla
       </div>
       {!compact ? <div className="space-y-3 px-4 pb-3">
         <label className="flex items-center gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2 text-muted"><Search size={15} className="shrink-0" /><input aria-label="Filter conversations" placeholder="Search chats" value={query} onChange={event => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-muted" /></label>
-        <div className="flex gap-1.5" role="group" aria-label="Conversation filters">{([["all", "All"], ["unread", "Unread"], ["groups", "Groups"]] as const).map(([id, title]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)} className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${filter === id ? "bg-accent/15 text-accent" : "text-muted hover:bg-raised"}`}>{title}</button>)}</div>
+        <div className="flex gap-1.5" role="group" aria-label="Conversation filters">{([["all", "All"], ["unread", "Unread"], ["groups", "Groups"]] as const).map(([id, title]) => <button key={id} type="button" aria-pressed={filter === id} onClick={() => setFilter(id)} className={`min-h-8 rounded-lg px-3 py-1 text-xs font-medium transition-colors ${filter === id ? "bg-raised text-ink" : "text-muted hover:bg-raised"}`}>{title}</button>)}</div>
       </div> : null}
-      <nav className="scroll-thin min-h-[120px] flex-1 overflow-y-auto px-2 pb-4" aria-label="Conversations">
+      <nav className="scroll-thin min-h-0 flex-1 overflow-y-auto px-2 pb-4" aria-label="Conversations">
         {rooms.map(room => <RoomRow key={room.id} room={room} boot={boot} busy={busy} compact={compact} waiting={waiting.get(room.id)?.count ?? 0} active={pathname === `/r/${room.id}`} onNavigate={onNavigate} />)}
         {!rooms.length && !compact ? <p className="px-3 py-6 text-center text-xs text-muted">{query ? "No matching chats." : filter === "unread" ? "All caught up." : filter === "groups" ? "No groups yet." : "Your conversations will appear here."}</p> : null}
       </nav>
 
-      <div className="space-y-0.5 border-t border-line px-2 pb-2 pt-2" role="navigation" aria-label="More">
-        <NavLink compact={compact} href="/routines" icon={Repeat} label="Routines" active={pathname === "/routines"} onNavigate={onNavigate} />
-        <NavLink compact={compact} href="/sessions" icon={SquareTerminal} label="Sessions" active={pathname === "/sessions"} onNavigate={onNavigate} />
-        <NavLink compact={compact} href="/requests" icon={Inbox} label="Invites" badge={boot.invites?.length ?? 0} active={pathname === "/requests"} onNavigate={onNavigate} />
-        <NavLink compact={compact} href="/connections" icon={Plug} label="Connections" active={pathname === "/connections"} onNavigate={onNavigate} />
-      </div>
-
-      <div className="border-t border-line p-3">
-        <Link href="/settings" onClick={onNavigate} aria-label="Settings" title={compact ? "Settings" : undefined} className={`flex min-w-0 items-center gap-2.5 rounded-xl py-1 hover:bg-raised ${compact ? "justify-center" : "px-1"}`}>
-          <PersonAvatar name={boot.me.name || boot.me.email} size={28} />
-          {!compact ? <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{boot.me.name || boot.me.email}</span>
-          </span> : null}
-          {!compact ? <Settings size={15} className="shrink-0 text-muted" /> : null}
-        </Link>
-      </div>
+      <SidebarWorkspace boot={boot} compact={compact} waiting={waiting.size} onNavigate={onNavigate} width={width} onWidth={onWidth} />
     </div>
   );
 }
@@ -135,7 +166,7 @@ function useNavigationPreference(key: string, initial: boolean) {
   return [value, toggle] as const;
 }
 
-/** The signed-in app: conversations on the left, the conversation, and what needs you on the right. */
+/** Conversations and one focused surface. Questions stay in the chat; Activity has its own page. */
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -145,8 +176,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const boot = useBootstrap(signedIn);
   const activity = useActivity();
   const [menu, setMenu] = useState(false);
-  const [panel, togglePanel] = useNavigationPreference("node.activity-open", false);
   const [collapsed, toggleCollapsed] = useNavigationPreference("node.sidebar-collapsed", false);
+  const [width, setWidth] = useSidebarWidth();
   const [search, setSearch] = useState(false);
   const frame = useRef<HTMLDivElement>(null);
   const ready = Boolean(boot.data);
@@ -235,10 +266,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
+    <NodeLifeProvider key={boot.data.me.id} accountId={boot.data.me.id}>
     <div ref={frame} data-needs-you={waitingIn.size > 0} className="chat-shell flex overflow-hidden" style={{ height: "var(--node-viewport-height, 100dvh)" }}>
-      <aside className={`chat-sidebar hidden shrink-0 border-r border-line bg-panel/70 md:block ${collapsed ? "w-[68px]" : "w-[304px]"}`} data-sidebar-collapsed={collapsed} aria-label="Chat sidebar">
-        <Sidebar boot={boot.data} compact={collapsed} onCollapse={toggleCollapsed} onSearch={openSearch} waiting={waitingIn} />
-      </aside>
+      <a href="#main-content" className="skip-link">Skip to conversation</a>
+      <SidebarFrame collapsed={collapsed} width={width} onWidth={setWidth}>
+        <Sidebar boot={boot.data} compact={collapsed} onCollapse={toggleCollapsed} onSearch={openSearch} waiting={waitingIn} width={width} onWidth={setWidth} />
+      </SidebarFrame>
       <Drawer open={menu} onClose={() => setMenu(false)} title="Chats" side="left"><Sidebar boot={boot.data} onNavigate={() => setMenu(false)} onSearch={openSearch} waiting={waitingIn} /></Drawer>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -261,18 +294,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </span>
         </div>
         <div className="relative flex min-h-0 flex-1">
-          <main className="min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
-          <div className="absolute right-2 top-2 z-10 hidden lg:block">
-            <IconButton label={panel ? "Hide activity" : "Show activity"} onClick={togglePanel} className="relative bg-panel/80">
-              {panel ? <PanelRightClose size={18} /> : <PanelRightOpen size={18} />}
-              {!panel && waiting ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" /> : null}
-            </IconButton>
-          </div>
-          {panel ? (
-            <aside aria-label="Activity" className="scroll-thin hidden w-80 shrink-0 overflow-y-auto border-l border-line bg-panel/60 pt-10 lg:block">
-              <ActivityPanel />
-            </aside>
-          ) : null}
+          <main id="main-content" tabIndex={-1} className="min-h-0 min-w-0 flex-1 overflow-hidden outline-none">{children}</main>
         </div>
       </div>
 
@@ -288,6 +310,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Drawer>
       <Toaster />
     </div>
+    </NodeLifeProvider>
   );
 }
 
@@ -298,4 +321,3 @@ export function PrivateBadge() {
     </span>
   );
 }
-

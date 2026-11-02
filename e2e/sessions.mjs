@@ -219,6 +219,18 @@ try {
     await page.locator("#m-card-live").waitFor();
     if (shots) await page.screenshot({ path: `${shots}/session-card-${width}.png` });
 
+    // Busy accounts start with five sessions; disclosure reveals all, still ordered by usage.
+    state.sessions.push(...Array.from({ length: 4 }, (_, index) => ({ ...state.sessions[1], id: `extra-${index}`, title: `Extra session ${index}`, lastActiveAt: at(-100 - index) })));
+    await page.goto(`${WEB}/sessions`);
+    await list.getByRole("article").first().waitFor();
+    assert.equal(await list.getByRole("article").count(), 5);
+    assert.equal(await list.getByRole("article", { name: "Rewrite the README" }).count(), 0, "older sessions wait behind Show more");
+    await page.getByRole("button", { name: "Show more (2)", exact: true }).click();
+    assert.equal(await list.getByRole("article").count(), 7);
+    assert.equal(await list.getByRole("article").last().getByRole("heading").textContent(), "Rewrite the README");
+    await page.getByRole("button", { name: "Show less", exact: true }).click();
+    assert.equal(await list.getByRole("article").count(), 5);
+
     assert.deepEqual(errors, [], "no page errors");
     assert.deepEqual([...new Set(unexpected)], [], "no unmocked API calls");
     await context.close();

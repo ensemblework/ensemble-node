@@ -8,6 +8,7 @@
 | Fonts and brand | Figtree and JetBrains Mono. Ensemble's Woven Chorus mark (`public/brand/`, copied from Ensemble's `packages/brand/assets`). Satin Gold `#D7B56F` on a near-black petrol night; Ensemble's warm paper in light mode. |
 | Backend | Ensemble hub-api (Fastify 5, Prisma 6, PostgreSQL, Redis) — module `src/node/` in the Ensemble repository |
 | Live updates | Server-sent events from `GET /api/node/events` (EventSource with credentials) |
+| Motion | GSAP and `@gsap/react` for the open node's short expressions; CSS for subtle working motion. Browser-only, with visibility cleanup and reduced-motion support. |
 | Models | Ensemble's included AI (Azure AI Foundry): every model Ensemble offers; nodes default to gpt-6-luna (else gpt-5-mini) at low thinking |
 | Package manager / runtime | pnpm 12, Node 22 |
 

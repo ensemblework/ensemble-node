@@ -8,7 +8,7 @@ ensemble-node/
 │   │   ├── health/route.ts      /health: the commit this build was published from
 │   │   ├── login/               sign in / create account (email, providers, Turnstile)
 │   │   ├── welcome/             onboarding: verify, account, first node or crew, connect a computer (links to Ensemble)
-│   │   └── (app)/               signed-in shell (sidebar, activity panel, live stream, ⌘K search)
+│   │   └── (app)/               signed-in shell (resizable sidebar, workspace menu, live stream, ⌘K search)
 │   │       ├── chat/            home: ask a node, requests to join, the chats where something waits for you, your nodes, recent conversations
 │   │       ├── r/[roomId]/      a conversation: messages, cards, search, pins, filters, composer
 │   │       ├── c/[cardId]/      a card's short address (a sign-in card's QR code): its conversation, its remote view
@@ -21,7 +21,7 @@ ensemble-node/
 │   │       ├── routines/        routines by node: pause, run now, edit, delete, runs and a run's card
 │   │       ├── sessions/        my agent sessions: who manages each, Hand to… / Give to…, a session's panel
 │   │       ├── connections/     connected apps, the same list as in Ensemble
-│   │       ├── activity/        approvals, runs, turns, computers, credits (mobile)
+│   │       ├── activity/        approvals, runs, turns, computers, credits
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, computers, browsing, sign out
 │   ├── components/
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
@@ -46,7 +46,12 @@ ensemble-node/
 │   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer,
 │   │   │                        a device code for the owner (device-code-card.tsx), a node's live terminal or
 │   │   │                        browser (live-card.tsx)
-│   │   ├── shell.tsx            collapsible recent-chat sidebar, phone sheet, layout, auth guard, ⌘K search
+│   │   ├── shell.tsx            recent-chat sidebar, workspace menu, phone sheet, layout, auth guard, ⌘K search
+│   │   ├── sidebar-frame.tsx    desktop resize handle, keyboard and saved width
+│   │   ├── appearance-provider.tsx, appearance-settings.tsx
+│   │   │                        browser-local mode, suite colours, chat backgrounds and quiet mode
+│   │   ├── node-life.tsx, node-companion.tsx, room-avatar.tsx
+│   │   │                        local visits, the open node's expressions, crew/room graph portraits
 │   │   ├── routines.tsx         routines: the list, the form (schedules in a time zone, events, webhooks),
 │   │   │                        a webhook's token shown once, runs and a run's card; a node's routines
 │   │   ├── sessions.tsx         sessions: search, each with who manages it and Hand to…, one opened
@@ -67,7 +72,7 @@ ensemble-node/
 │   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      Node signature faces (shape, a colour shaded in its own hue, eyes that fit the shape),
-│   │   │                        thinking state, and the appearance picker
+│   │   │                        resting and visible working states, and the appearance picker
 │   │   ├── handle-input.tsx     a node's handle after its @
 │   │   ├── model-logo.tsx       canonical local model/vendor and agent marks
 │   │   ├── connector-logo.tsx, tool-icon.tsx
@@ -77,6 +82,9 @@ ensemble-node/
 │   │   ├── api.ts, config.ts    Ensemble API client (credentials: include), downloads, uploads to Files with
 │   │   │                        progress and cancel; URLs and links into Ensemble
 │   │   ├── environment.ts       testing or production; refuses a build that mixes them (tested)
+│   │   ├── appearance.ts, node-life.ts, sidebar.ts
+│   │   │                        validated local preferences, pre-hydration theme, palette contrast,
+│   │   │                        bounded visits and four-day rest, sidebar width limits (tested)
 │   │   ├── conversations.ts     cross-kind recency, live previews and read/snapshot reconciliation (tested)
 │   │   ├── model-brand.ts       actual model/provider signature identity (tested)
 │   │   ├── connector-logos.ts   catalog aliases, asset metadata and connector tool identity (tested)
@@ -135,6 +143,7 @@ ensemble-node/
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send
 │   └── public/
 │       ├── brand/              Ensemble mark
+│       ├── doodles/            sparse local SVG chat backgrounds, painted with theme colours
 │       ├── providers/          canonical model/agent marks, provenance and licence notices
 │       └── connectors/         vendor assets, provenance manifest and licence/trademark notice
 ├── docs/                        these guides; research/; design/pre-v0/

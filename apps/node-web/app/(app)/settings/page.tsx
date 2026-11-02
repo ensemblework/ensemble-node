@@ -11,6 +11,7 @@ import { useBootstrap, useDevices, useOwnerSettings, useSaveOwnerSettings } from
 import { askBeforeBrowsing } from "@/lib/owner-settings";
 import { toast, toastError } from "@/lib/toast";
 import { ComputerList, DeviceList, PairComputer } from "@/components/connect-computer";
+import { AppearanceSettings } from "@/components/appearance-settings";
 import { CreditsMeter } from "@/components/credits";
 import { PersonAvatar } from "@/components/node-avatar";
 import { Button, External, InfoTip, Spinner, Switch } from "@/components/ui";
@@ -93,6 +94,8 @@ export default function SettingsPage() {
           </div>
           <div className="flex items-center gap-1 text-xs text-muted">One account across Ensemble <InfoTip text="Your connections, computers, run profiles and credits are shared. Manage your name, password and sign-in methods in Ensemble." /></div>
         </section>
+
+        <AppearanceSettings />
 
         <section className="space-y-3 rounded-2xl border border-line bg-panel p-5">
           <h2 className="font-semibold">Credits</h2>

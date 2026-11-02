@@ -65,8 +65,8 @@ export function CandidateTag({ candidate, label = "Candidate", verb }: { candida
   );
 }
 
-/** A run's structured report: outcome, checks, what it built or tested, links it gave. */
-export function ReportView({ report, handles }: { report: StepReport; handles: ReadonlySet<string> }) {
+/** A run's structured report: outcome, checks, what it built or tested, links it gave. A run card shows its summary on its own (`summary` false). */
+export function ReportView({ report, handles, summary = true }: { report: StepReport; handles: ReadonlySet<string>; summary?: boolean }) {
   const badge = outcomeBadge(report.outcome);
   const tally = checkTally(report.checks);
   const reason = report.outcome === "blocked" ? blockedReason(report.blockedBy) : null;
@@ -82,7 +82,7 @@ export function ReportView({ report, handles }: { report: StepReport; handles: R
           <CandidateTag candidate={report.subject} />
         </span>
       </div>
-      {report.summary ? <RichText text={report.summary} handles={handles} small kindLinks /> : null}
+      {summary && report.summary ? <RichText text={report.summary} handles={handles} small kindLinks /> : null}
       <CheckList checks={report.checks ?? []} />
       {links.length ? (
         <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs">

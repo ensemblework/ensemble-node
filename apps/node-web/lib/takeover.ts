@@ -3,12 +3,15 @@
  * watching and using one of its node's live sessions (a terminal or a browser). The page opens a
  * takeover (a short-lived capability for this browser session only), makes a 32-byte secret and sends
  * it sealed for the computer's key (lib/seal.ts, purpose `takeover`), so only this page and the computer
- * can derive the channel's keys (lib/takeover-channel.ts). Frames arrive encrypted and are opened here;
- * input goes back encrypted and numbered, each key at once, several messages in flight (the relay passes
- * them on in their numbers' order). Ensemble's server relays ciphertext it cannot read. The capability
- * and the keys live in this page's memory only.
+ * can derive the channel's keys (lib/takeover-channel.ts). Frames arrive encrypted and are opened here:
+ * as a stream (Server-Sent Events read with fetch, since the capability is a header; each one drawn is
+ * acknowledged so the server sends the next), else one request at a time. Input goes back encrypted and
+ * numbered, each key at once, several messages in flight (the relay passes them on in their numbers'
+ * order); a resting pointer is sent once it stops, a drag at most 20 times a second. Ensemble's server
+ * relays ciphertext it cannot read. The capability and the keys live in this page's memory only.
  */
 import { ApiError } from "./api";
+import { ENSEMBLE_API } from "./config";
 import { sealFor, type SealKeyInfo } from "./seal";
 import { channelBase64Url, newTakeoverSecret, openMessage, sealMessage, takeoverKeys, unpackMessage, type ChannelKeys, type ChannelMessage } from "./takeover-channel";
 import { terminalScreen, type TerminalInput, type TerminalScreen } from "./terminal";
@@ -230,8 +233,8 @@ export function fitFrame(frame: { width: number; height: number }, box: { width:
   return { width: Math.floor(frame.width * scale), height: Math.floor(frame.height * scale) };
 }
 
-/** Which site the picture shows, for the view's header: "accounts.google.com — popup". */
-export function pageLabel(page: Pick<PageInfo, "url" | "popup"> | null | undefined): string | null {
+/** Which site the picture shows, for the view's header ("accounts.google.com"); a popup gets its own badge there. */
+export function pageLabel(page: Pick<PageInfo, "url"> | null | undefined): string | null {
   const url = page?.url?.trim();
   if (!url) return null;
   let host = "";
@@ -240,8 +243,7 @@ export function pageLabel(page: Pick<PageInfo, "url" | "popup"> | null | undefin
   } catch {
     host = url.replace(/^[a-z]+:\/\//i, "").replace(/[/?#].*$/, "");
   }
-  if (!host) return null;
-  return page?.popup ? `${host} — popup` : host;
+  return host || null;
 }
 
 /** The page a frame's header describes; a computer from before page info says only the address. */
@@ -285,6 +287,10 @@ export function endedText(reason: string | undefined, computer: string): string 
       return "Nothing happened for a minute, so it ended.";
     case "tab_closed":
       return "The tab was closed on the computer.";
+    case "closed_by_node":
+      return "The node closed this tab.";
+    case "live_stopped":
+      return "The node ended this live view.";
     case "refused":
       return `${computer} did not start it.`;
     default:
@@ -297,6 +303,108 @@ export type NextFrame = { frame: Frame | null; terminal?: TerminalScreen; page?:
 
 /** Whether a route is missing on this server (an older Ensemble): its features are not offered. */
 export const unsupported = (error: unknown): boolean => error instanceof ApiError && (error.status === 404 || error.status === 405 || error.status === 501);
+
+/** A pointer at rest is sent once it has not moved for this long (a hover). */
+export const REST_MS = 120;
+/** While a button is held (a drag), at most one move this often. */
+export const DRAG_MS = 50;
+
+type Timers = { now: () => number; set: (run: () => void, ms: number) => unknown; clear: (timer: unknown) => void };
+const realTimers: Timers = { now: () => Date.now(), set: (run, ms) => setTimeout(run, ms), clear: (timer) => clearTimeout(timer as ReturnType<typeof setTimeout>) };
+
+/**
+ * The pointer's moves as input: not one message per move (each one costs a request, and the page
+ * repaints for it), but where it comes to rest after `REST_MS` without moving, and while a button is
+ * held at most one move every `DRAG_MS`, the latest. A press, a release or the wheel go at once
+ * (`flush` first, so a drag ends where the pointer is; `cancel` when they carry their own place).
+ */
+export class PointerMoves {
+  private timer: unknown = null;
+  private waiting: { x: number; y: number } | null = null;
+  private sentAt = Number.NEGATIVE_INFINITY;
+
+  constructor(
+    private readonly send: (events: InputEvent[]) => void,
+    private readonly timers: Timers = realTimers,
+  ) {}
+
+  move(point: { x: number; y: number }, held: boolean): void {
+    this.waiting = point;
+    if (held) {
+      const wait = this.sentAt + DRAG_MS - this.timers.now();
+      if (wait <= 0) return this.flush();
+      if (this.timer === null) this.timer = this.timers.set(() => this.flush(), wait);
+      return;
+    }
+    if (this.timer !== null) this.timers.clear(this.timer);
+    this.timer = this.timers.set(() => this.flush(), REST_MS);
+  }
+
+  /** Sends the move that waits, now. */
+  flush(): void {
+    this.stopTimer();
+    const point = this.waiting;
+    this.waiting = null;
+    if (!point) return;
+    this.sentAt = this.timers.now();
+    this.send([{ t: "mouse", type: "move", ...point }]);
+  }
+
+  /** Drops the move that waits. */
+  cancel(): void {
+    this.stopTimer();
+    this.waiting = null;
+  }
+
+  private stopTimer(): void {
+    if (this.timer !== null) this.timers.clear(this.timer);
+    this.timer = null;
+  }
+}
+
+/** One Server-Sent Event. */
+export type StreamEvent = { event: string; data: string; id?: string };
+
+/** Server-Sent Events from text as it comes: whole events only; comments (the server's keep-alive) are left out. */
+export class EventStreamParser {
+  private buffer = "";
+
+  push(text: string): StreamEvent[] {
+    this.buffer += text.replace(/\r\n?/g, "\n");
+    const events: StreamEvent[] = [];
+    for (let end = this.buffer.indexOf("\n\n"); end >= 0; end = this.buffer.indexOf("\n\n")) {
+      const block = this.buffer.slice(0, end);
+      this.buffer = this.buffer.slice(end + 2);
+      let event = "message";
+      let id: string | undefined;
+      const data: string[] = [];
+      for (const line of block.split("\n")) {
+        if (!line || line.startsWith(":")) continue;
+        const colon = line.indexOf(":");
+        const field = colon < 0 ? line : line.slice(0, colon);
+        const value = colon < 0 ? "" : line.slice(colon + 1).replace(/^ /, "");
+        if (field === "event") event = value;
+        else if (field === "data") data.push(value);
+        else if (field === "id") id = value;
+      }
+      if (data.length) events.push({ event, data: data.join("\n"), ...(id !== undefined ? { id } : {}) });
+    }
+    return events;
+  }
+}
+
+/** A stream's response, from Ensemble's API with the session cookie. */
+export type StreamFetch = (path: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<Response>;
+
+const fetchStream: StreamFetch = (path, init) => fetch(`${ENSEMBLE_API}${path}`, { credentials: "include", cache: "no-store", headers: init.headers, signal: init.signal });
+
+/** A stream that brought nothing for this long (not even its first comment) is given up: a proxy holds it back. */
+export const STREAM_FIRST_MS = 10_000;
+/** A stream silent this long (its keep-alive comes every 15 s) has lost its connection. */
+export const STREAM_SILENT_MS = 40_000;
+
+/** How a stream ended: the takeover ended, the connection closed (open it again), or this server or a proxy cannot stream (poll instead). */
+export type StreamOutcome = "ended" | "closed" | "unsupported";
 
 /** One takeover, from opening to ending. */
 export class TakeoverSession {
@@ -322,6 +430,7 @@ export class TakeoverSession {
   constructor(
     private readonly api: Api,
     private readonly source: TakeoverSource,
+    private readonly streamFetch: StreamFetch = fetchStream,
   ) {}
 
   private headers(): Record<string, string> {
@@ -355,9 +464,90 @@ export class TakeoverSession {
       this.close();
       return { frame: null, ended: answer.reason ?? "ended" };
     }
-    if (!answer.frame || answer.frame.seq <= this.inSeq || !this.keys) return { frame: null };
-    const plain = await openMessage(this.keys.d2w, this.info.id, "d2w", answer.frame);
-    this.inSeq = Math.max(this.inSeq, answer.frame.seq);
+    return answer.frame ? this.opened(answer.frame) : { frame: null };
+  }
+
+  /**
+   * The frames as a stream, each given to `show` as it comes; once `show` is done with one (drawn), the
+   * server is told, and sends the next. Resolves when the takeover ended (`show` had the `ended` frame),
+   * the connection closed, or streaming is not possible here; throws an `ApiError` the view retries or
+   * shows (a lost connection is status 0).
+   */
+  async stream(signal: AbortSignal, show: (next: NextFrame) => void | Promise<void>): Promise<StreamOutcome> {
+    if (!this.info || !this.keys) throw new Error("Not open.");
+    const id = this.info.id;
+    const own = new AbortController();
+    const abort = () => own.abort();
+    signal.addEventListener("abort", abort);
+    let quiet: ReturnType<typeof setTimeout> | null = null;
+    let heard = false;
+    let silent = false;
+    const listen = () => {
+      if (quiet) clearTimeout(quiet);
+      quiet = setTimeout(() => {
+        silent = true;
+        own.abort();
+      }, heard ? STREAM_SILENT_MS : STREAM_FIRST_MS);
+    };
+    try {
+      listen();
+      let response: Response;
+      try {
+        response = await this.streamFetch(`/api/node/takeovers/${id}/stream?after=${this.inSeq}`, { headers: { ...this.headers(), accept: "text/event-stream" }, signal: own.signal });
+      } catch {
+        if (silent) return "unsupported";
+        throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
+      }
+      if ([404, 405, 501].includes(response.status)) return "unsupported";
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string; code?: string };
+        throw new ApiError(response.status, data.error ?? `Something went wrong (${response.status}).`, data.code);
+      }
+      if (!response.body || !/text\/event-stream/i.test(response.headers.get("content-type") ?? "")) return "unsupported";
+      // Connected: a view that was reconnecting is live again, even before the next picture.
+      await show({ frame: null });
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      const parser = new EventStreamParser();
+      for (;;) {
+        let chunk: ReadableStreamReadResult<Uint8Array>;
+        try {
+          chunk = await reader.read();
+        } catch {
+          if (signal.aborted) return "closed";
+          // Nothing at all came: a proxy holds the stream back, so frames are fetched one at a time.
+          if (silent && !heard) return "unsupported";
+          throw new ApiError(0, "The connection to your computer was lost.");
+        }
+        if (chunk.done) return "closed";
+        heard = true;
+        listen();
+        for (const event of parser.push(decoder.decode(chunk.value, { stream: true }))) {
+          if (event.event === "end") {
+            const data = JSON.parse(event.data) as { reason?: string };
+            this.close();
+            await show({ frame: null, ended: data.reason ?? "ended" });
+            return "ended";
+          }
+          if (event.event !== "frame" || !this.keys) continue;
+          const message = JSON.parse(event.data) as ChannelMessage;
+          await show(await this.opened(message));
+          if (this.stopped) return "closed";
+          void this.api(`/api/node/takeovers/${id}/seen`, { body: { seq: message.seq }, headers: this.headers() }).catch(() => undefined);
+        }
+      }
+    } finally {
+      if (quiet) clearTimeout(quiet);
+      signal.removeEventListener("abort", abort);
+      own.abort();
+    }
+  }
+
+  /** A frame from the relay, opened: a picture, a terminal's screen, or only which page is shown. */
+  private async opened(frame: ChannelMessage): Promise<NextFrame> {
+    if (!this.info || !this.keys || frame.seq <= this.inSeq) return { frame: null };
+    const plain = await openMessage(this.keys.d2w, this.info.id, "d2w", frame);
+    this.inSeq = Math.max(this.inSeq, frame.seq);
     const { header, payload } = unpackMessage(plain);
     if (header.kind === "terminal") {
       const screen = terminalScreen(header, payload);

@@ -13,7 +13,8 @@ ensemble-node/
 │   │       ├── r/[roomId]/      a conversation: messages, cards, search, pins, filters, composer
 │   │       ├── c/[cardId]/      a card's short address (a sign-in card's QR code): its conversation, its remote view
 │   │       ├── n/[nodeId]/      a node: look, charter, model, files on my computer, shared-room rule, memory, pause, delete
-│   │       ├── new/             create a node, a crew (from suggestions and existing nodes) or a room (with requests to join)
+│   │       ├── new/             create a node (from scratch or a template: handle, look, instructions), a crew (from
+│   │       │                    suggestions and existing nodes) or a room (with requests to join)
 │   │       ├── requests/        requests to join rooms: accept with 1–3 nodes and a lead, or decline
 │   │       ├── search/          search every conversation
 │   │       ├── computers/       opens Settings → Computers
@@ -65,7 +66,9 @@ ensemble-node/
 │   │   ├── qr-code.tsx          a QR code as a picture phones read (loaded only when shown)
 │   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
 │   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
-│   │   ├── node-avatar.tsx      Node signature faces, shape/colour/eyes and thinking state
+│   │   ├── node-avatar.tsx      Node signature faces (shape, a colour shaded in its own hue, eyes that fit the shape),
+│   │   │                        thinking state, and the appearance picker
+│   │   ├── handle-input.tsx     a node's handle after its @
 │   │   ├── model-logo.tsx       canonical local model/vendor and agent marks
 │   │   ├── connector-logo.tsx, tool-icon.tsx
 │   │   │                        shared local vendor logos and generic tool fallbacks
@@ -100,10 +103,11 @@ ensemble-node/
 │   │   │                        lines, 200 KB at most, folded when there are many (tested)
 │   │   ├── owner-settings.ts    the run profile a node's sessions use, and asking before a new website (tested)
 │   │   ├── takeover.ts, takeover-channel.ts
-│   │   │                        a takeover session (secret sealed for the computer, frames and the page they show,
-│   │   │                        a terminal's screens, numbered input sent at once with several on their way and sent
-│   │   │                        again while the link is down, more time, control, end), the remote view's input
-│   │   │                        (typing as it changes, taps, drags, press and hold, fitting the picture)
+│   │   │                        a takeover session (secret sealed for the computer, frames as a stream or one at a
+│   │   │                        time and the page they show, a terminal's screens, numbered input sent at once with
+│   │   │                        several on their way and sent again while the link is down, more time, control, end),
+│   │   │                        the remote view's input (typing as it changes, taps, drags, press and hold, the
+│   │   │                        pointer at rest or dragging, fitting the picture)
 │   │   │                        and its channel (WebCrypto; identical to Ensemble's shared-types takeover.ts,
 │   │   │                        checked against the same takeover-vectors.json) (tested)
 │   │   ├── plan.ts, session.ts, evidence.ts, threads.ts, work.ts, routines.ts, rooms.ts, room-work.ts, trust.ts, cards.ts, captures.ts
@@ -125,7 +129,8 @@ ensemble-node/
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        what a message sends and a retry sends again, the attachment shelf and pasted
 │   │   │                        files, what Files refuses before an upload, who may open a file on a message,
-│   │   │                        model groups, crew drafts and unique names, connection status, how a run's
+│   │   │                        model groups, new nodes and crew drafts (unique names and handles, as Ensemble
+│   │   │                        makes them, and why one is refused), connection status, how a run's
 │   │   │                        question is answered and which run it belongs to, a run's steps as a work log
 │   │   └── types.ts             what /api/node/* and the Ensemble routes Node reads send
 │   └── public/

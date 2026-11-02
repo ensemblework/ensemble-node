@@ -18,6 +18,9 @@ export type LiveCardData = {
   tab?: string | null;
   startedAt?: string | null;
   endedAt?: string | null;
+  /** The node ended it: it closed the tab ("closed") or ended the view ("stopped"). */
+  endedBy?: string | null;
+  endReason?: string | null;
 };
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
@@ -42,6 +45,7 @@ export function liveBadge(data: Pick<LiveCardData, "status"> | null | undefined)
 /** What the card says about the session, open or ended. */
 export function liveLine(data: LiveCardData, handle: string): string {
   const terminal = liveKind(data) === "terminal";
+  if (!liveOpen(data) && data.endedBy === "node") return data.endReason === "stopped" ? `@${handle} ended this live view. The ${terminal ? "terminal" : "tab"} stays open.` : `Closed by @${handle}.`;
   if (!liveOpen(data)) return terminal ? `The terminal on ${text(data.computer) || "your computer"} is closed.` : "The browser session ended.";
   return terminal
     ? `@${handle} works in this terminal. Watch it live, and type in it too: it is your shell.`

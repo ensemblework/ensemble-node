@@ -4,12 +4,12 @@
  * fake computer in this script opens the secret the page sealed for its key (node:crypto, as Ensemble's
  * computer does), streams encrypted JPEG frames that say which page they show (a sign-in popup), and
  * decrypts the page's input. Covered: the picture fitting the phone's width, the header naming the site
- * ("accounts.google.com — popup"), a tap or click as a fraction of the page, the box typing into the page
+ * ("accounts.google.com" with a Popup badge), a tap or click as a fraction of the page, the box typing into the page
  * as it changes (a correction as Backspaces), Enter, Esc and Paste, a finger kept still pressing and
  * holding the mouse until it lifts (and the mouse held on a computer), a drag scrolling the page, a lost
  * connection (the view says so, frames resume and input sent meanwhile arrives once, in order), every
  * message numbered with the capability and nothing typed in the clear; then the view closing itself when
- * the card is settled ("Signed in — @lead is carrying on"), when the computer finished it, and I'm done.
+ * the card is settled ("Signed in. @lead is carrying on."), when the computer finished it, and I'm done.
  * Also the time left and "+15 min" (an older Ensemble without it), and a latency probe over a simulated
  * phone network with a computer drawing ten frames a second: each key posted at once with several on
  * their way, applied in order by the relay, and frames from the computer to their paint
@@ -81,7 +81,7 @@ function fixture() {
   const card = { id: "c-login", roomId: "dm-lead", seq: 2, kind: "approval", body: `@lead needs you to sign in to ${SITE} on Studio.`, authorKind: "node", authorAccountId: "me", authorNodeId: "lead", data: { type: "login", purpose: "sign_in", status: "pending", loginId: "lg_0123456789abcdef0123456789abcdef", deviceId: "dev-1", computer: "Studio", origin: SITE, tab: "t2", reasons: ["it was sent to sign in at accounts.google.com"], saved: false, display: false, takeover: true, expiresAt: at(120) }, private: true, mentions: [], rootMessageId: null, clientId: null, planId: null, createdAt: at(-2) };
   const messages = [{ id: "u1", roomId: "dm-lead", seq: 1, kind: "text", body: "Sign in to Ledger with my Google account and get the invoices", authorKind: "person", authorAccountId: "me", authorNodeId: null, data: {}, private: false, mentions: [], rootMessageId: null, clientId: null, planId: null, createdAt: at(-3) }, card];
   const boot = { me: { id: "me", name: "Mira", email: "mira@fieldnote.example", verified: true }, nodes: [lead], rooms: [room], computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
-  return { boot, messages, takeover: null, takeovers: new Map(), controllerSeen: [], failFrames: 0, failInputs: 0, aborted: { frames: 0, inputs: 0 }, live: null, minutes: 15, extended: [], extendMissing: false };
+  return { boot, messages, takeover: null, takeovers: new Map(), controllerSeen: [], failFrames: 0, failInputs: 0, aborted: { frames: 0, inputs: 0 }, live: null, minutes: 15, extended: [], extendMissing: false, streamAsked: 0 };
 }
 
 /** A new takeover on the fake computer. */
@@ -163,7 +163,7 @@ try {
         state.takeovers.set(state.takeover.id, state.takeover);
         return json({ takeover: { id: state.takeover.id, computer: { id: "dev-1", name: "Studio" }, tab: "t2", origin: SITE, state: "created", startBy: at(2), endsAt: null, loginCardId: "c-login", sealKey }, controller: "cap-fixture" });
       }
-      const call = /^\/api\/node\/takeovers\/([^/]+)\/(start|frames|input|end|extend)$/.exec(path);
+      const call = /^\/api\/node\/takeovers\/([^/]+)\/(start|frames|stream|input|end|extend)$/.exec(path);
       if (call) {
         // Each takeover by its own id: a view that closed may still end its own after a newer one opened.
         const takeover = state.takeovers.get(call[1]);
@@ -183,6 +183,11 @@ try {
           if (state.extendMissing) return route.fulfill({ status: 404, json: { message: `Route POST:${path} not found`, error: "Not Found", statusCode: 404 }, headers: cors });
           takeover.endsAt = new Date(Date.parse(takeover.endsAt) + 15 * 60_000).toISOString();
           return json({ takeover: { id: takeover.id, state: "live", endsAt: takeover.endsAt } });
+        }
+        // This fixture's relay has no stream (an older Ensemble): the view fetches frames one at a time.
+        if (call[2] === "stream") {
+          state.streamAsked += 1;
+          return route.fulfill({ status: 404, json: { message: `Route GET:${path} not found`, error: "Not Found", statusCode: 404 }, headers: cors });
         }
         if (call[2] === "frames") {
           if (state.failFrames > 0) {
@@ -299,7 +304,8 @@ try {
     }
     const canvas = view.getByLabel("The page on Studio. Click, type and scroll here.");
     // The header names the site the picture shows, and that it is a popup.
-    await view.getByText("accounts.google.com — popup").waitFor();
+    await view.locator("[data-remote-site]", { hasText: "accounts.google.com" }).waitFor();
+    assert.ok(await view.locator("[data-remote-popup]").isVisible(), "a Popup badge");
     assert.ok(await view.getByText("Sign in – Google Accounts · on Studio").isVisible());
     assert.ok(await view.getByText(/Encrypted between this browser and Studio/).isVisible());
     const box = await canvas.boundingBox();
@@ -456,8 +462,8 @@ try {
       const settled = cardOf();
       settled.data = { ...settled.data, status: "signed_in", via: "takeover", resolvedAt: at(0) };
       await emit("node.message.updated", settled);
-      await view.getByText("Signed in — @lead is carrying on").waitFor();
-      assert.ok(await view.getByText("accounts.google.com — popup").isVisible(), "the same view, still naming its page");
+      await view.getByText("Signed in. @lead is carrying on.").waitFor();
+      assert.ok(await view.locator("[data-remote-site]", { hasText: "accounts.google.com" }).isVisible(), "the same view, still naming its page");
       assert.equal(await view.getByRole("button", { name: "I'm done" }).isDisabled(), true, "nothing more to do there");
       assert.equal(await view.getByLabel("Type into the page").isDisabled(), true);
       if (shots) await page.screenshot({ path: `${shots}/remote-view-signed-in-${width}.png` });
@@ -469,7 +475,7 @@ try {
       // The computer finished it itself (signed in, seen through): the view reads the card again and closes itself.
       state.takeover.ended = "signed_in";
       cardOf().data = { ...cardOf().data, status: "signed_in", via: "takeover", resolvedAt: at(0) };
-      await view.getByText("Signed in — @lead is carrying on").waitFor({ timeout: 10_000 });
+      await view.getByText("Signed in. @lead is carrying on.").waitFor({ timeout: 10_000 });
       await view.waitFor({ state: "detached", timeout: 5000 });
       await card.getByRole("button", { name: "Signed in to accounts.google.com" }).waitFor();
       assert.equal(state.takeovers.size, 1, "settling the card never opens the page again");

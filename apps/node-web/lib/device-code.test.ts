@@ -19,6 +19,8 @@ test("a device code: its code, its page as a link only when it is a web address,
   assert.deepEqual(deviceCodeBadge({ status: "done" }), { label: "Signed in", tone: "ok" });
   assert.equal(deviceCodeOutcome({ ...code, status: "done" }), "Signed in: az login --use-device-code on Studio finished.");
   assert.match(deviceCodeOutcome({ ...code, status: "expired" }), /^The code for az login --use-device-code on Studio is no longer valid/);
+  assert.equal(deviceCodeOutcome({ ...code, status: "replaced", note: "Replaced by a newer sign-in." }), "Replaced by a newer sign-in.");
+  assert.deepEqual(deviceCodeBadge({ status: "replaced" }), { label: "Replaced", tone: "muted" });
 });
 
 test("a device code and a live session fold into their checkpoints once they no longer wait", () => {
@@ -43,4 +45,7 @@ test("a live session's card names what it shows and where, and whether it still 
   assert.deepEqual(liveBadge({ status: "ended" }), { label: "Ended", tone: "muted" });
   assert.match(liveLine({ kind: "browser", status: "open" }, "lead"), /Take control to click and type: @lead waits on that tab/);
   assert.match(liveLine({ kind: "terminal", status: "open" }, "lead"), /type in it too: it is your shell/);
+  assert.equal(liveLine({ kind: "browser", status: "ended", endedBy: "node", endReason: "closed" }, "lead"), "Closed by @lead.");
+  assert.equal(liveLine({ kind: "browser", status: "ended", endedBy: "node", endReason: "stopped" }, "lead"), "@lead ended this live view. The tab stays open.");
+  assert.equal(liveLine({ kind: "browser", status: "ended" }, "lead"), "The browser session ended.");
 });

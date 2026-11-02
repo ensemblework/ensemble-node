@@ -187,6 +187,7 @@ export function cardCheckpoint(data: CardData, context: { handle: string; roomTi
       const on = text(data?.computer) ? ` on ${text(data?.computer)}` : "";
       if (status === "done") return ok(`Signed in with a code: ${command}${on}`);
       if (expired) return late(`Sign-in code expired: ${command}${on}`);
+      if (status === "replaced") return late(`Sign-in code replaced by a newer one: ${command}${on}`);
       break;
     }
     case "live":

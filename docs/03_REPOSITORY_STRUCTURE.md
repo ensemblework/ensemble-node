@@ -100,10 +100,11 @@ ensemble-node/
 │   │   │                        lines, 200 KB at most, folded when there are many (tested)
 │   │   ├── owner-settings.ts    the run profile a node's sessions use, and asking before a new website (tested)
 │   │   ├── takeover.ts, takeover-channel.ts
-│   │   │                        a takeover session (secret sealed for the computer, frames and the page they show,
-│   │   │                        a terminal's screens, numbered input sent at once with several on their way and sent
-│   │   │                        again while the link is down, more time, control, end), the remote view's input
-│   │   │                        (typing as it changes, taps, drags, press and hold, fitting the picture)
+│   │   │                        a takeover session (secret sealed for the computer, frames as a stream or one at a
+│   │   │                        time and the page they show, a terminal's screens, numbered input sent at once with
+│   │   │                        several on their way and sent again while the link is down, more time, control, end),
+│   │   │                        the remote view's input (typing as it changes, taps, drags, press and hold, the
+│   │   │                        pointer at rest or dragging, fitting the picture)
 │   │   │                        and its channel (WebCrypto; identical to Ensemble's shared-types takeover.ts,
 │   │   │                        checked against the same takeover-vectors.json) (tested)
 │   │   ├── plan.ts, session.ts, evidence.ts, threads.ts, work.ts, routines.ts, rooms.ts, room-work.ts, trust.ts, cards.ts, captures.ts

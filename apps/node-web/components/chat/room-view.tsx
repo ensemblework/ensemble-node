@@ -17,8 +17,10 @@ import { TOOL_LABEL } from "@/lib/text";
 import { helperThread, helperThreads, looseThreads, placeThreads, threadLabel, type HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
 import type { Bootstrap, Member, Message, MessageFile, NodeFull, Room } from "@/lib/types";
-import { workBoard } from "@/lib/work";
+import { workBoard, workingNodeIds } from "@/lib/work";
 import { NodeAvatar } from "../node-avatar";
+import { NodeCompanion } from "../node-companion";
+import { RoomAvatar } from "../room-avatar";
 import { ToolIcon } from "../tool-icon";
 import { Drawer, IconButton, MenuItem, Spinner, useDismiss } from "../ui";
 import { Composer, type ComposerDraft, type MentionOption } from "./composer";
@@ -513,6 +515,8 @@ export function RoomView({ roomId }: { roomId: string }) {
   const placeholder = dmNode ? `Message ${dmNode.name}` : room.kind === "crew" ? "Message your crew" : `Message ${room.title}`;
   const suggest = (text: string) => send.mutate({ body: text, private: isPeople && tab === "crew", clientId: crypto.randomUUID() });
   const filterInfo = FILTERS.find((row) => row.id === filter)!;
+  const workingNodes = workingNodeIds(whole);
+  for (const row of live) if (row.thinking) workingNodes.add(row.nodeId);
 
   // A checkpoint (a card that was answered) sits under the node's previous message like a reply of its own.
   const grouped = (message: Message, previous: Message | undefined) =>
@@ -544,15 +548,13 @@ export function RoomView({ roomId }: { roomId: string }) {
   };
 
   return (
-    <div className="chat-conversation relative flex h-full flex-col">
-      <header className="flex shrink-0 items-center gap-2 border-b border-line bg-bg/95 px-3 py-3 md:gap-3 md:px-6 lg:pr-14">
+    <div className="chat-conversation chat-wallpaper relative isolate flex h-full flex-col">
+      <header className="chat-header flex shrink-0 items-center gap-2 border-b border-line bg-bg/95 px-3 py-2.5 md:gap-3 md:px-6">
         <IconButton label="Open conversations" className="chat-open-conversations relative md:hidden" onClick={() => window.dispatchEvent(new Event("node:open-chats"))}><ArrowLeft size={19} /></IconButton>
         {dmNode ? (
-          <button type="button" className="shrink-0 rounded-full" title={`${dmNode.name}'s settings`} aria-label={`${dmNode.name}'s settings`} onClick={() => setPanel("settings")}>
-            <NodeAvatar node={dmNode} size={36} thinking={live.some((row) => row.nodeId === dmNode.id)} dim={dmNode.status === "paused"} />
-          </button>
+          <NodeCompanion key={dmNode.id} node={dmNode} size={38} thinking={workingNodes.has(dmNode.id)} lastActivity={room.lastMessageAt} visit onActivate={() => setPanel("settings")} />
         ) : (
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-raised text-muted"><Users size={18} strokeWidth={1.7} /></span>
+          <button type="button" className="flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-raised" aria-label={`${room.title} settings`} onClick={() => setPanel("settings")}><RoomAvatar room={room} size={40} busy={workingNodes} rotate /></button>
         )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">

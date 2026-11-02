@@ -2,8 +2,9 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource react */
 
-import { useId } from "react";
+import { useId, useRef } from "react";
 import type { Avatar } from "@/lib/types";
+import { useVisibleMotion } from "./appearance-provider";
 
 const SHAPES: Record<Avatar["shape"], string> = {
   orb: "M50 6a44 44 0 1 1 0 88a44 44 0 1 1 0-88z",
@@ -99,14 +100,16 @@ function Eyes({ look }: { look: Avatar }) {
   );
 }
 
-export function NodeAvatar({ node, avatar, size = 36, thinking = false, dim = false, title }: { node?: { avatar: Avatar } | null; avatar?: Avatar | null; size?: number; thinking?: boolean; dim?: boolean; title?: string }) {
+export function NodeAvatar({ node, avatar, size = 36, thinking = false, resting = false, dim = false, title }: { node?: { avatar: Avatar } | null; avatar?: Avatar | null; size?: number; thinking?: boolean; resting?: boolean; dim?: boolean; title?: string }) {
+  const ref = useRef<SVGSVGElement>(null);
+  const motion = useVisibleMotion(ref, thinking);
   const saved = avatar ?? node?.avatar;
   const look: Avatar = saved && SHAPES[saved.shape] ? { ...saved, eyes: saved.eyes === "line" || saved.eyes === "wide" ? saved.eyes : "dot", color: parse(saved.color ?? "") ? saved.color : DEFAULT_LOOK.color } : DEFAULT_LOOK;
   const tones = avatarTones(look.color);
   // Each instance needs its own gradient, including avatars inside hidden drawers.
   const id = `node-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title ?? "Node"} data-node-avatar className={`${thinking ? "node-thinking" : ""} ${dim ? "opacity-50 grayscale" : ""} shrink-0`}>
+    <svg ref={ref} width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title ?? "Node"} data-node-avatar data-motion-active={motion || undefined} data-resting={resting || undefined} className={`${thinking ? "node-thinking" : ""} ${dim ? "opacity-50 grayscale" : ""} shrink-0`}>
       {title ? <title>{title}</title> : null}
       <defs>
         <radialGradient id={id} cx="35%" cy="30%" r="80%">
@@ -115,9 +118,13 @@ export function NodeAvatar({ node, avatar, size = 36, thinking = false, dim = fa
           <stop offset="1" stopColor={tones.shade} />
         </radialGradient>
       </defs>
-      <path d={SHAPES[look.shape]} fill={`url(#${id})`} stroke={tones.edge} strokeWidth="2.5" strokeLinejoin="round" />
-      <g className="node-eyes" fill={tones.eyes}>
-        <Eyes look={look} />
+      <g className="node-work"><g className="node-body">
+        <path d={SHAPES[look.shape]} fill={`url(#${id})`} stroke={tones.edge} strokeWidth="2" strokeLinejoin="round" />
+        <g className="node-attention">
+          <g className="node-gaze">
+            <g className="node-eyes" fill={tones.eyes}><Eyes look={resting ? { ...look, eyes: "line" } : look} /></g>
+          </g></g>
+        </g>
       </g>
     </svg>
   );

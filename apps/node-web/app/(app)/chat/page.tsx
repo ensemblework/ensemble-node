@@ -67,14 +67,13 @@ export default function Home() {
 
   return (
     <div className="scroll-thin relative h-full overflow-y-auto">
-      <div className="glow pointer-events-none absolute inset-x-0 top-0 h-72" />
-      <div className="relative mx-auto max-w-4xl space-y-10 px-4 py-10 md:px-8 md:py-16">
+      <div className="relative mx-auto max-w-3xl space-y-10 px-4 py-10 md:px-8 md:py-16">
         <div className="space-y-5 text-center">
           <h1 className="text-3xl font-semibold tracking-tight md:text-4xl">
             What are we working on?
           </h1>
           {chosen ? (
-            <div {...drop.bind} className="relative mx-auto max-w-2xl rounded-3xl border border-line bg-panel p-2 text-left shadow-lg focus-within:border-accent/60">
+            <div {...drop.bind} className="chat-composer relative mx-auto max-w-2xl rounded-[22px] border border-line bg-panel p-2 text-left focus-within:border-accent/60">
               {drop.over ? <DropHint /> : null}
               <AttachmentShelf attachments={attachments} />
               <textarea
@@ -90,6 +89,7 @@ export default function Home() {
                 rows={2}
                 disabled={!me.verified}
                 placeholder={`Ask ${chosen.name}…`}
+                aria-label={`Ask ${chosen.name}`}
                 className="w-full resize-none bg-transparent px-3 py-2 text-[15px] outline-none placeholder:text-muted"
               />
               <div className="flex items-center justify-between gap-2 px-1">
@@ -150,22 +150,21 @@ export default function Home() {
         ) : null}
 
         <section>
-          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Your nodes</h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <h2 className="mb-3 text-sm font-medium text-muted">Your nodes</h2>
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
             {nodes.map((node) => {
               const dm = dmRoomOf(boot.data, node.id);
               return (
-                <Link key={node.id} href={dm ? `/r/${dm.id}` : `/n/${node.id}`} className="group flex min-w-0 items-center gap-3 rounded-2xl border border-line bg-panel/50 p-4 transition-colors hover:border-accent/40 hover:bg-panel">
-                  <NodeAvatar node={node} size={42} thinking={busy.has(node.id)} dim={node.status === "paused"} />
+                <Link key={node.id} href={dm ? `/r/${dm.id}` : `/n/${node.id}`} title={`@${node.slug}`} className="group flex min-w-0 items-center gap-3 rounded-xl p-3 transition-colors hover:bg-raised/60">
+                  <NodeAvatar node={node} size={42} dim={node.status === "paused"} />
                   <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{node.name}</span>
                   <span className="mt-0.5 block truncate text-xs text-muted">{node.status === "paused" ? "Paused" : busy.has(node.id) ? "Working…" : node.role}</span>
-                  <span className="mt-1 block truncate font-mono text-[11px] text-muted">@{node.slug}</span>
                   </span>
                 </Link>
               );
             })}
-            <Link href="/new?tab=node" className="flex min-h-24 items-center justify-center gap-2 rounded-2xl border border-dashed border-line p-4 text-muted hover:border-accent hover:text-ink">
+            <Link href="/new?tab=node" className="flex min-h-20 items-center gap-3 rounded-xl p-3 text-muted hover:bg-raised/60 hover:text-ink">
               <Plus size={18} />
               <span className="text-sm">New node or group</span>
             </Link>
@@ -174,8 +173,8 @@ export default function Home() {
 
         {recent.length ? (
           <section>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted">Recent</h2>
-            <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel/70">
+            <h2 className="mb-3 text-sm font-medium text-muted">Recent conversations</h2>
+            <ul className="divide-y divide-line">
               {recent.map((room) => (
                 <li key={room.id}>
                   <Link href={`/r/${room.id}`} className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-raised/60">

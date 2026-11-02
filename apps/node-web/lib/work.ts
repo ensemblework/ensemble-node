@@ -18,6 +18,21 @@ const firstLine = (text: string | null | undefined) => (text ?? "").replace(/\s+
 const sentence = (text: string | null | undefined) => firstLine(text).split(/(?<=[.!?])\s/)[0] ?? "";
 const LIVE_RUN: ReadonlySet<string> = new Set(["running", "claimed", "waiting_approval", "stopping"]);
 
+/** Avatar focus comes from live work already in the chat, never a cosmetic poll. */
+export function workingNodeIds(messages: readonly Message[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    if (message.kind === "plan") {
+      const plan = message.data as PlanData;
+      if (plan?.status !== "running" || !Array.isArray(plan.steps)) continue;
+      for (const step of plan.steps) if (step.status === "working") ids.add(step.nodeId);
+    } else if (message.kind === "run" && ["running", "claimed"].includes(String(message.data?.status)) && !message.data?.quiet && message.authorNodeId) {
+      ids.add(typeof message.data?.session?.nodeId === "string" ? message.data.session.nodeId : message.authorNodeId);
+    }
+  }
+  return ids;
+}
+
 /**
  * My live work among these messages, newest first: plans and pieces of work still running, and agent
  * sessions with a live run, one per session (runs inside a plan are its plan's). `ownerOf` names the

@@ -54,9 +54,9 @@ function fixture() {
 }
 
 try {
-  for (const width of [320, 390, 768, 1024, 1440]) {
+  for (const width of [320, 375, 768, 1024, 1440]) {
     const state = fixture();
-    const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width < 768, isMobile: width < 768, colorScheme: width === 390 ? "light" : "dark", reducedMotion: "reduce" });
+    const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width < 768, isMobile: width < 768, colorScheme: width === 375 ? "light" : "dark", reducedMotion: width === 1440 ? "no-preference" : "reduce" });
     await context.addInitScript(() => {
       window.__nodeEvents = [];
       window.EventSource = class extends EventTarget {
@@ -65,11 +65,12 @@ try {
       };
     });
     const page = await context.newPage();
-    const errors = [], unexpected = [];
+    const errors = [], unexpected = [], writes = [];
     page.on("pageerror", error => errors.push(error.message));
     await page.route("**/api/**", async route => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
+      if (!["GET", "OPTIONS"].includes(request.method()) && !path.endsWith("/read")) writes.push(path);
       const json = async data => route.fulfill({ json: data, headers: { "access-control-allow-origin": WEB, "access-control-allow-credentials": "true" } });
       if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { "access-control-allow-origin": WEB, "access-control-allow-credentials": "true", "access-control-allow-methods": "GET, POST, PATCH, DELETE", "access-control-allow-headers": "content-type, accept" } });
       if (path === "/api/auth/me") return json({ user: state.boot.me });
@@ -146,7 +147,11 @@ try {
     await fits();
     if (shots) await page.screenshot({ path: `${shots}/markdown-${width}.png` });
     await openChats();
+    assert.equal(await page.getByRole("complementary", { name: "Activity", exact: true }).count(), 0, "no right activity sidebar");
     assert.deepEqual(await chats().locator("[data-conversation]").evaluateAll(els => els.map(el => el.dataset.conversation)), ["crew", "group", "dm", "writer-dm"]);
+    assert.equal(await chats().locator('[data-conversation="dm"]').evaluate(el => getComputedStyle(el, "::before").content), "none", "selected chats have no accent stripe");
+    await chats().locator('[data-conversation="writer-dm"] svg[data-resting="true"]').waitFor();
+    assert.ok(await chats().locator(".node-eyes").evaluateAll(eyes => eyes.every(eye => getComputedStyle(eye).animationName === "none")), "idle lists do not blink in unison");
     await chats().getByRole("button", { name: "Groups", exact: true }).click();
     assert.equal(await chats().locator("[data-conversation]").count(), 2);
     await chats().getByRole("button", { name: "All", exact: true }).click();
@@ -187,6 +192,19 @@ try {
     await chats().locator('[data-conversation="crew"]').click();
     await page.getByRole("heading", { name: "Launch crew", exact: true }).waitFor();
     await page.locator('.chat-timeline [data-model-brand="copilot"]').waitFor();
+    assert.ok(await page.locator("header .room-avatar").count(), "a crew has a graph avatar");
+    if (width === 1440) {
+      await emit("node.status", { roomId: "crew", nodeId: "scout", state: "thinking" });
+      await emit("node.status", { roomId: "crew", nodeId: "builder", state: "thinking" });
+      await page.locator('header .room-avatar[aria-label*="Scout working"]').waitFor();
+      await page.locator('header .room-avatar[aria-label*="Builder working"]').waitFor({ timeout: 10000 });
+      await page.getByRole("button", { name: "Launch crew settings", exact: true }).focus();
+      const focused = await page.locator("header .room-avatar").getAttribute("aria-label");
+      await page.waitForTimeout(7300);
+      assert.equal(await page.locator("header .room-avatar").getAttribute("aria-label"), focused, "graph rotation pauses on keyboard focus");
+      await emit("node.status", { roomId: "crew", nodeId: "scout", state: "idle" });
+      await emit("node.status", { roomId: "crew", nodeId: "builder", state: "idle" });
+    }
     await page.getByRole("button", { name: "Launch crew", exact: true }).click();
     await page.getByRole("dialog", { name: "Crew settings", exact: true }).waitFor();
     await page.getByRole("dialog", { name: "Crew settings", exact: true }).getByRole("button", { name: "Close", exact: true }).last().click();
@@ -221,6 +239,22 @@ try {
     if (shots) await page.screenshot({ path: `${shots}/chat-${width}.png` });
 
     if (width >= 768) {
+      const separator = page.getByRole("separator", { name: "Conversation sidebar width", exact: true });
+      await separator.focus();
+      await page.keyboard.press("Home");
+      assert.equal(await separator.getAttribute("aria-valuenow"), "248");
+      await page.keyboard.press("ArrowRight");
+      assert.equal(await separator.getAttribute("aria-valuenow"), "264");
+      await page.reload();
+      assert.equal(await separator.getAttribute("aria-valuenow"), "264", "keyboard-resized width persists");
+      if (width === 1440) {
+        const box = await separator.boundingBox();
+        await page.mouse.move(box.x + box.width / 2, box.y + 200);
+        await page.mouse.down();
+        await page.mouse.move(box.x + box.width / 2 + 96, box.y + 200, { steps: 8 });
+        await page.mouse.up();
+        assert.equal(await separator.getAttribute("aria-valuenow"), "360", "dragging persists once the pointer is released");
+      }
       await page.getByRole("button", { name: "Collapse conversations", exact: true }).click();
       await page.reload();
       await page.locator('[data-sidebar-collapsed="true"]').waitFor();
@@ -252,6 +286,72 @@ try {
     await appearance.waitFor();
     assert.equal(await appearance.getByRole("button", { name: "hex", exact: true }).getAttribute("aria-pressed"), "true");
     assert.equal(await appearance.getByRole("button", { name: "line eyes", exact: true }).getAttribute("aria-pressed"), "true");
+    if (width === 1440) {
+      const hello = settings.getByRole("button", { name: "Say hello to Scout", exact: true });
+      await hello.click();
+      await page.waitForTimeout(80);
+      assert.notEqual(await hello.locator(".node-body").evaluate(el => getComputedStyle(el).transform), "none", "a click gets a small response");
+      const box = await hello.boundingBox();
+      await page.mouse.move(box.x + box.width - 4, box.y + box.height - 4);
+      await page.waitForTimeout(400);
+      const gaze = await hello.locator(".node-gaze").evaluate(el => getComputedStyle(el).transform);
+      assert.ok(gaze !== "none" && gaze !== "matrix(1, 0, 0, 1, 0, 0)", "only the open profile follows the nearby pointer");
+      await page.mouse.move(10, 10);
+    }
+    await settings.getByRole("button", { name: "Close", exact: true }).click();
+    await openChats();
+    assert.equal(await chats().getByRole("link", { name: "Routines", exact: true }).count(), 0, "workspace links stay out of the chat list");
+    await chats().getByRole("button", { name: "Workspace menu", exact: true }).click();
+    await chats().getByRole("link", { name: "Appearance", exact: true }).click();
+    const preferences = page.getByRole("region", { name: "Appearance", exact: true });
+    await preferences.waitFor();
+    const beforeAppearance = writes.length;
+    await preferences.getByRole("button", { name: "Light", exact: true }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await preferences.getByRole("button", { name: "Graphite", exact: true }).click();
+    await preferences.getByRole("button", { name: "Tide", exact: true }).click();
+    await preferences.getByRole("button", { name: "Constellation", exact: true }).click();
+    await preferences.getByRole("switch", { name: "Quiet mode", exact: true }).click();
+    if (shots) await page.screenshot({ path: `${shots}/appearance-${width}.png` });
+    await page.reload();
+    await preferences.waitFor();
+    assert.deepEqual(await page.evaluate(() => {
+      const { mode, theme, palette, accent, doodle, motion } = document.documentElement.dataset;
+      return { mode, theme, palette, accent, doodle, motion };
+    }), { mode: "light", theme: "light", palette: "graphite", accent: "tide", doodle: "constellation", motion: "off" });
+    await preferences.getByRole("button", { name: "Dark", exact: true }).click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    if (width === 1440) {
+      const otherTab = await context.newPage();
+      await otherTab.goto(`${WEB}/health`);
+      await otherTab.evaluate(() => {
+        const key = "node.appearance.v1";
+        const saved = JSON.parse(localStorage.getItem(key));
+        localStorage.setItem(key, JSON.stringify({ ...saved, mode: "light" }));
+      });
+      await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+      await otherTab.close();
+      await preferences.getByRole("button", { name: "System", exact: true }).click();
+      await page.emulateMedia({ colorScheme: "light" });
+      await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+      await page.emulateMedia({ colorScheme: "dark" });
+      await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    }
+    await fits();
+    assert.equal(writes.length, beforeAppearance, "appearance does not write to the API");
+    await page.goto(`${WEB}/r/dm`);
+    await page.getByRole("textbox", { name: "Message Scout", exact: true }).waitFor();
+    assert.ok((await page.locator(".chat-wallpaper").evaluate(el => getComputedStyle(el, "::before").maskImage)).includes("constellation.svg"), "the chosen doodle paints the conversation");
+    assert.equal(await page.locator("header .node-work").evaluate(el => getComputedStyle(el).animationName), "none", "quiet mode keeps expressions still");
+    await page.getByRole("textbox", { name: "Message Scout", exact: true }).fill("A quiet draft");
+    assert.equal(await page.getByRole("textbox", { name: "Message Scout", exact: true }).evaluate(el => getComputedStyle(el).outlineStyle), "none", "the composer owns the focus outline, not an inner square");
+    assert.equal(await page.locator(".chat-composer").evaluate(el => getComputedStyle(el).outlineStyle), "solid", "keyboard focus stays clearly visible on the rounded composer");
+    assert.equal(await page.locator("header .node-attention").evaluate(el => getComputedStyle(el).transform), "none", "quiet mode also disables typing reactions");
+    await emit("node.status", { roomId: "dm", nodeId: "scout", state: "thinking" });
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator("header .node-work").evaluate(el => getComputedStyle(el).animationName), "none", "quiet mode does not animate working nodes");
+    await emit("node.status", { roomId: "dm", nodeId: "scout", state: "idle" });
+    if (shots) await page.screenshot({ path: `${shots}/quiet-chat-${width}.png` });
     await fits();
     assert.deepEqual(errors, [], "no client errors");
     assert.deepEqual(unexpected, [], "only the intended API reads/writes");

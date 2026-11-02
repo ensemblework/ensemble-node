@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { messageTask, workBoard } from "./work";
+import { messageTask, workBoard, workingNodeIds } from "./work";
 import type { Message } from "./types";
 
 const message = (id: string, seq: number, extra: Partial<Message>): Message => ({
@@ -23,6 +23,14 @@ const message = (id: string, seq: number, extra: Partial<Message>): Message => (
 const step = (id: string, extra: Record<string, unknown> = {}) => ({ id, nodeId: id, handle: id, name: id, brief: `Do ${id}. Then more.`, after: [], status: "waiting", result: null, progress: null, startedAt: null, endedAt: null, ...extra });
 const owners: Record<string, string> = { lead: "me", builder: "me", theirs: "ben" };
 const ownerOf = (id: string | null) => (id ? owners[id] : null);
+
+test("graph avatars focus only work actually running, including a session's current manager", () => {
+  const live = message("plan", 1, { kind: "plan", data: { status: "running", steps: [step("builder", { status: "working" }), step("tester", { status: "waiting" })] } });
+  const run = message("run", 2, { kind: "run", data: { status: "running", session: { nodeId: "designer" } } });
+  assert.deepEqual([...workingNodeIds([live, run])], ["builder", "designer"]);
+  assert.deepEqual([...workingNodeIds([{ ...live, data: { ...live.data, status: "done" } }, { ...run, data: { ...run.data, status: "succeeded" } }])], []);
+  assert.deepEqual([...workingNodeIds([{ ...run, data: { ...run.data, quiet: "replaced" } }])], []);
+});
 
 test("the work board lists my live plans, work and sessions, newest first, from what is loaded", () => {
   const messages = [

@@ -16,7 +16,8 @@ import { toast, toastError } from "@/lib/toast";
 import type { Avatar, NodeFull } from "@/lib/types";
 import { ModelPicker } from "./model-picker";
 import { HandleInput } from "./handle-input";
-import { AppearancePicker, NodeAvatar } from "./node-avatar";
+import { AppearancePicker } from "./node-avatar";
+import { NodeCompanion } from "./node-companion";
 import { EvidenceGallery } from "./chat/evidence";
 import { NodeRoutines } from "./routines";
 import { Button, External, Field, Input, Notice, Segmented, Spinner, Switch, Textarea } from "./ui";
@@ -164,7 +165,7 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-3">
-        <NodeAvatar node={node} avatar={avatar} size={52} dim={paused} />
+        <NodeCompanion node={node} avatar={avatar} size={64} profile />
         <div className="min-w-0">
           <div className="truncate text-lg font-semibold">{node.name}</div>
           <div className="truncate font-mono text-sm text-muted">
@@ -194,7 +195,7 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
           <Input value={role} onChange={(event) => setRole(event.target.value)} maxLength={40} />
         </Field>
         <Field label="Appearance" group>
-          <AppearancePicker value={avatar} onChange={setAvatar} />
+          <AppearancePicker value={avatar} onChange={setAvatar} preview={false} />
         </Field>
         <Field label="Instructions" hint="Private guidelines for this node: how it works, what it should care about.">
           <Textarea value={charter} onChange={(event) => setCharter(event.target.value)} rows={7} maxLength={8000} />

@@ -229,7 +229,23 @@ try {
       await pane.getByRole("button", { name: "Restore chat and editor", exact: true }).click();
       await pane.getByRole("button", { name: "Show file list", exact: true }).click();
       await files.getByRole("button", { name: /sample.xlsx/ }).click();
-      await pane.getByRole("cell", { name: "Spreadsheet preview verification", exact: true }).waitFor();
+      const cell = pane.getByRole("cell", { name: "Spreadsheet preview verification", exact: true });
+      await cell.waitFor();
+      const contrast = await cell.evaluate(element => {
+        const luma = color => {
+          const [r, g, b] = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+          return .2126 * r + .7152 * g + .0722 * b;
+        };
+        let parent = element, background;
+        while (parent) {
+          background = getComputedStyle(parent).backgroundColor;
+          if (background.startsWith("rgb(") || /,\s*1\)$/.test(background)) break;
+          parent = parent.parentElement;
+        }
+        const values = [luma(getComputedStyle(element).color), luma(background)].sort((a, b) => a - b);
+        return (values[1] + .05) / (values[0] + .05);
+      });
+      assert.ok(contrast >= 4.5, "a dark code theme never makes document text unreadable in the light app");
       await page.getByRole("link", { name: "Software Team", exact: true }).click();
       const handle = page.locator('.file-list [aria-label="Resize file list"]');
       const before = await handle.getAttribute("aria-valuenow");

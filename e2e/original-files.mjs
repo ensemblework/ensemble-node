@@ -1,6 +1,7 @@
 /** Local, stateful original-file UI fixture. No hosted account, model or computer is used. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
 const require = createRequire(new URL("../apps/node-web/package.json", import.meta.url));
 const { zipSync, strToU8 } = require("fflate");
@@ -35,6 +36,8 @@ documents["sample.xlsx"] = XLSX.write(book, { type: "buffer", bookType: "xlsx" }
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? "playwright-core");
 const WEB = process.env.NODE_WEB ?? "http://localhost:3392";
 assert.ok(["localhost", "127.0.0.1"].includes(new URL(WEB).hostname), "Use an isolated local Node server.");
+const shots = process.env.NODE_CHAT_SHOTS;
+if (shots) mkdirSync(shots, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH, headless: true, args: ["--no-sandbox"] });
 const hash = text => createHash("sha1").update(text).digest("hex");
 const INITIAL = "export const answer = 41;\n";
@@ -50,7 +53,7 @@ function fixture() {
   const room = { id: "dm", kind: "dm", title: "Builder", members: [person, member], createdBy: "me", lastSeq: 1, readSeq: 1, unread: 0, lastMessageAt: at, pinned: [], invites: [], leadNodeIds: [], last: null };
   const card = { id: SOURCE.id, roomId: room.id, seq: 1, kind: "files", body: "", authorKind: "node", authorAccountId: "me", authorNodeId: node.id, private: true, mentions: [], rootMessageId: null, clientId: null, createdAt: at, data: { deviceId: "device", sources: [SOURCE, NOTES].map(source => ({ fileId: source.fileId, path: source.path, folder: "project" })) } };
   return {
-    boot: { me: { id: "me", name: "Mira", email: "mira@example.test", verified: true }, nodes: [node, editor], rooms: [room, { ...room, id: "editor-dm", title: "Editor", members: [person, { ...member, id: "editor-member", node: editor, handle: "editor" }] }], computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { options: [] } },
+    boot: { me: { id: "me", name: "Mira", email: "mira@example.test", verified: true }, nodes: [node, editor], rooms: [room, { ...room, id: "editor-dm", title: "Editor", members: [person, { ...member, id: "editor-member", node: editor, handle: "editor" }] }, { ...room, id: "crew", kind: "crew", title: "Software Team", members: [person, member, { ...member, id: "crew-editor", node: editor, handle: "editor", lead: false }], leadNodeIds: [node.id] }], computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { options: [] } },
     theme: { id: "builtin:ensemble-default", label: "Ensemble Default", uiTheme: "vs-dark", kind: "dark", cssVars: {}, editor: null, tokens: [] },
     messages: [card], content: INITIAL, offline: false, saves: [], sent: [],
     target: { kind: "node", nodeId: editor.id, nodeName: editor.name, roomId: "editor-dm" },
@@ -213,8 +216,63 @@ try {
         for (let at = 0; at < pixels.length; at += 4) if (pixels[at + 3] && pixels[at] < 200 && pixels[at + 1] < 200 && pixels[at + 2] < 200) return true;
         return false;
       });
+      await files.getByRole("button", { name: "Close file list", exact: true }).click();
+      await pane.getByRole("button", { name: "Focus editor", exact: true }).click();
+      await pane.locator("[data-reader-header]").getByRole("textbox", { name: "Page number", exact: true }).waitFor();
+      assert.equal(await pane.locator('[role="tablist"][aria-label="Open files"]').count(), 0, "reading focus hides file tabs");
+      assert.equal(await pane.locator("footer").count(), 0, "document reading has no code status/footer");
+      assert.equal(await pane.getByText("This format is previewed, not edited as text.", { exact: true }).count(), 0);
+      assert.ok((await pane.locator("[data-reader-header]").boundingBox()).height <= 44, "PDF controls share one compact reading bar");
+      const readerSize = await pane.boundingBox(), pageSize = await pane.locator("#node-file-panel").boundingBox();
+      assert.ok(pageSize.height / readerSize.height > .9, "more than 90% of focused desktop height belongs to the document");
+      if (shots) await page.screenshot({ path: `${shots}/original-pdf-focus-${width}.png` });
+      await pane.getByRole("button", { name: "Restore chat and editor", exact: true }).click();
+      await pane.getByRole("button", { name: "Show file list", exact: true }).click();
       await files.getByRole("button", { name: /sample.xlsx/ }).click();
-      await pane.getByRole("cell", { name: "Spreadsheet preview verification", exact: true }).waitFor();
+      const cell = pane.getByRole("cell", { name: "Spreadsheet preview verification", exact: true });
+      await cell.waitFor();
+      const contrast = await cell.evaluate(element => {
+        const luma = color => {
+          const [r, g, b] = color.match(/[\d.]+/g).slice(0, 3).map(Number).map(value => value / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
+          return .2126 * r + .7152 * g + .0722 * b;
+        };
+        let parent = element, background;
+        while (parent) {
+          background = getComputedStyle(parent).backgroundColor;
+          if (background.startsWith("rgb(") || /,\s*1\)$/.test(background)) break;
+          parent = parent.parentElement;
+        }
+        const values = [luma(getComputedStyle(element).color), luma(background)].sort((a, b) => a - b);
+        return (values[1] + .05) / (values[0] + .05);
+      });
+      assert.ok(contrast >= 4.5, "a dark code theme never makes document text unreadable in the light app");
+      await page.getByRole("link", { name: "Software Team", exact: true }).click();
+      const handle = page.locator('.file-list [aria-label="Resize file list"]');
+      const before = await handle.getAttribute("aria-valuenow");
+      const box = await handle.boundingBox();
+      await page.locator(".chat-header h1 button").click();
+      const settings = page.getByRole("dialog", { name: "Crew settings", exact: true });
+      await settings.waitFor();
+      assert.equal(await page.locator(".chat-shell").evaluate(element => element.inert), true);
+      assert.equal(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[role="dialog"]')?.getAttribute("aria-label"), { x: box.x + 2, y: 200 }), "Crew settings", "the modal, not the file divider, owns the pointer hit");
+      if (shots) await page.screenshot({ path: `${shots}/original-crew-settings-${width}.png` });
+      await handle.evaluate(element => element.focus());
+      await page.keyboard.press("ArrowLeft");
+      assert.equal(await handle.getAttribute("aria-valuenow"), before, "background resize handles cannot receive keyboard interaction");
+      for (let at = 0; at < 8; at++) {
+        await page.keyboard.press("Tab");
+        assert.equal(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]')?.getAttribute("aria-label")), "Crew settings");
+      }
+      await page.keyboard.press("Escape");
+      await settings.waitFor({ state: "hidden" });
+      assert.equal(await page.locator(".chat-shell").evaluate(element => element.inert), false);
+      assert.ok(await page.getByRole("link", { name: "Add a node or crew", exact: true }).isVisible());
+      await page.evaluate(() => { document.documentElement.dataset.doodle = "orbits"; });
+      assert.match(await page.locator(".chat-wallpaper").evaluate(element => getComputedStyle(element, "::before").maskImage), /orbits.svg/);
+      const backgrounds = await page.locator("[data-message-surface]").evaluateAll(elements => elements.map(element => getComputedStyle(element).backgroundColor));
+      assert.ok(backgrounds.length);
+      assert.ok(backgrounds.every(color => color.startsWith("rgb(") || /,\s*1\)$/.test(color)), "message surfaces stay opaque above doodles");
+      if (shots) await page.screenshot({ path: `${shots}/original-doodles-${width}.png` });
     }
     assert.equal(await page.locator("main").evaluate(element => element.scrollWidth <= element.clientWidth + 2), true);
     assert.deepEqual(errors, []); assert.deepEqual(unexpected, []);

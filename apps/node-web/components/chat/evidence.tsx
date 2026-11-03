@@ -2,10 +2,9 @@
 
 /**
  * Evidence a run attached (screenshots, videos, traces, reports, logs) and files a node sends with a
- * message: thumbnails, a lightbox with keyboard and swipe navigation, a player for videos and sound, a
- * preview for text files (Markdown rendered, code with line numbers, other text as it is;
- * lib/file-preview.ts) and a download for everything else, each with its type's icon and label
- * (lib/file-types.ts). Pictures are read with the session cookie and shown only when the bytes that
+ * message: thumbnails, a lightbox with keyboard and swipe navigation, a player for videos and sound,
+ * compact file cards that open the workspace on demand, each with a separate download, type icon and
+ * label (lib/file-types.ts). Pictures are read with the session cookie and shown only when the bytes that
  * came back are a safe picture type (lib/evidence.ts); HTML, SVG, XML and other active formats are
  * only ever downloaded, never shown in the page, and a script shows as text, never runs. Media in a
  * message is read through that message (`via`), so people in a room who do not own the file can open
@@ -13,20 +12,18 @@
  * tall picture (a full page) shows its top and scrolls when opened. A file held for its owner's
  * preview, or kept on the computer, is listed and never read from here.
  */
-import { ChevronDown, ChevronLeft, ChevronRight, Download, EyeOff, File as FileIcon, FileArchive, FileAudio, FileCode, FileImage, FileJson, FileSpreadsheet, FileText, FileType as FontIcon, FileVideo, HardDrive, ImageOff, Maximize2, Presentation, ScrollText, X } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject, type SyntheticEvent } from "react";
+import { ChevronLeft, ChevronRight, Download, EyeOff, File as FileIcon, FileArchive, FileAudio, FileCode, FileImage, FileJson, FileSpreadsheet, FileText, FileType as FontIcon, FileVideo, HardDrive, ImageOff, Maximize2, Presentation, ScrollText, X } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties, type RefObject, type SyntheticEvent } from "react";
 import { createPortal } from "react-dom";
-import { download, evidenceBlob, evidenceHead, evidenceUrl } from "@/lib/api";
+import { download, evidenceBlob, evidenceUrl } from "@/lib/api";
 import { sizeLabel } from "@/lib/attachments";
 import { heldReasonWords } from "@/lib/captures";
 import { durationLabel, evidenceKind, evidencePath, evidenceShow, filesLine, isSafeImage, isTall, keptAs, mediaFrame } from "@/lib/evidence";
-import { decodePreview, looksBinary, PREVIEW_LINES, PREVIEW_MAX_BYTES, previewContent, previewLines, previewsOpen, textPreviewKind, type TextPreviewKind } from "@/lib/file-preview";
 import { fileType, type FileFamily, type FileType } from "@/lib/file-types";
 import { toastError } from "@/lib/toast";
 import type { EvidenceItem } from "@/lib/types";
 import { Spinner } from "../ui";
-import { CopyButton } from "./code-block";
-import { RichText } from "./rich-text";
+import { useFileWorkspace } from "../files/workspace";
 
 /** The requirement a piece of evidence is for, with where it is listed when that is on the page. */
 export type RequirementLink = { text: string; href?: string };
@@ -303,19 +300,19 @@ function LargeVideo({ item, via }: { item: EvidenceItem; via: string | null }) {
   return <video src={src} poster={poster} controls playsInline preload="metadata" aria-label={describe(item)} className="max-h-full max-w-full rounded-md bg-black" />;
 }
 
-function FileRow({ item, via, requirement }: Tile) {
+function FileRow({ item, via, requirement, onOpen }: Tile & { onOpen: (inDialog: boolean) => void }) {
   const saving = useSave(item, via);
   const type = fileType(item);
   const size = typeof item.size === "number" ? sizeLabel(item.size) : "";
   return (
     <li className="flex max-w-full" data-file={type.family}>
+      <div className="flex w-72 max-w-full items-center rounded-xl border border-line bg-panel pr-1 transition-colors hover:border-accent">
       <button
         type="button"
-        disabled={saving.busy}
-        onClick={saving.start}
-        aria-label={`Download ${describe(item)}`}
-        title={`Download ${item.name}`}
-        className="flex w-72 max-w-full items-center gap-2.5 rounded-xl border border-line bg-bg/70 p-1.5 pr-2.5 text-left transition hover:border-accent disabled:opacity-80"
+        onClick={event => onOpen(Boolean(event.currentTarget.closest('[role="dialog"]')))}
+        aria-label={`Open ${describe(item)}`}
+        title={`Open ${item.name}`}
+        className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl p-2 text-left hover:bg-raised/50"
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-raised">{saving.busy ? <Spinner className="h-3.5 w-3.5 text-muted" /> : <FileTypeIcon type={type} />}</span>
         <span className="min-w-0 flex-1">
@@ -324,8 +321,9 @@ function FileRow({ item, via, requirement }: Tile) {
             {saving.busy ? `Downloading${saving.progress ? ` ${saving.progress}%` : "…"}` : [type.label, size, item.caption, requirement ? `for ${requirement.text}` : null].filter(Boolean).join(" · ")}
           </span>
         </span>
-        <Download size={13} className="shrink-0 text-muted" aria-hidden />
       </button>
+      <button type="button" disabled={saving.busy} onClick={saving.start} aria-label={`Download ${describe(item)}`} title={`Download ${item.name}`} className="flex size-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised disabled:opacity-50"><Download size={14} aria-hidden /></button>
+      </div>
     </li>
   );
 }
@@ -534,166 +532,23 @@ function Lightbox({ items, via, start, onClose, requirementOf }: { items: Eviden
   );
 }
 
-/** A text file's preview as read for the page: its first 200 KB, why it could not be read, or that it is not text after all. */
-type TextRead = { text: string; truncated: boolean } | { error: string } | { binary: true };
-const texts = new Map<string, Promise<TextRead>>();
-
-/** A text file's first 200 KB, read once for the page (through the message that shows it, when there is one); the rest is never downloaded. */
-function textOf(id: string, via: string | null): Promise<TextRead> {
-  const key = `${via ?? ""}:${id}`;
-  const cached = texts.get(key);
-  if (cached) return cached;
-  const made = evidenceHead(id, PREVIEW_MAX_BYTES, via).then(
-    ({ bytes, truncated }): TextRead => {
-      const text = decodePreview(bytes);
-      return looksBinary(text) ? { binary: true } : { text, truncated };
-    },
-    (error: unknown): TextRead => {
-      texts.delete(key);
-      return { error: error instanceof Error ? error.message : "The file could not be read." };
-    },
-  );
-  texts.set(key, made);
-  if (texts.size > 40) texts.delete(texts.keys().next().value as string);
-  return made;
-}
-
-const NO_HANDLES: ReadonlySet<string> = new Set();
-
-/**
- * A text file in the chat: its name, its type, size and lines, Copy and Download, and its first lines
- * (Markdown rendered as in a message, code with line numbers, other text as it is, in monospace), Show
- * all or Collapse. It is read when it comes near the screen; one that starts folded (one of many on a
- * message) is read when it is opened.
- */
-function TextPreview({ item, via, kind, requirement, startOpen }: Tile & { kind: TextPreviewKind; startOpen: boolean }) {
-  const ref = useRef<HTMLElement>(null);
-  const near = useNear(ref);
-  const [unfolded, setUnfolded] = useState(startOpen);
-  const [read, setRead] = useState<TextRead | null>(null);
-  const [all, setAll] = useState(false);
-  const saving = useSave(item, via);
-  const id = useId();
-  const type = fileType(item);
-  useEffect(() => {
-    if (!near || !unfolded) return;
-    let live = true;
-    void textOf(item.id, via).then((row) => {
-      if (live) setRead(row);
-    });
-    return () => {
-      live = false;
-    };
-  }, [near, unfolded, item.id, via]);
-  const body = read && "text" in read ? previewContent(kind, read.text, read.truncated) : "";
-  const lines = previewLines(body);
-  const shown = all ? body : lines.shown;
-  const numbers = useMemo(() => Array.from({ length: all ? lines.total : Math.min(lines.total, PREVIEW_LINES) }, (_, at) => at + 1).join("\n"), [all, lines.total]);
-  const truncated = Boolean(read && "text" in read && read.truncated);
-  const size = typeof item.size === "number" ? sizeLabel(item.size) : null;
-  // Folded, the preview is also kept short on screen: what does not fit fades out, and Show all opens it.
-  const box = useRef<HTMLDivElement>(null);
-  const [clipped, setClipped] = useState(false);
-  useLayoutEffect(() => {
-    const element = box.current;
-    setClipped(Boolean(element && !all && element.scrollHeight > element.clientHeight + 1));
-  }, [shown, all, read, unfolded]);
-  const more = lines.more || clipped;
-  const text = read && "text" in read;
-  const icon = "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink disabled:opacity-60";
-  return (
-    <figure ref={ref} className="min-w-0 overflow-hidden rounded-xl border border-line bg-bg/70" data-text-preview={kind} data-folded={unfolded ? undefined : true}>
-      <figcaption className={`flex items-center gap-2 py-1 pl-2.5 pr-1 ${unfolded ? "border-b border-line/70" : ""}`}>
-        <FileTypeIcon type={type} size={16} className="shrink-0" />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium" title={item.name}>
-            {item.name}
-          </span>
-          <span className="block truncate text-[11px] text-muted" aria-live={saving.busy ? "polite" : undefined}>
-            {saving.busy ? `Downloading${saving.progress ? ` ${saving.progress}%` : "…"}` : [type.label, size, text ? `${lines.total} ${lines.total === 1 ? "line" : "lines"}` : null].filter(Boolean).join(" · ")}
-          </span>
-        </span>
-        {unfolded && text && kind !== "markdown" ? <CopyButton text={body} label={kind === "code" ? `Copy ${item.name}` : `Copy the text of ${item.name}`} /> : null}
-        <button type="button" disabled={saving.busy} onClick={saving.start} aria-label={`Download ${item.name}`} title="Download" className={icon}>
-          {saving.busy ? <Spinner className="h-3.5 w-3.5" /> : <Download size={15} aria-hidden />}
-        </button>
-        {startOpen ? null : (
-          <button type="button" onClick={() => setUnfolded(!unfolded)} aria-expanded={unfolded} aria-controls={id} aria-label={`${unfolded ? "Hide" : "Preview"} ${item.name}`} title={unfolded ? "Hide" : "Preview"} className={icon}>
-            <ChevronDown size={16} className={`transition motion-reduce:transition-none ${unfolded ? "rotate-180" : ""}`} aria-hidden />
-          </button>
-        )}
-      </figcaption>
-      {unfolded ? (
-        <div
-          id={id}
-          ref={box}
-          {...(all ? { role: "region", tabIndex: 0, "aria-label": `${item.name}, all of it` } : {})}
-          className={all ? "scroll-thin max-h-[70vh] overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60" : `relative max-h-[min(22rem,55vh)] overflow-hidden ${more ? "[mask-image:linear-gradient(to_bottom,black_75%,transparent)]" : ""}`}
-        >
-          {!read ? (
-            <p className="flex items-center gap-2 px-3 py-2.5 text-xs text-muted" role="status">
-              <Spinner className="h-3 w-3" /> Reading {item.name}…
-            </p>
-          ) : "error" in read ? (
-            <p className="px-3 py-2.5 text-xs text-danger">{read.error}</p>
-          ) : "binary" in read ? (
-            <p className="px-3 py-2.5 text-xs text-muted">This file is not text. Download it to open it.</p>
-          ) : kind === "markdown" ? (
-            <div className="px-3 py-2.5">
-              <RichText text={shown} handles={NO_HANDLES} small />
-            </div>
-          ) : kind === "code" ? (
-            <div className="flex min-w-0 font-mono text-xs leading-relaxed">
-              <pre aria-hidden className="shrink-0 select-none border-r border-line/60 py-2.5 pl-2.5 pr-2 text-right text-muted/70">{numbers}</pre>
-              <pre className="scroll-thin min-w-0 flex-1 overflow-x-auto px-3 py-2.5" aria-label={`${type.label} code`}>
-                <code>{shown}</code>
-              </pre>
-            </div>
-          ) : (
-            <pre className="scroll-thin overflow-x-auto px-3 py-2.5 font-mono text-xs leading-relaxed">{shown}</pre>
-          )}
-        </div>
-      ) : null}
-      {unfolded && text && (more || all || truncated) ? (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line/70 px-3 py-1.5 text-xs">
-          {more || all ? (
-            <button type="button" aria-expanded={all} aria-controls={id} onClick={() => setAll(!all)} className="font-medium text-accent hover:underline">
-              {all ? "Collapse" : `Show all ${lines.total} ${lines.total === 1 ? "line" : "lines"}`}
-            </button>
-          ) : null}
-          {truncated && (all || !more) ? <span className="text-muted">The first 200 KB. Download it for the rest.</span> : null}
-        </div>
-      ) : null}
-      {item.caption || requirement ? (
-        <div className={`px-3 pb-2 ${unfolded ? "" : "-mt-1"}`}>
-          <Caption item={item} requirement={requirement} />
-        </div>
-      ) : null}
-    </figure>
-  );
-}
-
 /**
  * Evidence as a gallery: pictures and videos in a grid that opens into the lightbox, sound in a
- * player, text files as previews (folded when there are more than two), other files as downloads with
+ * player, other files as compact open/download cards without fetching their contents;
  * their type's icon; several files say how many and how large together. `requirementOf` names the
  * requirement a piece is for (a plan's ledger); `messageId` is the message that shows these files,
  * which is how anyone but their owner may read them.
  */
 export function EvidenceGallery({ items, requirementOf, messageId = null, label = "Evidence", className = "" }: { items: readonly EvidenceItem[]; requirementOf?: (id: string) => RequirementLink | null; messageId?: string | null; label?: string; className?: string }) {
+  const workspace = useFileWorkspace();
   const [open, setOpen] = useState<number | null>(null);
   const via = messageId;
   if (!items.length) return null;
   const readable = items.filter((item) => !keptAs(item));
   const visual = readable.filter((item) => evidenceShow(item) === "image" || evidenceShow(item) === "video");
   const sounds = readable.filter((item) => evidenceShow(item) === "audio");
-  const previews = readable.flatMap((item) => {
-    const kind = evidenceShow(item) === "download" ? textPreviewKind(item) : null;
-    return kind ? [{ item, kind }] : [];
-  });
-  const files = items.filter((item) => keptAs(item) || (evidenceShow(item) === "download" && !textPreviewKind(item)));
-  const listed = [...sounds, ...previews.map((row) => row.item), ...files];
-  const startOpen = previewsOpen(previews.length);
+  const files = items.filter((item) => keptAs(item) || evidenceShow(item) === "download");
+  const listed = [...sounds, ...files];
   const requirement = (item: EvidenceItem) => (item.requirementId && requirementOf ? requirementOf(item.requirementId) : null);
   const alone = visual.length === 1;
   const gap = (before: boolean) => (before ? "mt-1.5" : "");
@@ -724,16 +579,9 @@ export function EvidenceGallery({ items, requirementOf, messageId = null, label 
           ))}
         </div>
       ) : null}
-      {previews.length ? (
-        <div className={`space-y-1.5 ${gap(visual.length > 0 || listed.length >= 3 || sounds.length > 0)}`}>
-          {previews.map(({ item, kind }) => (
-            <TextPreview key={item.id} item={item} via={via} kind={kind} requirement={requirement(item)} startOpen={startOpen} />
-          ))}
-        </div>
-      ) : null}
       {files.length ? (
-        <ul className={`flex flex-wrap gap-1.5 ${gap(visual.length > 0 || listed.length >= 3 || sounds.length > 0 || previews.length > 0)}`}>
-          {files.map((item) => (keptAs(item) ? <KeptRow key={item.id} item={item} /> : <FileRow key={item.id} item={item} via={via} requirement={requirement(item)} />))}
+        <ul className={`flex flex-wrap gap-1.5 ${gap(visual.length > 0 || listed.length >= 3 || sounds.length > 0)}`}>
+          {files.map((item) => (keptAs(item) ? <KeptRow key={item.id} item={item} /> : <FileRow key={item.id} item={item} via={via} requirement={requirement(item)} onOpen={inDialog => workspace.openShared(item, via, inDialog)} />))}
         </ul>
       ) : null}
       {open !== null && visual.length ? <Lightbox items={visual} via={via} start={open} onClose={() => setOpen(null)} requirementOf={requirementOf} /> : null}

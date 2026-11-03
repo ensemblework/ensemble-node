@@ -27,13 +27,14 @@ ensemble-node/
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, computers, browsing, sign out
 │   ├── components/
 │   │   ├── files/               split workspace and file list (workspace.tsx), lazy original editor,
-│   │   │                        floating selection action, document/sheet previews, file/selection cards,
+│   │   │                        floating selection action, on-demand shared-copy reader (shared-file.tsx),
+│   │   │                        document/sheet previews, file/selection cards,
 │   │   │                        canonical theme mapping and account-saved theme picker
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
 │   │   │                        run card and its work log (run-card.tsx, work-log.tsx), the session parts of a run
 │   │   │                        card (session.tsx: settings, queue, controls), a worker's report (report.tsx),
 │   │   │                        evidence and files gallery: pictures and the lightbox, videos and sound in a player,
-│   │   │                        text and code previews, downloads with their type's icon (evidence.tsx), every owner card's
+│   │   │                        compact file cards and separate downloads (evidence.tsx), every owner card's
 │   │   │                        frame and its checkpoint (owner-card.tsx), a question from the computer
 │   │   │                        (computer-card.tsx), a run's question or permission (run-decision-card.tsx), a
 │   │   │                        command to run as administrator (sudo-card.tsx), captures held for the owner to check

@@ -231,10 +231,10 @@ export function Toaster() {
     };
   }, []);
   if (!toasts.length) return null;
-  return (
+  return createPortal(
     <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-[70] flex flex-col items-center gap-2 px-4">
       {toasts.map(row => <ToastItem key={row.id} row={row} />)}
-    </div>
+    </div>, document.body,
   );
 }
 
@@ -258,6 +258,21 @@ export function Field({ label, hint, error, group = false, children }: { label: 
 export function Notice({ tone = "info", children }: { tone?: "info" | "error" | "ok" | "warn"; children: ReactNode }) {
   const tones = { info: "border-line bg-raised text-ink", error: "border-danger/40 bg-danger/10 text-danger", ok: "border-ok/40 bg-ok/10 text-ok", warn: "border-warn/40 bg-warn/10 text-warn" };
   return <div className={`rounded-xl border px-3 py-2 text-sm ${tones[tone]}`}>{children}</div>;
+}
+
+const drawerLayers = new Set<HTMLDivElement>();
+let drawerShell: { element: HTMLElement; inert: boolean } | null = null;
+function syncDrawerLayers() {
+  const active = [...drawerLayers].at(-1);
+  for (const layer of drawerLayers) layer.inert = layer !== active;
+  if (drawerLayers.size) {
+    const shell = document.querySelector<HTMLElement>(".chat-shell");
+    if (shell && !drawerShell) drawerShell = { element: shell, inert: shell.inert };
+    if (drawerShell) drawerShell.element.inert = true;
+  } else if (drawerShell) {
+    drawerShell.element.inert = drawerShell.inert;
+    drawerShell = null;
+  }
 }
 
 export function Drawer({ open, onClose, title, children, side = "right" }: { open: boolean; onClose: () => void; title: string; children: ReactNode; side?: "left" | "right" | "center" | "top" }) {
@@ -308,20 +323,40 @@ export function Drawer({ open, onClose, title, children, side = "right" }: { ope
     if (!open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const panel = ref.current;
+    if (panel) drawerLayers.add(panel);
+    syncDrawerLayers();
+    const viewport = window.visualViewport;
+    const resize = () => {
+      if (panel && viewport && window.innerWidth < 768 && viewport.scale === 1) panel.style.height = `${viewport.height}px`;
+      else panel?.style.removeProperty("height");
+    };
+    resize();
+    viewport?.addEventListener("resize", resize);
+    window.addEventListener("resize", resize);
     panel?.focus({ preventScroll: true });
     const onKey = (event: KeyboardEvent) => {
+      if ([...drawerLayers].at(-1) !== panel || !panel) return;
+      const focusedDialog = document.activeElement?.closest('[role="dialog"]');
+      if (focusedDialog && focusedDialog !== panel) return;
       if (event.key === "Escape") { event.preventDefault(); closeRef.current(); return; }
       if (event.key !== "Tab" || !panel) return;
       const controls = [...panel.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex="0"]')].filter(node => node.tabIndex >= 0);
       const first = controls[0], last = controls.at(-1);
       if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last?.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel)) { event.preventDefault(); first?.focus(); }
+      else if (!panel.contains(document.activeElement) || (!event.shiftKey && (document.activeElement === last || document.activeElement === panel))) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
     };
     window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("keydown", onKey); opener?.focus({ preventScroll: true }); };
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      viewport?.removeEventListener("resize", resize);
+      window.removeEventListener("resize", resize);
+      if (panel) drawerLayers.delete(panel);
+      syncDrawerLayers();
+      opener?.focus({ preventScroll: true });
+    };
   }, [open]);
-  if (!open) return null;
-  return (
+  if (!open || typeof document === "undefined") return null;
+  return createPortal(
     <div ref={ref} tabIndex={-1} className="fixed inset-x-0 top-0 z-50 flex h-[var(--node-viewport-height,100dvh)] outline-none" role="dialog" aria-modal aria-label={title}>
       <button type="button" tabIndex={-1} className="absolute inset-0 bg-black/50 backdrop-blur-sm" aria-label="Dismiss overlay" onClick={onClose} />
       <div
@@ -370,7 +405,7 @@ export function Drawer({ open, onClose, title, children, side = "right" }: { ope
           onPointerUp={() => finishResize()} onPointerCancel={() => finishResize(true)} onLostPointerCapture={() => finishResize()}
         /> : null}
       </div>
-    </div>
+    </div>, document.body,
   );
 }
 

@@ -1,8 +1,8 @@
 /**
  * Local, stateful browser fixture for files in the chat, at 390 and 1280 px: a node's Markdown report
- * rendered (a table, Show all, Collapse), a Python script with line numbers and Copy beside its CSV
+ * opened on demand in the file workspace (a table and safe raw HTML), a Python script with Copy beside its CSV
  * output, a message with every other kind (a picture that opens in the lightbox, sound in a player,
- * three text files folded until one is opened, PDF, a zipped folder, Word, Excel and PowerPoint files
+ * three text-file cards read only when opened, PDF, a zipped folder, Word, Excel and PowerPoint files
  * that Ensemble types as ZIPs, HTML only as a download, a binary file) that says how many files and how
  * large, each read through its message, and a download that saves the file; a node's message about
  * a task assigned to it (the task chip, a record link by its title, an unknown one as "task"); the
@@ -255,56 +255,39 @@ try {
       await page.goto(`${WEB}/r/dm-a3`);
       const timeline = page.locator(".chat-timeline");
 
-      // A Markdown report, rendered: its table, its first lines, Show all and Collapse. Its <script> is text.
-      const report = timeline.locator("#m-n-report").locator('[data-text-preview="markdown"]');
-      // Read once it comes near the screen.
-      await report.scrollIntoViewIfNeeded();
-      await report.getByText("Hosting providers compared").waitFor();
-      assert.ok(await report.getByText("Markdown · ", { exact: false }).isVisible(), "its type");
-      assert.ok(await report.getByRole("table").isVisible(), "a Markdown table renders");
-      assert.equal(await report.getByText("Note 48: prices exclude tax.").count(), 0, "the first 40 lines first");
-      await report.getByRole("button", { name: /^Show all \d+ lines$/ }).click();
-      await report.getByText("Note 48: prices exclude tax.").waitFor();
-      assert.equal(await page.locator("#m-n-report script").count(), 0, "raw HTML stays text");
-      assert.ok(await report.getByText("<script>alert('never runs')</script>").isVisible(), "shown as written");
-      await report.getByRole("button", { name: "Collapse" }).click();
-      assert.deepEqual(reads("e-report").map((row) => row.via), ["n-report"], "read once, through its message");
-      await fits("report");
-      await shot("markdown", timeline.locator("#m-n-report"));
-
-      // A Python script with line numbers and Copy, beside its CSV output.
-      const code = timeline.locator("#m-n-code").locator('[data-text-preview="code"]');
-      await code.scrollIntoViewIfNeeded();
-      await code.getByText("def main(path: str) -> None:").waitFor();
-      assert.ok(await code.getByText(/^Python · /).isVisible(), "Ensemble's text/plain, named .py, is Python");
-      assert.match(await code.locator("pre[aria-hidden]").innerText(), /^1\n2\n3\n[\s\S]*\n17$/, "one number per line");
-      assert.equal(await code.locator("pre[aria-hidden]").evaluate((element) => getComputedStyle(element).userSelect), "none", "copying the code leaves the numbers out");
-      await code.getByRole("button", { name: "Copy analyse.py" }).click();
-      assert.equal(await page.evaluate(() => window.__copied), `${[...SCRIPT.split("\n")].join("\n")}`, "Copy takes the code");
-      const long = code.locator('pre[aria-label="Python code"]');
-      assert.ok(await long.evaluate((element) => element.scrollWidth > element.clientWidth), "a long line scrolls sideways");
-      const csv = timeline.locator("#m-n-code").locator('[data-text-preview="text"]');
-      await csv.getByText("render,large,85").waitFor();
-      assert.ok(await csv.getByText(/^CSV · /).isVisible());
-      await fits("code");
-      await shot("code", timeline.locator("#m-n-code"));
+      // Files remain compact cards; contents are read only after opening the workspace.
+      const reportCard = timeline.locator("#m-n-report");
+      await reportCard.scrollIntoViewIfNeeded();
+      assert.equal(await timeline.locator("[data-text-preview]").count(), 0);
+      assert.equal(reads("e-report").length, 0, "scrolling past a report never downloads its body");
+      assert.equal(await reportCard.getByText("Hosting providers compared").count(), 0);
+      await reportCard.getByRole("button", { name: /^Open Report “hosting.md”/ }).click();
+      const reader = page.getByRole("region", { name: "File editor", exact: true });
+      await reader.getByRole("heading", { name: "Hosting providers compared" }).waitFor();
+      await reader.getByText("Note 48: prices exclude tax.").waitFor();
+      assert.equal(await reader.locator("script").count(), 0);
+      assert.ok(await reader.getByText("<script>alert('never runs')</script>").isVisible(), "raw HTML remains text");
+      assert.deepEqual(reads("e-report").map(row => row.via), ["n-report"]);
+      await reader.getByRole("button", { name: "Close editor panel", exact: true }).click();
+      await fits("report card");
+      await shot("markdown-card", reportCard);
+      await timeline.locator("#m-n-code").getByRole("button", { name: /^Open File “analyse.py”/ }).click();
+      await reader.getByText("def main(path: str) -> None:", { exact: false }).waitFor();
+      await reader.getByRole("button", { name: "Copy analyse.py", exact: true }).click();
+      assert.equal(await page.evaluate(() => window.__copied), SCRIPT);
+      await reader.getByRole("button", { name: "Close editor panel", exact: true }).click();
 
       // Every other kind on one message: how many and how large, a picture, sound, folded text files and downloads.
       const all = timeline.locator("#m-n-files").getByRole("region", { name: "Media" });
       await all.scrollIntoViewIfNeeded();
       assert.match(await all.locator("[data-files-line]").innerText(), /^11 files · 3\.\d MB$/, "the picture is in the grid; the rest are counted");
       await all.getByRole("button", { name: /^Open Image “chart.png”/ }).locator("img").waitFor();
-      const folded = all.locator("[data-text-preview][data-folded]");
-      assert.equal(await folded.count(), 3, "three text files start folded");
-      assert.deepEqual(await folded.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-text-preview"))), ["json", "text", "code"]);
-      assert.equal(reads("e-json").length + reads("e-log").length + reads("e-ts").length, 0, "a folded file is not read");
-      await all.getByRole("button", { name: "Preview providers.json" }).click();
-      await all.locator('[data-text-preview="json"]').getByText('"name": "fly",').waitFor();
-      assert.equal(await all.getByRole("button", { name: "Hide providers.json" }).getAttribute("aria-expanded"), "true");
+      assert.equal(await all.locator("[data-text-preview]").count(), 0);
+      assert.equal(reads("e-json").length + reads("e-log").length + reads("e-ts").length, 0);
+      await all.getByRole("button", { name: /^Open Report “providers.json”/ }).click();
+      await reader.getByText('"name": "fly",', { exact: false }).waitFor();
       assert.deepEqual(reads("e-json").map((row) => row.via), ["n-files"]);
-      await all.getByRole("button", { name: "Preview greet.ts" }).click();
-      await all.locator('[data-text-preview="code"]').getByText("export const greet").waitFor();
-      assert.ok(await all.locator('[data-text-preview="code"]').getByText(/^TypeScript · /).isVisible(), "a script is shown as text, never run");
+      await reader.getByRole("button", { name: "Close editor panel", exact: true }).click();
       // Sound plays here; it is read through the message too.
       const player = all.locator("audio");
       await player.waitFor();
@@ -313,7 +296,7 @@ try {
       // Downloads: each with its type, by its name where Ensemble saw a ZIP.
       const row = (name) => all.getByRole("button", { name: new RegExp(`^Download .*“${name.replace(".", "\\.")}”`) });
       for (const [name, words] of [["invoice.pdf", /^PDF · 176 KB/], ["site.zip", /^ZIP archive · 2\.3 MB · The folder site\/, 14 files/], ["proposal.docx", /^Word document · 41 KB/], ["budget.xlsx", /^Excel spreadsheet · 18 KB/], ["pitch.pptx", /^PowerPoint · 1\.1 MB/], ["preview.html", /^HTML · /], ["weights.bin", /^File · 6 B/]]) {
-        assert.match((await row(name).innerText()).split("\n").at(-1), words, name);
+        assert.match((await row(name).locator("..").innerText()).split("\n").at(-1), words, name);
       }
       assert.equal(await all.locator('[data-text-preview]').filter({ hasText: "preview.html" }).count(), 0, "HTML is never previewed");
       assert.deepEqual(await all.locator("[data-file-family]").evaluateAll((icons) => [...new Set(icons.map((icon) => icon.getAttribute("data-file-family")))].sort()), ["archive", "audio", "code", "data", "document", "markup", "other", "pdf", "presentation", "spreadsheet", "text"].sort());
@@ -346,6 +329,7 @@ try {
       await mine.scrollIntoViewIfNeeded();
       await mine.getByRole("button", { name: "Ask to save brief.pdf on your computer" }).click();
       const box = page.getByRole("textbox", { name: "Message Assistant 3" });
+      await page.waitForFunction(() => document.querySelector('.chat-composer textarea')?.value === "Save “brief.pdf” on my computer.");
       assert.equal(await box.inputValue(), "Save “brief.pdf” on my computer.");
       assert.ok(await page.getByText("Replying to you", { exact: false }).or(page.getByText("Replying to Akash")).first().isVisible(), "a reply to that message");
       await shot("save-ask", null);

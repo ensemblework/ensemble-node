@@ -616,12 +616,12 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
           {deleted ? null : <SharedLine message={message} ctx={ctx} mine />}
           {deleted ? null : <SentFileQuotes quotes={message.data.fileQuotes} own />}
           {deleted || message.body ? (
-            <div className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line" : message.private ? "border border-private/40 bg-private/10" : "bg-accent/15"}`}>
+            <div data-message-surface className={`rounded-2xl rounded-br-md px-4 py-2.5 transition ${ring} ${deleted ? "border border-dashed border-line bg-bg" : message.private ? "chat-bubble-private border border-private/40" : "chat-bubble-own"}`}>
               {deleted ? <Deleted /> : <RichText text={message.body} handles={ctx.handles} />}
             </div>
           ) : null}
           {deleted ? null : (
-            <div className={`rounded-2xl transition ${message.body ? "" : ring}`}>
+            <div className={`rounded-2xl bg-bg transition ${message.body ? "" : ring}`}>
               <EvidenceGallery items={media} messageId={message.id} label="Media" className={message.body ? "mt-1.5" : ""} />
               <MessageFiles message={message} meId={ctx.meId} align="end" onSave={ctx.onAskSave && !message.sending && !message.failed ? (file) => ctx.onAskSave!(message, file) : undefined} />
             </div>
@@ -699,7 +699,7 @@ export function MessageItem({ message, ctx, grouped, highlighted, fresh }: { mes
         )}
         {reply ? <ReplyQuote reply={reply} onJump={ctx.onJump} mine={false} /> : null}
         {deleted ? null : <SentFileQuotes quotes={message.data.fileQuotes} own={message.authorAccountId === ctx.meId} />}
-        <div className={`rounded-2xl transition ${ring}`}>
+        <div data-message-surface className={`rounded-2xl bg-bg transition ${ring}`}>
           {message.kind === "approval" ? (
             <ApprovalCard message={message} ctx={ctx} node={node} />
           ) : message.kind === "run" ? (

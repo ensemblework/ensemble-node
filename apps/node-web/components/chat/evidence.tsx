@@ -300,7 +300,7 @@ function LargeVideo({ item, via }: { item: EvidenceItem; via: string | null }) {
   return <video src={src} poster={poster} controls playsInline preload="metadata" aria-label={describe(item)} className="max-h-full max-w-full rounded-md bg-black" />;
 }
 
-function FileRow({ item, via, requirement, onOpen }: Tile & { onOpen: () => void }) {
+function FileRow({ item, via, requirement, onOpen }: Tile & { onOpen: (inDialog: boolean) => void }) {
   const saving = useSave(item, via);
   const type = fileType(item);
   const size = typeof item.size === "number" ? sizeLabel(item.size) : "";
@@ -309,7 +309,7 @@ function FileRow({ item, via, requirement, onOpen }: Tile & { onOpen: () => void
       <div className="flex w-72 max-w-full items-center rounded-xl border border-line bg-panel pr-1 transition-colors hover:border-accent">
       <button
         type="button"
-        onClick={onOpen}
+        onClick={event => onOpen(Boolean(event.currentTarget.closest('[role="dialog"]')))}
         aria-label={`Open ${describe(item)}`}
         title={`Open ${item.name}`}
         className="flex min-w-0 flex-1 items-center gap-2.5 rounded-xl p-2 text-left hover:bg-raised/50"
@@ -581,7 +581,7 @@ export function EvidenceGallery({ items, requirementOf, messageId = null, label 
       ) : null}
       {files.length ? (
         <ul className={`flex flex-wrap gap-1.5 ${gap(visual.length > 0 || listed.length >= 3 || sounds.length > 0)}`}>
-          {files.map((item) => (keptAs(item) ? <KeptRow key={item.id} item={item} /> : <FileRow key={item.id} item={item} via={via} requirement={requirement(item)} onOpen={() => workspace.openShared(item, via)} />))}
+          {files.map((item) => (keptAs(item) ? <KeptRow key={item.id} item={item} /> : <FileRow key={item.id} item={item} via={via} requirement={requirement(item)} onOpen={inDialog => workspace.openShared(item, via, inDialog)} />))}
         </ul>
       ) : null}
       {open !== null && visual.length ? <Lightbox items={visual} via={via} start={open} onClose={() => setOpen(null)} requirementOf={requirementOf} /> : null}

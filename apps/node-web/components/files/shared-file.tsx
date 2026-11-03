@@ -13,9 +13,9 @@ import { DocumentPreview } from "./document-preview";
 import { useFileWorkspace } from "./workspace";
 import { CopyButton } from "../chat/code-block";
 
-export function SharedFile({ item, messageId }: { item: EvidenceItem; messageId: string | null }) {
+export function SharedFile({ item, messageId, embedded = false }: { item: EvidenceItem; messageId: string | null; embedded?: boolean }) {
   const workspace = useFileWorkspace();
-  const focus = workspace.mode === "editor";
+  const focus = !embedded && workspace.mode === "editor";
   const [toolbar, setToolbar] = useState<HTMLDivElement | null>(null);
   const [content, setContent] = useState<{ text: string; truncated: boolean } | { error: string } | null>(null);
   const kind = textPreviewKind(item);
@@ -34,9 +34,11 @@ export function SharedFile({ item, messageId }: { item: EvidenceItem; messageId:
       {focus ? <div ref={setToolbar} className="document-reading-controls order-last flex min-h-9 w-full flex-wrap items-center gap-1 text-xs text-muted sm:order-none sm:w-auto" /> : null}
       {content && "text" in content && kind !== "markdown" ? <CopyButton text={content.text} label={`Copy ${item.name}`} /> : null}
       <IconButton label="Download shared file" onClick={() => void download(evidencePath(item.id, messageId), item.name).catch(toastError)}><Download size={15} /></IconButton>
-      <IconButton label={workspace.filesOpen ? "Hide file list" : "Show file list"} onClick={workspace.toggleFiles}><Files size={15} /></IconButton>
-      <IconButton label={focus ? "Restore chat and editor" : "Focus editor"} onClick={focus ? workspace.restore : workspace.focus}>{focus ? <Columns2 size={15} /> : <Maximize2 size={15} />}</IconButton>
-      <IconButton label="Close editor panel" onClick={workspace.hide}><X size={15} /></IconButton>
+      {!embedded ? <>
+        <IconButton label={workspace.filesOpen ? "Hide file list" : "Show file list"} onClick={workspace.toggleFiles}><Files size={15} /></IconButton>
+        <IconButton label={focus ? "Restore chat and editor" : "Focus editor"} onClick={focus ? workspace.restore : workspace.focus}>{focus ? <Columns2 size={15} /> : <Maximize2 size={15} />}</IconButton>
+        <IconButton label="Close editor panel" onClick={workspace.hide}><X size={15} /></IconButton>
+      </> : null}
     </header>
     <div className="min-h-0 flex-1 overflow-hidden">
       {!kind ? <DocumentPreview evidenceId={item.id} messageId={messageId} name={item.name} toolbar={focus ? toolbar : null} />

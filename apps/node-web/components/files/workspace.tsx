@@ -26,7 +26,7 @@ type Workspace = {
   mode: Mode;
   filesOpen: boolean;
   open: (entry: OriginalEntry) => void;
-  openShared: (item: EvidenceItem, messageId: string | null) => void;
+  openShared: (item: EvidenceItem, messageId: string | null, inDialog?: boolean) => void;
   select: (key: string) => void;
   close: (key: string) => void;
   hide: () => void;
@@ -54,6 +54,7 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
   const [store] = useState(() => new FileBuffers());
   const [active, setActive] = useState<string | null>(null);
   const [shared, setShared] = useState<Workspace["shared"]>(null);
+  const [sharedDialog, setSharedDialog] = useState<Workspace["shared"]>(null);
   const [tabs, setTabs] = useState<string[]>([]);
   const [mode, setMode] = useState<Mode>("chat");
   const [filesOpen, setFilesOpen] = useState(false);
@@ -118,7 +119,10 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
   }, [store, remove]);
   const value = useMemo<Workspace>(() => ({
     accountId, store, roomId, active, shared, tabs, mode, filesOpen, open, close,
-    openShared: (item, messageId) => { setShared({ item, messageId }); setMode(current => current === "editor" ? current : "split"); },
+    openShared: (item, messageId, inDialog) => {
+      if (inDialog || !roomId) { setSharedDialog({ item, messageId }); return; }
+      setShared({ item, messageId }); setMode(current => current === "editor" ? current : "split");
+    },
     select: key => { setShared(null); setActive(key); setMode(current => current === "editor" ? current : "split"); void store.refresh(key); },
     hide: () => {
       setMode("chat");
@@ -144,6 +148,9 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
   return <Context value={value}>
     <LayoutControls onAutoCollapse={onAutoCollapse} accountId={accountId}>{children}</LayoutControls>
     <UnsavedFileDialog fileKey={pendingClose} onKeep={() => { if (pendingClose) setActive(pendingClose); setPendingClose(null); focusFileOrChat(); }} onRemove={remove} />
+    <Drawer open={Boolean(sharedDialog)} onClose={() => setSharedDialog(null)} title="Shared file">
+      {sharedDialog ? <div role="region" aria-label="Shared file" className="flex h-[70dvh] min-w-0 flex-col overflow-hidden"><SharedFile {...sharedDialog} embedded /></div> : null}
+    </Drawer>
   </Context>;
 }
 

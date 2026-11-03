@@ -345,10 +345,14 @@ try {
     await media.locator("img").first().waitFor();
     assert.ok(state.evidence.some((row) => row.id === "e-shot" && row.message === "c-media"), "a picture is read through its message");
     await media.getByRole("button", { name: /This video does not play here/ }).or(media.locator("video")).first().waitFor();
-    // A text file shows in the chat, read through its message too, with its own Download.
-    const log = media.locator('[data-text-preview="text"]');
-    await log.getByText("✓ built in 3.2s").waitFor();
-    assert.ok(await log.getByRole("button", { name: "Download build.log" }).isVisible());
+    // A text file stays a card until opened, then reads through its message.
+    assert.equal(await media.locator("[data-text-preview]").count(), 0);
+    assert.ok(!state.evidence.some(row => row.id === "e-log"));
+    await media.getByRole("button", { name: /^Open .*“build.log”/ }).click();
+    const reader = page.getByRole("region", { name: "File editor", exact: true });
+    await reader.getByText("✓ built in 3.2s", { exact: false }).waitFor();
+    await reader.getByRole("button", { name: "Close editor panel", exact: true }).click();
+    assert.ok(await media.getByRole("button", { name: /Download .*“build.log”/ }).isVisible());
     assert.ok(state.evidence.some((row) => row.id === "e-log" && row.message === "c-media"), "a text file is read through its message");
 
     // A peer request's public card and the status cards `@leads status` brought.

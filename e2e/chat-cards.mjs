@@ -11,8 +11,8 @@
  * going home, a run's questions on their own cards (a permission allowed once, a question answered in
  * words, one that expired; the run card points to them instead of repeating them), a run card's own
  * question (from an Ensemble that posts no cards) with its answered checkpoint and its settings,
- * screenshots in a grid with a tall one that scrolls when opened, Markdown and JSON files previewed in
- * the chat, the run profile a node's sessions use, and the owner's "ask before a new website".
+ * screenshots in a grid with a tall one that scrolls when opened, Markdown and JSON cards opened in
+ * the file workspace, the run profile a node's sessions use, and the owner's "ask before a new website".
  * Never points at a hosted account or calls a model. Usage is in docs/05 (Browser regression).
  */
 import assert from "node:assert/strict";
@@ -388,19 +388,19 @@ try {
     await tall.waitFor();
     assert.equal(await tall.count(), 1);
     await tall.getByText(/Tall · open to scroll/).waitFor();
-    // Markdown rendered in the chat, its first lines until Show all; JSON indented.
-    const report = media.locator('[data-text-preview="markdown"]');
-    await report.getByText("TV prices: Walmart vs Best Buy").waitFor();
-    assert.ok(await report.getByRole("table").isVisible(), "a Markdown table renders");
-    assert.equal(await report.getByText("Note 50: prices include delivery to 10001.").count(), 0, "40 lines first");
-    const showAll = report.getByRole("button", { name: "Show all 61 lines" });
-    await showAll.click();
-    await report.getByText("Note 50: prices include delivery to 10001.").waitFor();
-    assert.equal(await report.getByRole("button", { name: "Collapse" }).getAttribute("aria-expanded"), "true");
-    await report.getByRole("button", { name: "Collapse" }).click();
-    const data = media.locator('[data-text-preview="json"]');
-    await data.getByText('"tcl55": 298').waitFor();
-    assert.ok(await data.getByRole("button", { name: "Download prices.json" }).isVisible());
+    // Chat stays card-only; full Markdown and JSON open in the workspace.
+    assert.equal(await media.locator("[data-text-preview]").count(), 0);
+    assert.ok(!state.calls.some(row => row.evidence === "e-report"));
+    await media.getByRole("button", { name: /^Open .*“tv-prices.md”/ }).click();
+    const reader = page.getByRole("region", { name: "File editor", exact: true });
+    await reader.getByRole("heading", { name: "TV prices: Walmart vs Best Buy" }).waitFor();
+    assert.ok(await reader.getByRole("table").isVisible(), "a Markdown table renders in the workspace");
+    await reader.getByText("Note 50: prices include delivery to 10001.").waitFor();
+    await reader.getByRole("button", { name: "Close editor panel", exact: true }).click();
+    await media.getByRole("button", { name: /^Open .*“prices.json”/ }).click();
+    await reader.getByText('"tcl55": 298', { exact: false }).waitFor();
+    await reader.getByRole("button", { name: "Close editor panel", exact: true }).click();
+    assert.ok(await media.getByRole("button", { name: /Download .*“prices.json”/ }).isVisible());
     assert.ok(state.calls.some((row) => row.evidence === "e-report" && row.via === "n-media"), "read through the message that shows it");
     await fits("media");
     await media.evaluate((element) => element.scrollIntoView({ block: "start" }));

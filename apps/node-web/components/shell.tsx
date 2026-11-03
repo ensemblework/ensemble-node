@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Activity as ActivityIcon, Ellipsis, Inbox, Lock, Menu, Palette, PanelLeftClose, PanelLeftOpen, Plug, Repeat, Search, Settings, SquarePen, SquareTerminal } from "lucide-react";
+import { Activity as ActivityIcon, Ellipsis, Inbox, Lock, Menu, Palette, PanelLeftClose, PanelLeftOpen, Plug, Plus, Repeat, Search, Settings, SquareTerminal } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { requestJump } from "@/lib/jump";
@@ -128,7 +128,7 @@ function Sidebar({ boot, onNavigate, onSearch, waiting, compact = false, onColla
       <div className={`flex shrink-0 items-center gap-1 pb-3 pt-4 ${compact ? "flex-col px-2" : "px-4"}`}>
         {!compact && onCollapse ? <Link href="/chat" onClick={onNavigate} className="flex min-w-0 flex-1 items-center gap-2 text-lg font-semibold"><Mark size={23} />Chats</Link> : null}
         {onCollapse ? <IconButton label={compact ? "Expand conversations" : "Collapse conversations"} onClick={onCollapse}>{compact ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}</IconButton> : null}
-        <Link href="/new" onClick={onNavigate} title="New conversation" aria-label="New conversation" className={`inline-flex shrink-0 items-center rounded-xl text-muted hover:bg-raised hover:text-ink ${compact || onCollapse ? "size-9 justify-center" : "flex-1 gap-2 px-3 py-2 text-sm"}`}><SquarePen size={18} />{!compact && !onCollapse ? "New conversation" : null}</Link>
+        <Link href="/new" onClick={onNavigate} title="Add a node or crew" aria-label="Add a node or crew" className={`inline-flex shrink-0 items-center rounded-full border border-line bg-panel text-accent transition-colors hover:border-accent/60 hover:bg-raised ${compact || onCollapse ? "size-9 justify-center" : "flex-1 gap-2 px-3 py-2 text-sm"}`}><Plus size={20} strokeWidth={1.8} aria-hidden />{!compact && !onCollapse ? "Add node or crew" : null}</Link>
         <IconButton label="Search messages" onClick={onSearch}><Search size={18} /></IconButton>
       </div>
       {!compact ? <div className="space-y-3 px-4 pb-3">

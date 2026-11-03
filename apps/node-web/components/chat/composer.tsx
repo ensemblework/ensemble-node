@@ -70,6 +70,7 @@ export function Composer({
   const mirror = useRef<HTMLDivElement>(null);
   const attachments = useAttachments();
   const canAttach = Boolean(attachHint) && !disabled;
+  const fileTarget = fileQuotes[0]?.target;
   const drop = useFileDrop(attachments.addFiles, canAttach);
   const blockerId = useId();
   const mentionId = useId();
@@ -90,6 +91,10 @@ export function Composer({
       const { draftKey: target, quote } = (event as CustomEvent<{ draftKey: string; quote: FileQuote }>).detail;
       if (target !== draftKey) return;
       setFileQuotes(current => {
+        const target = current[0]?.target;
+        if (target && (target.roomId !== quote.target?.roomId || target.sessionId !== quote.target?.sessionId)) {
+          toastError(new Error("These selections belong to different editors. Send the first file question before adding another destination.")); return current;
+        }
         if (current.length >= 4 || quote.text.length > 12_000 || current.reduce((sum, item) => sum + item.text.length, quote.text.length) > 24_000) {
           toastError(new Error("Add up to four selections, with at most 24,000 characters in total.")); return current;
         }
@@ -142,10 +147,11 @@ export function Composer({
 
   const files = attachments.files;
   const blocker = attachments.blocker;
-  const canSend = Boolean(value.trim() || files.length || fileQuotes.length) && !blocker && !disabled;
+  const canSend = Boolean(fileTarget ? value.trim() : value.trim() || files.length || fileQuotes.length) && !blocker && !disabled;
 
   const send = () => {
     if (!canSend) return;
+    if (fileTarget && (files.length || reply)) { toastError(new Error("Send your attachments or message reply separately from this file question.")); return; }
     drafts.delete(draftKey);
     onSend(value.trim(), privateNow, files, fileQuotes);
     setValue("");
@@ -206,7 +212,7 @@ export function Composer({
           </p>
         ) : null}
         <AttachmentShelf attachments={attachments} />
-        {fileQuotes.length ? <div className="mx-1 mb-2 space-y-1.5" aria-label="Quoted file selections">{fileQuotes.map((quote, index) => <div key={index} className="flex items-start gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2">
+        {fileQuotes.length ? <div className="mx-1 mb-2 space-y-1.5" aria-label="Quoted file selections">{fileTarget ? <p className="px-1 text-xs text-accent" role="status">{fileTarget.kind === "session" ? `Direct to ${fileTarget.agentName} · ${fileTarget.nodeName}'s session · queued without interrupting` : `Ask ${fileTarget.nodeName} · last recorded editor`}</p> : null}{fileQuotes.map((quote, index) => <div key={index} className="flex items-start gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2">
           <Quote size={14} className="mt-0.5 shrink-0 text-accent" />
           <span className="min-w-0 flex-1" title={quote.location ?? quote.source.path}><span className="block truncate text-xs font-medium">{fileName(quote.source.path)} <span className="font-normal text-muted">· {quote.from === quote.to ? `line ${quote.from}` : `lines ${quote.from}–${quote.to}`}{quote.draft ? " · unsaved" : ""}</span></span><span className="mt-0.5 line-clamp-2 whitespace-pre-wrap font-mono text-[11px] leading-5 text-muted">{quote.text}</span></span>
           <button type="button" aria-label={`Remove quoted selection from ${fileName(quote.source.path)}`} onClick={() => setFileQuotes(current => current.filter((_, at) => at !== index))} className="flex size-7 shrink-0 items-center justify-center rounded-lg text-muted hover:bg-raised hover:text-ink"><X size={13} /></button>

@@ -72,7 +72,10 @@ export class FileBuffers {
         if (latest.hash !== current.hash || latest.content !== current.base || latest.readOnly !== current.data?.readOnly) {
           if (this.dirty(key)) { this.clearTimer(key); this.patch(key, { latest, status: "conflict", error: undefined }); }
           else this.patch(key, { data: latest, text: latest.content ?? "", base: latest.content ?? "", hash: latest.hash, status: "saved", error: undefined, latest: undefined });
-        } else if (!this.dirty(key) && current.status === "error") this.patch(key, { status: "saved", error: undefined });
+        } else {
+          this.patch(key, { data: latest });
+          if (!this.dirty(key) && current.status === "error") this.patch(key, { status: "saved", error: undefined });
+        }
       } catch (error) { this.patch(key, { error: error instanceof Error ? error.message : "The latest original could not be opened.", status: "error" }); }
       finally { this.patch(key, { refreshing: false }); }
     })();

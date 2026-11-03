@@ -1,32 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BUILTINS, convertExtensionThemes, convertTheme, ensembleDefaultTheme, loadBuiltinTheme, parseJsonc, sanitizeIdeTheme, type IdeTheme, type ThemeDirectoryExtension, type VsThemeDocument } from "@ensemble/ide-theme";
 import { Palette, Search, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { toastError } from "@/lib/toast";
 import { Button, Drawer, IconButton, Spinner } from "../ui";
+import { useFileWorkspace } from "./workspace";
 
-const THEME_KEY = "node.editor-theme";
 export function useEditorTheme() {
-  const [theme, setTheme] = useState<IdeTheme>(ensembleDefaultTheme);
+  const { accountId } = useFileWorkspace();
+  const client = useQueryClient();
+  const key = ["node-editor-theme", accountId];
+  const current = useQuery({ queryKey: key, queryFn: ({ signal }) => api<{ theme: IdeTheme }>("/api/node/themes/current", { signal }), staleTime: 30_000 });
+  const save = useMutation({
+    mutationFn: (theme: IdeTheme) => api<{ theme: IdeTheme }>("/api/node/themes/current", { method: "PUT", body: { theme } }),
+    onMutate: () => client.cancelQueries({ queryKey: key }),
+    onSuccess: result => client.setQueryData(key, result),
+  });
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(THEME_KEY);
-      if (raw) {
-        const next = sanitizeIdeTheme(JSON.parse(raw));
-        if (!next) throw new Error("The saved editor theme is invalid. Choose a theme again.");
-        setTheme(next);
-      }
-    } catch (error) { toastError(error); }
-  }, []);
-  const commit = (next: IdeTheme) => {
-    setTheme(next);
-    try { localStorage.setItem(THEME_KEY, JSON.stringify(next)); }
-    catch { toastError(new Error("The theme changed, but this browser could not save it.")); }
-  };
-  return [theme, commit] as const;
+    if (current.error) toastError(current.error);
+  }, [current.error]);
+  return [current.data?.theme ?? ensembleDefaultTheme, async (theme: IdeTheme) => { await save.mutateAsync(theme); }, current.isPending] as const;
 }
 
 async function importedThemes(file: File): Promise<IdeTheme[]> {
@@ -61,7 +57,7 @@ async function importedThemes(file: File): Promise<IdeTheme[]> {
   return themes;
 }
 
-export function EditorThemePicker({ theme, onTheme }: { theme: IdeTheme; onTheme: (theme: IdeTheme) => void }) {
+export function EditorThemePicker({ theme, onTheme }: { theme: IdeTheme; onTheme: (theme: IdeTheme) => Promise<void> }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
@@ -72,7 +68,7 @@ export function EditorThemePicker({ theme, onTheme }: { theme: IdeTheme; onTheme
   const directory = useQuery({ queryKey: ["node-editor-themes", search], queryFn: ({ signal }) => api<{ extensions: ThemeDirectoryExtension[] }>(`/api/node/themes/search?q=${encodeURIComponent(search)}`, { signal }), enabled: open && search.length >= 2, staleTime: 300_000 });
   const choose = async (id: string, load: () => Promise<IdeTheme>) => {
     setBusy(id);
-    try { onTheme(await load()); setOpen(false); }
+    try { await onTheme(await load()); setOpen(false); }
     catch (error) { toastError(error); }
     finally { setBusy(null); }
   };
@@ -92,10 +88,10 @@ export function EditorThemePicker({ theme, onTheme }: { theme: IdeTheme; onTheme
         const file = event.target.files?.[0]; event.target.value = "";
         if (!file) return;
         setBusy("import");
-        void importedThemes(file).then(themes => { setImported(themes); if (themes.length === 1) { onTheme(themes[0]!); setOpen(false); } }, toastError).finally(() => setBusy(null));
+        void importedThemes(file).then(async themes => { setImported(themes); if (themes.length === 1) { await onTheme(themes[0]!); setOpen(false); } }).catch(toastError).finally(() => setBusy(null));
       }} />
       <Button tone="ghost" busy={busy === "import"} disabled={Boolean(busy)} onClick={() => input.current?.click()}><Upload size={15} />Import JSON or VSIX</Button>
-      {imported.length > 1 ? <div className="mt-3 flex flex-wrap gap-2">{imported.map(item => <Button key={item.id} tone="ghost" size="sm" onClick={() => { onTheme(item); setOpen(false); }}>{item.label}</Button>)}</div> : null}
+      {imported.length > 1 ? <div className="mt-3 flex flex-wrap gap-2">{imported.map(item => <Button key={item.id} tone="ghost" size="sm" disabled={Boolean(busy)} onClick={() => void choose(item.id, async () => item)}>{item.label}</Button>)}</div> : null}
       <p className="mt-4 text-xs leading-5 text-muted">Syntax and editor colours are supported. Icon packs and themes that need extension scripts are not.</p>
     </Drawer>
   </>;

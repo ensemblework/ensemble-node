@@ -58,6 +58,7 @@ export function RichText({
   streaming = false,
   kindLinks = false,
   labelHeadings = false,
+  document = false,
 }: {
   text: string;
   handles: ReadonlySet<string>;
@@ -67,6 +68,7 @@ export function RichText({
   streaming?: boolean;
   kindLinks?: boolean;
   labelHeadings?: boolean;
+  document?: boolean;
 }) {
   // Only a node's own words are formatted; what people write shows as they wrote it.
   const shown = refs || kindLinks ? formatEntityText(text, refs ?? [], { showIds, streaming, app: ENSEMBLE_APP, kindLinks }) : text;
@@ -74,6 +76,10 @@ export function RichText({
     <div className={`min-w-0 max-w-full space-y-2 break-words leading-relaxed ${small ? "text-sm" : "text-[15px]"}`}>
       {blocks(shown).map((block, index) => {
         if (block.kind === "heading" && labelHeadings) return <p key={index} className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">{block.text}</p>;
+        if (block.kind === "heading" && document) {
+          const Heading = (["h1", "h2", "h3", "h4"] as const)[block.level - 1] ?? "h4";
+          return <Heading key={index} className={`font-semibold ${block.level === 1 ? "text-2xl" : block.level === 2 ? "text-xl" : "text-lg"}`}><Inline text={block.text} handles={handles} /></Heading>;
+        }
         if (block.kind === "heading") return <p key={index} className="font-semibold">{<Inline text={block.text} handles={handles} />}</p>;
         if (block.kind === "code") return <CodeBlock key={index} code={block.text} lang={block.lang} />;
         if (block.kind === "quote") return <blockquote key={index} className="border-l-2 border-line pl-3 text-muted"><Inline text={block.text} handles={handles} /></blockquote>;

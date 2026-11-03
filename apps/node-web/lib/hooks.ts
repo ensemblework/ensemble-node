@@ -232,7 +232,13 @@ export function nodesById(boot: Bootstrap | undefined, room?: Room): Map<string,
 export function useSend(roomId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (input: SendInput) => api<{ message: Message }>(`/api/node/rooms/${roomId}/messages`, { body: sendBody(input) }).then((result) => result.message),
+    mutationFn: (input: SendInput) => {
+      if (input.fileTarget && (input.files?.length || input.replyTo)) throw new Error("Send attachments or message replies separately from a routed file question.");
+      const body = sendBody(input);
+      return api<{ message: Message }>(input.fileTarget ? "/api/node/files/query" : `/api/node/rooms/${roomId}/messages`, {
+        body: input.fileTarget ? { body: body.body, clientId: body.clientId, fileQuotes: body.fileQuotes, target: input.fileTarget } : body,
+      }).then(result => result.message);
+    },
     onMutate: (input) => {
       const boot = client.getQueryData<Bootstrap>(keys.bootstrap);
       putMessage(client, optimisticMessage(roomId, boot?.me.id ?? "", input));
@@ -1020,6 +1026,7 @@ export function useNodeEvents(enabled: boolean) {
     };
     source.addEventListener("node.message", onMessage as EventListener);
     source.addEventListener("node.message.updated", onMessage as EventListener);
+    source.addEventListener("node.editor-theme", () => { void client.invalidateQueries({ queryKey: ["node-editor-theme"] }); });
     source.addEventListener("node.files", ((event: MessageEvent<string>) => { void client.invalidateQueries({ queryKey: ["node-originals"] }); window.dispatchEvent(new CustomEvent("node:originals-changed", { detail: JSON.parse(event.data) })); }) as EventListener);
     source.addEventListener("node.status", ((event: MessageEvent<string>) => {
       const data = JSON.parse(event.data) as { roomId: string; nodeId: string; state: string; private?: boolean; cardId?: unknown };

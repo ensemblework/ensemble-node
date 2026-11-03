@@ -61,6 +61,7 @@ function fixture() {
   const card = { id: "mission-1", roomId: "dm-lead", seq: 2, kind: "plan", body: "Work", authorKind: "node", authorAccountId: "me", authorNodeId: "lead", data: { type: "plan", version: 4, contract: 3, missionId: "mission-1", kind: "self", leadNodeId: "lead", leadHandle: "lead", status: "succeeded", goal: "Morning summary", requirements: [], deferred: [], steps: [step], routine: routineLink }, private: false, mentions: [], rootMessageId: null, clientId: null, planId: "r-morning", createdAt: at(-1260) };
   const stepRun = { id: "run-card-1", roomId: "dm-lead", seq: 3, kind: "run", body: "Research: Summarise what changed on my board", authorKind: "node", authorAccountId: "me", authorNodeId: "lead", data: { plan: { id: "mission-1", step: "w1" }, jobId: "j-morning", status: "succeeded", told: PACKET, session: { id: "sess-m", status: "idle", agent: "Claude Code", agentId: "claude-code", queue: [] } }, private: false, mentions: [], rootMessageId: null, clientId: null, planId: "mission-1", createdAt: at(-1259) };
   const report = { id: "report-1", roomId: "dm-lead", seq: 4, kind: "text", body: "Three tasks moved since yesterday; two are due on Friday.", authorKind: "node", authorAccountId: "me", authorNodeId: "lead", data: {}, private: false, mentions: [], rootMessageId: null, clientId: null, planId: null, createdAt: at(-1254) };
+  stepRun.data.evidence = [{ id: "e-routine-report", name: "summary.md", kind: "report", mime: "text/markdown", size: 37 }];
   const boot = { me: { id: "me", name: "Mira Chen", email: "mira@fieldnote.example", verified: true }, nodes, rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
   const job = { id: "j-morning", taskId: "task", title: "Summarise", kind: "code", status: "succeeded", provider: "claude-code", model: "claude-opus-4-6", modelUsed: null, reasoningEffort: null, contextTier: null, progress: null, summary: "Done.", error: null, turns: 1, toolCalls: 3, runId: null, deviceName: "Development laptop", yours: true, folder: "notes", branch: "main", files: [], createdAt: at(-1259), startedAt: at(-1259), finishedAt: at(-1256) };
   return { boot, routines, messages: { "dm-lead": [card, stepRun, report] }, cards: { "mission-1": card }, jobs: { "j-morning": job }, runs: { "r-morning": [...routines[0].runs], "r-deploy": [], "r-board": [...routines[2].runs] }, calls: [], reads: [], made: 0 };
@@ -111,6 +112,7 @@ try {
       if (path === "/api/auth/me") return json({ user: state.boot.me });
       if (path === "/api/node/bootstrap") return json(state.boot);
       if (path === "/api/node/evidence") return json({ evidence: [] });
+      if (path === "/api/node/evidence/e-routine-report") return route.fulfill({ body: "# Routine report\n\nShared report body.", headers: { ...cors, "content-type": "text/markdown" } });
       if (path === "/api/node/activity") return json({ approvals: [], runs: [], turns: [], computers: [], credits: null });
       if (path === "/api/decisions") return json({ decisions: [] });
       if (path === "/api/approvals") return json({ approvals: [] });
@@ -315,6 +317,14 @@ try {
     await packet.getByText("Read what changed on the board since yesterday and what is due this week.").waitFor();
     assert.equal(await packet.getByText("Your part", { exact: true }).evaluate((el) => getComputedStyle(el).textTransform), "uppercase", "the packet's parts read as small labels");
     assert.equal(await drawer.getByRole("link", { name: "Open Lead's chat" }).getAttribute("href"), "/r/dm-lead");
+    await drawer.getByRole("button", { name: /^Open .*“summary.md”/ }).click();
+    const shared = page.getByRole("dialog", { name: "Shared file", exact: true });
+    await shared.getByRole("heading", { name: "Routine report", exact: true }).waitFor();
+    assert.equal(await drawer.evaluate(element => element.inert), true, "the reader is above the routine drawer");
+    await page.keyboard.press("Escape");
+    await shared.waitFor({ state: "detached" });
+    assert.equal(await drawer.isVisible(), true, "Escape closes only the top reader");
+    assert.equal(await drawer.evaluate(element => element.inert), false);
     await drawerFits();
     if (shots) await page.screenshot({ path: `${shots}/routine-run-${width}.png` });
     await page.keyboard.press("Escape");

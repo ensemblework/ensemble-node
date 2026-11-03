@@ -440,7 +440,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       onRetry: (message: Message) => sendMessage(resendInput(message)),
       onEdit: (message: Message) => {
         updateMessages(client, roomId, (list) => list.filter((row) => row.id !== message.id));
-        setDraft({ nonce: Date.now(), body: message.body, private: message.private, files: messageFiles(message), fileQuotes: message.data.fileQuotes });
+        setDraft({ nonce: Date.now(), body: message.body, private: message.private, files: messageFiles(message), fileQuotes: message.data.fileQuotes?.map(quote => ({ ...quote, ...(message.data.fileTarget ? { target: message.data.fileTarget } : {}) })) });
         const quoted = message.data?.replyTo?.id;
         const target = quoted ? client.getQueryData<Message[]>(keys.messages(roomId, "all"))?.find((row) => row.id === quoted) : undefined;
         if (target) setReply(target);
@@ -926,7 +926,7 @@ export function RoomView({ roomId }: { roomId: string }) {
           setAtBottom(true);
           if (filter !== "all" && filter !== "people") setFilter("all");
           const privately = isPrivate || (isPeople && tab === "crew");
-          send.mutate({ body, private: privately, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}), ...(files.length ? { files } : {}), ...(fileQuotes.length ? { fileQuotes } : {}) });
+          send.mutate({ body, private: privately, clientId: crypto.randomUUID(), ...(reply ? { replyTo: replyOf(reply, ctx) } : {}), ...(files.length ? { files } : {}), ...(fileQuotes.length ? { fileQuotes } : {}), ...(fileQuotes[0]?.target ? { fileTarget: fileQuotes[0].target } : {}) });
           setReply(null);
           // Asking my nodes from the Room: the question and its answer are in My crew.
           if (isPeople && tab === "room" && privately) showTab("crew", "bottom");

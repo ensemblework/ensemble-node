@@ -3,7 +3,7 @@ import { messageFiles } from "./attachments";
 import { readableBody } from "./entity-text";
 import { evidenceCount, mediaItems } from "./evidence";
 import type { Message, MessageFile, ReplyTo } from "./types";
-import type { FileQuote } from "./original-files";
+import { wireQuotes, type FileQuote, type FileTarget } from "./original-files";
 
 /** All: everything. people: what people wrote, and system lines. nodes: what nodes wrote. mentions: messages that mention me. */
 export type ViewFilter = "all" | "people" | "nodes" | "mentions";
@@ -184,7 +184,7 @@ export function messagePreview(message: Pick<Message, "authorKind" | "body" | "d
 }
 
 /** What I send to a room. `files` are already in my Files; only their ids go to the server. */
-export type SendInput = { body: string; private: boolean; clientId: string; replyTo?: ReplyTo; files?: MessageFile[]; fileQuotes?: FileQuote[] };
+export type SendInput = { body: string; private: boolean; clientId: string; replyTo?: ReplyTo; files?: MessageFile[]; fileQuotes?: FileQuote[]; fileTarget?: FileTarget };
 
 /** The body of `POST /api/node/rooms/:id/messages`. */
 export function sendBody(input: SendInput): { body: string; private: boolean; clientId: string; replyToId?: string; files?: string[]; fileQuotes?: FileQuote[] } {
@@ -194,7 +194,7 @@ export function sendBody(input: SendInput): { body: string; private: boolean; cl
     clientId: input.clientId,
     ...(input.replyTo ? { replyToId: input.replyTo.id } : {}),
     ...(input.files?.length ? { files: input.files.map((file) => file.id) } : {}),
-    ...(input.fileQuotes?.length ? { fileQuotes: input.fileQuotes } : {}),
+    ...(input.fileQuotes?.length ? { fileQuotes: wireQuotes(input.fileQuotes) } : {}),
   };
 }
 
@@ -209,7 +209,7 @@ export function optimisticMessage(roomId: string, meId: string, input: SendInput
     authorNodeId: null,
     kind: "text",
     body: input.body,
-    data: { ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(input.files?.length ? { files: input.files } : {}), ...(input.fileQuotes?.length ? { fileQuotes: input.fileQuotes } : {}) },
+    data: { ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(input.files?.length ? { files: input.files } : {}), ...(input.fileQuotes?.length ? { fileQuotes: input.fileQuotes } : {}), ...(input.fileTarget ? { fileTarget: input.fileTarget } : {}) },
     private: input.private,
     mentions: [],
     rootMessageId: null,
@@ -229,5 +229,6 @@ export function resendInput(message: Message): SendInput {
     ...(message.data?.replyTo ? { replyTo: message.data.replyTo } : {}),
     ...(files.length ? { files } : {}),
     ...(message.data?.fileQuotes?.length ? { fileQuotes: message.data.fileQuotes } : {}),
+    ...(message.data?.fileTarget ? { fileTarget: message.data.fileTarget } : {}),
   };
 }

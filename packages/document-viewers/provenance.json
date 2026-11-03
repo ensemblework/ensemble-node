@@ -1,0 +1,38 @@
+{
+  "repository": "https://github.com/ensemblework/ensemble",
+  "commit": "d16d4b4bfa3a484c789c989d48575592e0484d1b",
+  "files": [
+    {
+      "path": "apps/hub-web/components/files/viewers/docx-viewer.tsx",
+      "sha256": "13828e05b242feec78ca17519f95075993600e22ac82e361e8383a8b1af9dd4d"
+    },
+    {
+      "path": "apps/hub-web/components/files/viewers/pdf-viewer.tsx",
+      "sha256": "9ac5cbe3a76595d3f8c71188258457262bf0ef8eb400623e707f1c90bdfcf981"
+    },
+    {
+      "path": "apps/hub-web/components/files/viewers/pptx-viewer.tsx",
+      "sha256": "153340b85c96292f6de4a1660145b1898f93636badf838bce7da45b5e7c345a3"
+    },
+    {
+      "path": "apps/hub-web/components/files/viewers/present.tsx",
+      "sha256": "f41b699b42e05910963e9dc8bd0970a6b7e23cbce2aa5f1e9de2cc22cc3c7a9c"
+    },
+    {
+      "path": "apps/hub-web/lib/files/pptx.ts",
+      "sha256": "cc1d2501b4484ca9b80a854c3ac4ce5cba4f0e036a24c343f649e36d468c39b1"
+    },
+    {
+      "path": "apps/hub-web/lib/files/pdfjs.ts",
+      "sha256": "fefe98e73784ac5f296fd353d84381f24e0233391db8c1c0fb7ce24d548972c5"
+    },
+    {
+      "path": "apps/hub-web/lib/files/pdf-worker.ts",
+      "sha256": "dd5fe5e6425e824a46e8b0a2eeadd0d1467dbb883894d90bda6ea2cba048bf53"
+    },
+    {
+      "path": "apps/hub-web/lib/files/stream-iteration.ts",
+      "sha256": "d853ded3671e81c951a7e9a349e174a605e8799d8b2c659d96a6ffd8f49d6892"
+    }
+  ]
+}

@@ -4,6 +4,8 @@ AI teammates that work on your own computer. Talk to your nodes alone, in a crew
 
 This repository is the website, on Vercel in two environments ([environments and deployment](docs/04_DEPLOYMENT_AND_DNS.md)): development happens on the `testing` branch, published to `node-test.ensemblework.com` and connected only to Ensemble's testing environment; `main` is production, `node.ensemblework.com`, connected only to production Ensemble. Node's backend is a module of Ensemble's API (`ensemblework/ensemble`, `apps/hub-api/src/node`), so Node shares Ensemble's sign-in, workspace, tools, computer jobs and credits.
 
+The chat-side file workspace edits originals on connected computers, previews Markdown and supported documents, and routes selected-line questions to the last recorded editing node or its coding-agent session. Editor colour themes follow the account across browsers. `packages/document-viewers` reuses Ensemble's Word, PDF and PowerPoint renderers; `scripts/sync-document-viewers.mjs /path/to/ensemble` refreshes their checked-in source and provenance. Details: [UI and UX](docs/05_UI_AND_UX.md#original-files-beside-the-chat).
+
 ## Quick start
 
 ```bash

@@ -6,7 +6,7 @@ const problems = environmentProblems(process.env);
 if (problems.length) throw new Error(`Ensemble Node build settings:\n- ${problems.join("\n- ")}`);
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@ensemble/ide-theme"],
+  transpilePackages: ["@ensemble/ide-theme", "@ensemble-node/document-viewers"],
   webpack(config) {
     config.resolve.extensionAlias = { ...config.resolve.extensionAlias, ".js": [".ts", ".tsx", ".js"] };
     return config;

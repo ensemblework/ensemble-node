@@ -3,7 +3,9 @@ import { api } from "./api";
 export type OriginalSource =
   | { kind: "job"; id: string; path: string }
   | { kind: "node"; id: string; fileId: string; path: string };
-export type FileQuote = { source: OriginalSource; from: number; to: number; text: string; hash: string | null; draft: boolean; location?: string; computer?: string };
+export type FileTarget = { kind: "node" | "session"; roomId: string; nodeId: string; nodeName: string; sessionId?: string; agentName?: string };
+export type FileQuote = { source: OriginalSource; from: number; to: number; text: string; hash: string | null; draft: boolean; location?: string; computer?: string; target?: FileTarget };
+export const wireQuotes = (quotes: FileQuote[]) => quotes.map(({ target: _target, ...quote }) => quote);
 export type OriginalEntry = {
   source: OriginalSource;
   deviceId?: string | null;
@@ -17,7 +19,7 @@ export type OriginalEntry = {
   deleted?: boolean;
   updatedAt?: string;
 };
-export type OriginalData = { path: string; name: string; location: string; fileId?: string; content: string | null; hash: string | null; size: number; binary: boolean; truncated: boolean; readOnly: string | null };
+export type OriginalData = { path: string; name: string; location: string; fileId?: string; modifiedAt?: string; content: string | null; hash: string | null; size: number; binary: boolean; truncated: boolean; readOnly: string | null };
 export type OriginalPage = { files: OriginalEntry[]; nextCursor: string | null };
 export const originalKey = (entry: OriginalEntry) => entry.source.kind === "node"
   ? `${entry.deviceId ?? entry.source.id}:${entry.source.fileId}`

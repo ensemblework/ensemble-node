@@ -161,3 +161,16 @@ test("a delayed refresh cannot replace a newer acknowledged save", async () => {
   assert.equal(buffers.get(key)?.hash, "2".repeat(40));
   buffers.dispose();
 });
+
+test("modification metadata alone never conflicts with an unchanged text base", async () => {
+  let latest = { ...data(), modifiedAt: "2026-11-02T10:00:00.000Z" };
+  const buffers = new FileBuffers({ read: async () => latest, save: async () => ({ hash: "2".repeat(40) }) }, 10_000);
+  await buffers.open(entry);
+  buffers.change(key, "unsaved");
+  latest = { ...latest, modifiedAt: "2026-11-02T10:00:01.000Z" };
+  await buffers.refresh(key);
+  assert.equal(buffers.get(key)?.text, "unsaved");
+  assert.equal(buffers.get(key)?.status, "modified");
+  assert.equal(buffers.get(key)?.data?.modifiedAt, latest.modifiedAt);
+  buffers.dispose();
+});

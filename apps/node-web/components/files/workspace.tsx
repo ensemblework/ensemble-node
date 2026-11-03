@@ -1,12 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight, FileCode2, Files, PanelRightClose, Search, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { FileBuffers } from "@/lib/file-buffers";
-import { CHAT_MIN, EDITOR_MIN, FILES_MAX, FILES_MIN, SPLIT_DIVIDER, fileName, originalKey, splitAt, type FileQuote, type OriginalEntry, type OriginalPage } from "@/lib/original-files";
+import { CHAT_MIN, EDITOR_MIN, FILES_MAX, FILES_MIN, SPLIT_DIVIDER, fileName, originalKey, splitAt, type FileQuote, type FileTarget, type OriginalEntry, type OriginalPage } from "@/lib/original-files";
 import { toastError } from "@/lib/toast";
 import { ago } from "@/lib/text";
 import { Button, Drawer, IconButton, Spinner } from "../ui";
@@ -14,6 +15,7 @@ import { Button, Drawer, IconButton, Spinner } from "../ui";
 const Editor = dynamic(() => import("./editor").then(module => module.OriginalEditor), { ssr: false, loading: () => <div className="flex flex-1 items-center justify-center text-muted"><Spinner /></div> });
 type Mode = "chat" | "split" | "editor";
 type Workspace = {
+  accountId: string;
   store: FileBuffers;
   roomId: string | null;
   active: string | null;
@@ -28,7 +30,7 @@ type Workspace = {
   focus: () => void;
   toggleFiles: () => void;
   setQuoteTarget: (key: string | null) => void;
-  quote: (quote: FileQuote) => void;
+  quote: (quote: FileQuote) => Promise<void>;
 };
 const Context = createContext<Workspace | null>(null);
 const focusFileOrChat = () => requestAnimationFrame(() => (document.querySelector<HTMLButtonElement>('[role="tablist"][aria-label="Open files"] [role="tab"][aria-selected="true"]') ?? document.querySelector<HTMLButtonElement>(".chat-header h1 button"))?.focus());
@@ -44,6 +46,7 @@ export function useFileBuffer(key: string) {
 }
 
 export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, children }: { accountId: string; roomId: string | null; onAutoCollapse: (value: boolean) => void; children: ReactNode }) {
+  const router = useRouter();
   const [store] = useState(() => new FileBuffers());
   const [active, setActive] = useState<string | null>(null);
   const [tabs, setTabs] = useState<string[]>([]);
@@ -51,6 +54,17 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
   const [filesOpen, setFilesOpen] = useState(false);
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const quoteTarget = useRef<string | null>(null);
+  const pendingQuote = useRef<{ draftKey: string; quote: FileQuote } | null>(null);
+  const deliverQuote = useCallback((key: string | null) => {
+    quoteTarget.current = key;
+    if (!key || pendingQuote.current?.draftKey !== key) return;
+    requestAnimationFrame(() => {
+      const pending = pendingQuote.current;
+      if (!pending || quoteTarget.current !== pending.draftKey) return;
+      window.dispatchEvent(new CustomEvent("node:file-quote", { detail: pending }));
+      pendingQuote.current = null;
+    });
+  }, []);
   useEffect(() => {
     store.resume();
     const leave = (event: BeforeUnloadEvent) => { if (store.hasDrafts()) event.preventDefault(); };
@@ -97,7 +111,7 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
     else remove(key);
   }, [store, remove]);
   const value = useMemo<Workspace>(() => ({
-    store, roomId, active, tabs, mode, filesOpen, open, close,
+    accountId, store, roomId, active, tabs, mode, filesOpen, open, close,
     select: key => { setActive(key); setMode(current => current === "editor" ? current : "split"); void store.refresh(key); },
     hide: () => {
       setMode("chat");
@@ -110,14 +124,16 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
         ? document.querySelector<HTMLButtonElement>('.file-list [aria-label="Close file list"]')
         : document.querySelector<HTMLButtonElement>('.file-workspace [aria-label="Show file list"]') ?? document.querySelector<HTMLButtonElement>('.chat-header [aria-label="Show changed files"]'))?.focus());
     },
-    setQuoteTarget: key => { quoteTarget.current = key; },
-    quote: quote => {
-      if (!quoteTarget.current) { toastError(new Error("Open a chat before quoting selected lines.")); return; }
-      window.dispatchEvent(new CustomEvent("node:file-quote", { detail: { draftKey: quoteTarget.current, quote } }));
+    setQuoteTarget: deliverQuote,
+    quote: async quote => {
+      const { target } = await api<{ target: FileTarget }>("/api/node/files/target", { body: { source: quote.source } });
+      pendingQuote.current = { draftKey: `${accountId}:${target.roomId}`, quote: { ...quote, target } };
+      if (target.roomId === roomId) deliverQuote(quoteTarget.current);
+      else router.push(`/r/${target.roomId}`);
       const available = (document.querySelector(".file-workspace")?.clientWidth ?? window.innerWidth) - (document.querySelector<HTMLElement>(".file-list")?.offsetWidth ?? 0);
       setMode(available < CHAT_MIN + EDITOR_MIN + SPLIT_DIVIDER ? "chat" : "split");
     },
-  }), [store, roomId, active, tabs, mode, filesOpen, open, close]);
+  }), [accountId, store, roomId, active, tabs, mode, filesOpen, open, close, deliverQuote, router]);
   return <Context value={value}>
     <LayoutControls onAutoCollapse={onAutoCollapse} accountId={accountId}>{children}</LayoutControls>
     <UnsavedFileDialog fileKey={pendingClose} onKeep={() => { if (pendingClose) setActive(pendingClose); setPendingClose(null); focusFileOrChat(); }} onRemove={remove} />

@@ -46,6 +46,9 @@ body {
 button, a, summary, select { touch-action: manipulation; }
 button:not(:disabled), summary { cursor: pointer; }
 .file-divider::after { content: ""; position: absolute; inset: 0 -10px; }
+.document-preview .icon-btn { @apply inline-flex size-8 items-center justify-center rounded-lg hover:bg-raised disabled:opacity-40; }
+.document-preview .btn-ghost { @apply inline-flex min-h-8 items-center gap-1 rounded-lg px-2 hover:bg-raised; }
+.document-preview .field { @apply rounded-md border border-line bg-panel text-ink; }
 :where(button, a, summary, input, textarea, select, [tabindex="0"]):focus-visible {
   outline: 2px solid rgb(var(--accent));
   outline-offset: 3px;

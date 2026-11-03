@@ -1,5 +1,7 @@
 # 03 · Repository structure
 
+`packages/document-viewers` contains the reused Ensemble Word, PDF and PowerPoint viewers, their parsers/worker, a small Node UI adapter, licence and `provenance.json`. `scripts/sync-document-viewers.mjs` refreshes the canonical source files from an Ensemble checkout; dependency libraries remain lazy-loaded by file format.
+
 ```
 ensemble-node/
 ├── apps/node-web/               the website (Next.js 15)
@@ -25,7 +27,8 @@ ensemble-node/
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, computers, browsing, sign out
 │   ├── components/
 │   │   ├── files/               split workspace and file list (workspace.tsx), lazy original editor,
-│   │   │                        file/selection cards, canonical theme mapping and theme picker
+│   │   │                        floating selection action, document/sheet previews, file/selection cards,
+│   │   │                        canonical theme mapping and account-saved theme picker
 │   │   ├── chat/                room view, message (actions, reactions, replies, tools a reply used) and cards,
 │   │   │                        run card and its work log (run-card.tsx, work-log.tsx), the session parts of a run
 │   │   │                        card (session.tsx: settings, queue, controls), a worker's report (report.tsx),

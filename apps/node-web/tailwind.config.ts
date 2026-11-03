@@ -3,7 +3,7 @@ import type { Config } from "tailwindcss";
 const rgb = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
 
 export default {
-  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}", "../../packages/document-viewers/src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {

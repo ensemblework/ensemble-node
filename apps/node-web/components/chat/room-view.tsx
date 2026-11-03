@@ -612,7 +612,7 @@ export function RoomView({ roomId }: { roomId: string }) {
         <IconButton label="Search this conversation" onClick={() => setSearching(!searching)} className={searching ? "bg-raised text-ink" : ""}>
           <Search size={18} />
         </IconButton>
-        {workspace.active && workspace.mode === "chat" ? <IconButton label="Open editor" onClick={workspace.restore}><Columns2 size={18} /></IconButton> : null}
+        {(workspace.active || workspace.shared) && workspace.mode === "chat" ? <IconButton label="Open editor" onClick={workspace.restore}><Columns2 size={18} /></IconButton> : null}
         <IconButton label={workspace.filesOpen ? "Hide changed files" : "Show changed files"} aria-pressed={workspace.filesOpen} onClick={workspace.toggleFiles} className={workspace.filesOpen ? "bg-raised text-ink" : ""}><Files size={18} /></IconButton>
         <div ref={menuBox} className="relative">
           <IconButton label="More" aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(!menu)} className={`relative ${menu ? "bg-raised text-ink" : ""}`}>
@@ -818,7 +818,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                 return (
                   <div key={row.nodeId} className="mt-4 flex gap-3" data-live-row={row.waiting ? "waiting" : "thinking"}>
                     <NodeCompanion node={node} size={32} thinking={!row.waiting} compact />
-                    <div className="min-w-0 flex-1">
+                    <div data-message-surface className="min-w-0 flex-1 rounded-2xl bg-bg px-3 py-2">
                       <div className="mb-0.5 text-sm">
                         <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="ml-1 text-xs text-muted">{row.waiting ? "" : row.text ? "Writing…" : "Thinking…"}</span>
                       </div>
@@ -846,7 +846,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                         </div>
                       ) : null}
                       {row.text ? (
-                        <div className="opacity-80">
+                        <div>
                           <RichText text={row.text} handles={ctx.handles} refs={row.refs ?? []} showIds={row.showIds === true} streaming kindLinks />
                         </div>
                       ) : row.waiting ? null : (

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./controls": "./src/shared.tsx",
     "./pdf": "./src/pdf-viewer.tsx",
     "./docx": "./src/docx-viewer.tsx",
     "./pptx": "./src/pptx-viewer.tsx"

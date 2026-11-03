@@ -11,18 +11,22 @@ import { CHAT_MIN, EDITOR_MIN, FILES_MAX, FILES_MIN, SPLIT_DIVIDER, fileName, or
 import { toastError } from "@/lib/toast";
 import { ago } from "@/lib/text";
 import { Button, Drawer, IconButton, Spinner } from "../ui";
+import type { EvidenceItem } from "@/lib/types";
 
 const Editor = dynamic(() => import("./editor").then(module => module.OriginalEditor), { ssr: false, loading: () => <div className="flex flex-1 items-center justify-center text-muted"><Spinner /></div> });
+const SharedFile = dynamic(() => import("./shared-file").then(module => module.SharedFile), { ssr: false, loading: () => <Spinner /> });
 type Mode = "chat" | "split" | "editor";
 type Workspace = {
   accountId: string;
   store: FileBuffers;
   roomId: string | null;
   active: string | null;
+  shared: { item: EvidenceItem; messageId: string | null } | null;
   tabs: string[];
   mode: Mode;
   filesOpen: boolean;
   open: (entry: OriginalEntry) => void;
+  openShared: (item: EvidenceItem, messageId: string | null) => void;
   select: (key: string) => void;
   close: (key: string) => void;
   hide: () => void;
@@ -49,6 +53,7 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
   const router = useRouter();
   const [store] = useState(() => new FileBuffers());
   const [active, setActive] = useState<string | null>(null);
+  const [shared, setShared] = useState<Workspace["shared"]>(null);
   const [tabs, setTabs] = useState<string[]>([]);
   const [mode, setMode] = useState<Mode>("chat");
   const [filesOpen, setFilesOpen] = useState(false);
@@ -72,8 +77,8 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
     return () => { window.removeEventListener("beforeunload", leave); store.pause(); };
   }, [store]);
   useEffect(() => store.subscribeSaveErrors((key, message) => {
-    if (mode === "chat" || !roomId || active !== key) toastError(new Error(`${fileName(store.get(key)?.entry.source.path ?? "File")}: ${message}`));
-  }), [store, mode, roomId, active]);
+    if (mode === "chat" || !roomId || shared || active !== key) toastError(new Error(`${fileName(store.get(key)?.entry.source.path ?? "File")}: ${message}`));
+  }), [store, mode, roomId, active, shared]);
   useEffect(() => {
     const refresh = (event: Event) => {
       if (!active || mode === "chat" || !roomId) return;
@@ -87,6 +92,7 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
     return () => window.removeEventListener("node:originals-changed", refresh);
   }, [store, active, mode, roomId]);
   const open = useCallback((entry: OriginalEntry) => {
+    setShared(null);
     let key = originalKey(entry);
     const same = tabs.find(id => {
       const source = store.get(id)?.entry.source;
@@ -111,8 +117,9 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
     else remove(key);
   }, [store, remove]);
   const value = useMemo<Workspace>(() => ({
-    accountId, store, roomId, active, tabs, mode, filesOpen, open, close,
-    select: key => { setActive(key); setMode(current => current === "editor" ? current : "split"); void store.refresh(key); },
+    accountId, store, roomId, active, shared, tabs, mode, filesOpen, open, close,
+    openShared: (item, messageId) => { setShared({ item, messageId }); setMode(current => current === "editor" ? current : "split"); },
+    select: key => { setShared(null); setActive(key); setMode(current => current === "editor" ? current : "split"); void store.refresh(key); },
     hide: () => {
       setMode("chat");
       requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".chat-header h1 button")?.focus());
@@ -133,7 +140,7 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
       const available = (document.querySelector(".file-workspace")?.clientWidth ?? window.innerWidth) - (document.querySelector<HTMLElement>(".file-list")?.offsetWidth ?? 0);
       setMode(available < CHAT_MIN + EDITOR_MIN + SPLIT_DIVIDER ? "chat" : "split");
     },
-  }), [accountId, store, roomId, active, tabs, mode, filesOpen, open, close, deliverQuote, router]);
+  }), [accountId, store, roomId, active, shared, tabs, mode, filesOpen, open, close, deliverQuote, router]);
   return <Context value={value}>
     <LayoutControls onAutoCollapse={onAutoCollapse} accountId={accountId}>{children}</LayoutControls>
     <UnsavedFileDialog fileKey={pendingClose} onKeep={() => { if (pendingClose) setActive(pendingClose); setPendingClose(null); focusFileOrChat(); }} onRemove={remove} />
@@ -191,7 +198,7 @@ export function FileWorkspaceSurface({ children }: { children: ReactNode }) {
   const controls = useContext(ControlsContext)!;
   const surface = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1000);
-  const showEditor = Boolean(workspace.roomId && workspace.active && workspace.mode !== "chat");
+  const showEditor = Boolean(workspace.roomId && (workspace.active || workspace.shared) && workspace.mode !== "chat");
   const dockedFiles = workspace.filesOpen && width - controls.filesWidth >= EDITOR_MIN ? controls.filesWidth : 0;
   const single = width - dockedFiles < CHAT_MIN + EDITOR_MIN + SPLIT_DIVIDER;
   const hideChat = showEditor && (workspace.mode === "editor" || single);
@@ -232,12 +239,12 @@ export function FileWorkspaceSurface({ children }: { children: ReactNode }) {
         else if (event.key === "Home" || event.key === "End") { event.preventDefault(); event.key === "Home" ? workspace.hide() : workspace.focus(); }
       }} /> : null}
     {showEditor ? <section aria-label="File editor" inert={listOverlay || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg">
-      {single ? <div className="border-b border-line px-2"><button type="button" className="inline-flex min-h-10 items-center gap-2 text-sm text-muted hover:text-ink" onClick={workspace.hide}><ArrowLeft size={16} />Back to chat</button></div> : null}
-      <Editor key={workspace.active!} fileKey={workspace.active!} />
+      {single && workspace.mode !== "editor" ? <div className="border-b border-line px-2"><button type="button" className="inline-flex min-h-10 items-center gap-2 text-sm text-muted hover:text-ink" onClick={workspace.hide}><ArrowLeft size={16} />Back to chat</button></div> : null}
+      {workspace.shared ? <SharedFile key={workspace.shared.item.id} {...workspace.shared} /> : <Editor key={workspace.active!} fileKey={workspace.active!} />}
     </section> : null}
     {listOverlay ? <button type="button" aria-label="Dismiss file list" onClick={workspace.toggleFiles} className="absolute inset-0 z-20 cursor-default bg-black/15" /> : null}
-    {workspace.roomId && workspace.filesOpen ? <aside aria-label="Changed files" className={`file-list flex min-h-0 shrink-0 flex-col border-l border-line bg-panel ${overlay ? "absolute inset-y-0 right-0 z-30 shadow-2xl" : ""}`} style={{ width: Math.min(controls.filesWidth, width - 24) }}>
-      <div role="separator" aria-label="Resize file list" aria-orientation="vertical" aria-valuemin={FILES_MIN} aria-valuemax={FILES_MAX} aria-valuenow={controls.filesWidth} tabIndex={0} className="file-divider absolute inset-y-0 -ml-0.5 w-1 cursor-col-resize touch-none hover:bg-accent/50 focus-visible:bg-accent"
+    {workspace.roomId && workspace.filesOpen ? <aside aria-label="Changed files" className={`file-list flex min-h-0 shrink-0 flex-col border-l border-line bg-panel ${overlay ? "absolute inset-y-0 right-0 z-30 shadow-2xl" : "relative"}`} style={{ width: Math.min(controls.filesWidth, width - 24) }}>
+      <div role="separator" aria-label="Resize file list" aria-orientation="vertical" aria-valuemin={FILES_MIN} aria-valuemax={FILES_MAX} aria-valuenow={controls.filesWidth} tabIndex={0} className="file-divider absolute inset-y-0 left-0 -translate-x-1/2 w-1 cursor-col-resize touch-none hover:bg-accent/50 focus-visible:bg-accent"
         onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) controls.setFilesWidth(surface.current!.getBoundingClientRect().right - event.clientX); }}
         onPointerUp={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}

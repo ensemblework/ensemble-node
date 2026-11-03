@@ -49,6 +49,13 @@ button:not(:disabled), summary { cursor: pointer; }
 .document-preview .icon-btn { @apply inline-flex size-8 items-center justify-center rounded-lg hover:bg-raised disabled:opacity-40; }
 .document-preview .btn-ghost { @apply inline-flex min-h-8 items-center gap-1 rounded-lg px-2 hover:bg-raised; }
 .document-preview .field { @apply rounded-md border border-line bg-panel text-ink; }
+.document-reading-controls:empty { display: none; }
+.document-reading-controls > span.px-1, .document-reading-controls > span.pr-1 { display: none; }
+.document-reading-controls .icon-btn { @apply inline-flex size-8 items-center justify-center rounded-lg hover:bg-raised disabled:opacity-40; }
+.document-reading-controls .btn-ghost { @apply inline-flex min-h-8 items-center gap-1 rounded-lg px-2 hover:bg-raised; }
+.document-reading-controls .field { @apply rounded-md border border-line bg-panel text-base text-ink md:text-xs; }
+.chat-bubble-own { background-color: rgb(var(--bg)); background-image: linear-gradient(rgb(var(--accent) / .15), rgb(var(--accent) / .15)); }
+.chat-bubble-private { background-color: rgb(var(--bg)); background-image: linear-gradient(rgb(var(--private) / .1), rgb(var(--private) / .1)); }
 :where(button, a, summary, input, textarea, select, [tabindex="0"]):focus-visible {
   outline: 2px solid rgb(var(--accent));
   outline-offset: 3px;

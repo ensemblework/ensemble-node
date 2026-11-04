@@ -28,7 +28,7 @@ Rules that do not bend:
         │                          ├─ Hub writes (tasks, pages, projects…) ── owner's write policy
         │                          └─ node_session_* ── the owner's coding agent ── WorkspaceJob on their computer
         ├─ /api/bridge/node       read-only overview for the CLI's Node tab
-        └─ included AI (Azure AI Foundry; nodes default to gpt-5-mini) ── 20,000 credits / account / month
+        └─ included AI (Visual Studio Azure credits; GPT-5 mini + GPT-4.1 mini) ── 20,000 credits / account / month
                                      ▲
  paired computer: Ensemble CLI or desktop app (synced) ── device token ── claims the job, runs Claude Code / Codex / Cursor / Ensemble's agent in its sandbox
 ```

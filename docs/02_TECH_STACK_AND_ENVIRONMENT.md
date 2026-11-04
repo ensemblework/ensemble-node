@@ -9,7 +9,7 @@
 | Backend | Ensemble hub-api (Fastify 5, Prisma 6, PostgreSQL, Redis) — module `src/node/` in the Ensemble repository |
 | Live updates | Server-sent events from `GET /api/node/events` (EventSource with credentials) |
 | Motion | GSAP and `@gsap/react` for the open node's short expressions; CSS for subtle working motion. Browser-only, with visibility cleanup and reduced-motion support. |
-| Models | Ensemble's included AI (Azure AI Foundry): every model Ensemble offers; nodes default to gpt-6-luna (else gpt-5-mini) at low thinking |
+| Models | Ensemble's included AI on Visual Studio Azure credits: GPT-5 mini and GPT-4.1 mini; nodes default to GPT-5 mini at low thinking, crew leads at medium, with GPT-4.1 mini as the fast alternative |
 | Package manager / runtime | pnpm 12, Node 22 |
 
 The website has no server logic beyond `/health` (the commit and environment it serves): every page is a client of Ensemble's API. Production is the Vercel project `ensemble-node`, testing is `ensemble-node-test` ([04](04_DEPLOYMENT_AND_DNS.md)).
@@ -32,7 +32,8 @@ Ensemble's API needs (in its server env file, or `.env` locally):
 | --- | --- | --- |
 | `ENSEMBLE_NODE_WEB_ORIGIN` | `https://node.ensemblework.com` (local: `http://localhost:3300`) | CORS allowlist and the return after a provider sign-in. Production refuses a value that is not https or cannot share the cookie. |
 | `ENSEMBLE_COOKIE_DOMAIN` | `ensemblework.com` (already set) | One session for app., node. and api. |
-| `ENSEMBLE_INCLUDED_MODELS` | Ensemble's list | The Azure AI Foundry deployments Ensemble offers; nodes can use each of them and default to gpt-5-mini |
+| `ENSEMBLE_INCLUDED_MODELS` | `gpt-5-mini,gpt-4.1-mini` | Ensemble API setting, not a website secret: the deployed included list for that environment. Luna, Sol and Grok are not currently included; eligible operators can explicitly restore them |
+| `ENSEMBLE_INCLUDED_WEB_SEARCH` | `off` | Ensemble API setting: separately billed Azure grounding is opt-in; free web search remains available |
 | `ENSEMBLE_INCLUDED_MONTHLY_CREDITS` | `20000` (default) | Per account per month, shared by every Ensemble app |
 | `ENSEMBLE_NODE` | unset (on) | `off` stops node turns and run reports |
 | `ENSEMBLE_NODE_PARALLEL` | `4` (default) | Node turns at once per API process |

@@ -110,7 +110,9 @@ Each API's env file names its own website:
 
 With it, the API allows that origin for CORS with credentials, sends a provider sign-in started on Node back to it, accepts a Turnstile answer solved there for email sign-up (still checked with Cloudflare: success, the `signup` action and the host), and links the verification email of an account created there to its `/welcome`. Production refuses to start when the value is not one https origin that shares the session cookie (`ENSEMBLE_COOKIE_DOMAIN=ensemblework.com`).
 
-Models and credits come from that Ensemble, so its Hub, CLI and Node always agree: a node can use every model in its `ENSEMBLE_INCLUDED_MODELS` (default `gpt-5-mini`), and every call spends the account's monthly Ensemble credits (20,000 by default), shared by every app of that environment. Ensemble's `docs/33_INCLUDED_AI.md` owns the details.
+Models and credits come from that Ensemble, so its Hub, paired desktop/CLI and Node agree. Both hosted environments use **GPT-5 mini and GPT-4.1 mini** from the Visual Studio Azure credit subscription; `ENSEMBLE_INCLUDED_MODELS` defaults to those two. Nodes default to GPT-5 mini (crew leads at medium thinking), with GPT-4.1 mini as the fast alternative. Luna, Sol and Grok are **not currently included**, not permanently removed: their adapters and explicit operator overrides remain for eligible future deployments. Personal keys and AI plans are unchanged.
+
+Every included call spends the account's monthly Ensemble credits (20,000 by default), shared within that environment; production and testing keep separate ledgers. A subscription-wide Azure budget covers both environments plus storage and other resources, but only alerts; it is not a hard dollar cutoff. Paid Azure grounding is off by default (`ENSEMBLE_INCLUDED_WEB_SEARCH=off`); free search remains available. Ensemble's `docs/33_INCLUDED_AI.md` owns the code-level details. Subscription/resource IDs, INR thresholds and operator settings belong only in the private runbooks.
 
 Check (replace `-test` with nothing for production):
 

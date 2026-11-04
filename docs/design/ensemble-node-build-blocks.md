@@ -1085,7 +1085,7 @@ The plan's W11 covers the rest: channels (Slack, Teams, text messages), voice, f
 | # | Question | Recommendation |
 |---|---|---|
 | 1 | Evidence upload (B7): upload what agents explicitly attach, by default, with a per-computer switch to turn it off? | Yes |
-| 2 | Lead model (B6): keep Sol medium as the default until Luna meets the evaluation bar? | Yes |
+| 2 | Lead model (B6): prefer the evaluated stronger model when eligible? | Sol medium remains an evaluation preference, not hosted availability; current hosted leads use GPT-5 mini medium |
 | 3 | Expiry of decisions raised by background work (B5) | 30 minutes, like Grok Bot; configurable |
 | 4 | Browser profile (B10): one Ensemble browser per owner shared by all nodes, as in Grok Bot, or one per node? | One per owner first; per node later if needed |
 | 5 | B3 alongside B1–B2 (a second agent), or strictly in sequence? | Alongside, after agreeing the shared run note in `node/plans.ts` |
@@ -1104,8 +1104,8 @@ The plan's W11 covers the rest: channels (Slack, Teams, text messages), voice, f
 
 **Outcomes from the B0 evaluation** (Ensemble `apps/hub-api/scripts/node-plan-eval.mjs`; results in Ensemble docs/35 §11). Ten planning requests went to a crew lead on each model. Sol low and Sol medium handled all ten, with every expected deliverable named. Luna low handled seven, and named 10 of 14 deliverables. It sent three build requests straight to one coding run, without the checks that were asked for.
 
-- Decision 2: the lead keeps Sol medium.
-- Decision 8: a node with no model of its own talks with Sol at low thinking. Luna stays the fast model that a turn cut off by a rate limit answers with.
+- Decision 2: a restored stronger lead deployment should be evaluated before operator opt-in. Current hosted leads use GPT-5 mini medium; Sol is not currently included.
+- Decision 8: current hosted nodes use GPT-5 mini low, with GPT-4.1 mini as the fast rate-limit alternative. Luna/Sol adapters remain supported for eligible explicit deployments.
 
 ## Build status
 

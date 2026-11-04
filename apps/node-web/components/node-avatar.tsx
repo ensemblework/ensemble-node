@@ -3,9 +3,13 @@
 /** @jsxImportSource react */
 
 import { useEffect, useId, useRef, useSyncExternalStore } from "react";
+import { useGSAP } from "@gsap/react";
+import { gsap } from "gsap";
 import type { Avatar } from "@/lib/types";
 import { workingMotion, type WorkingZone } from "@/lib/working-motion";
 import { useVisibleMotion } from "./appearance-provider";
+
+gsap.registerPlugin(useGSAP);
 
 const SHAPES: Record<Avatar["shape"], string> = {
   orb: "M50 6a44 44 0 1 1 0 88a44 44 0 1 1 0-88z",
@@ -14,6 +18,8 @@ const SHAPES: Record<Avatar["shape"], string> = {
   hex: "M50 5l39 22v46L50 95 11 73V27z",
   leaf: "M50 6c30 8 44 30 40 58-3 20-20 32-40 32S13 84 10 64C6 36 20 14 50 6z",
   compass: "M50 4l14 32 32 14-32 14-14 32-14-32L4 50l32-14z",
+  pebble: "M50 8C77 4 95 25 92 52C89 80 74 94 48 92C20 90 5 75 8 49C10 25 26 11 50 8Z",
+  bloom: "M50 10C63-2 82 10 80 27C99 27 104 49 89 59C99 77 82 95 66 86C57 104 34 100 31 82C12 88-1 67 11 53C-3 38 11 18 28 23C29 8 40 2 50 10Z",
 };
 export const AVATAR_PATHS = SHAPES;
 export const AVATAR_MORPHS: Record<Avatar["shape"], string> = {
@@ -23,6 +29,8 @@ export const AVATAR_MORPHS: Record<Avatar["shape"], string> = {
   hex: "M50 10l42 19v42L50 90 8 71V29z",
   leaf: "M50 12c34 2 44 26 37 52-5 18-18 25-37 25S17 80 13 64C6 38 16 17 50 12z",
   compass: "M50 10l18 22 22 18-22 18-18 22-18-22L10 50l22-18z",
+  pebble: "M50 12C81 8 94 30 88 53C85 77 70 88 48 86C22 86 8 72 12 49C14 26 28 15 50 12Z",
+  bloom: "M50 16C61 6 76 16 75 30C92 31 96 48 83 58C91 73 78 87 64 79C56 94 37 91 35 76C19 81 8 64 18 52C7 39 18 23 32 28C34 16 42 10 50 16Z",
 };
 
 /**
@@ -37,6 +45,8 @@ const FACES: Record<Avatar["shape"], { x: number; y: number; gap: number; scale:
   hex: { x: 50, y: 50, gap: 11, scale: 1 },
   leaf: { x: 50, y: 55, gap: 11, scale: 1 },
   compass: { x: 50, y: 50, gap: 8, scale: 0.66 },
+  pebble: { x: 50, y: 49, gap: 11, scale: 1 },
+  bloom: { x: 50, y: 51, gap: 10, scale: .9 },
 };
 
 const DEFAULT_LOOK: Avatar = { shape: "orb", color: "#D7B56F", eyes: "dot" };
@@ -123,6 +133,21 @@ export function NodeAvatar({ node, avatar, size = 36, thinking = false, resting 
     if (visible && workZone) return workingMotion.register(id, workZone);
   }, [visible, workZone, id]);
   const selected = useSyncExternalStore(workingMotion.subscribe, () => workingMotion.getSnapshot() === id, () => false);
+  const laptop = visible && selected && workZone === "chat" && size >= 30;
+  useGSAP(() => {
+    const root = ref.current;
+    if (!root || !laptop) return;
+    root.dataset.vignette = "laptop";
+    const timeline = gsap.timeline({ onComplete: () => { delete root.dataset.vignette; } });
+    timeline.to(".node-worker", { y: -11, scaleX: .8, scaleY: .76, duration: .35, ease: "power2.out" })
+      .fromTo(".node-laptop", { y: 12, scaleY: .15, opacity: 0 }, { y: 0, scaleY: 1, opacity: 1, duration: .35, ease: "back.out(1.3)" }, .2)
+      .fromTo(".node-hand-left", { y: 0 }, { y: -3, duration: .13, repeat: 23, yoyo: true, ease: "sine.inOut" }, .65)
+      .fromTo(".node-hand-right", { y: 0 }, { y: -3, duration: .13, repeat: 23, yoyo: true, ease: "sine.inOut" }, .78)
+      .fromTo(".node-screen-glow", { opacity: .2 }, { opacity: .7, duration: .6, repeat: 4, yoyo: true }, .55)
+      .to(".node-laptop", { y: 5, scaleY: .85, opacity: 0, duration: .25 }, 4.35)
+      .to(".node-worker", { y: 0, scaleX: 1, scaleY: 1, duration: .4, ease: "power2.out" }, 4.5);
+    return () => { timeline.kill(); delete root.dataset.vignette; };
+  }, { scope: ref, dependencies: [laptop, look.shape], revertOnUpdate: true });
   return (
     <svg ref={ref} width={size} height={size} viewBox="0 0 100 100" role="img" aria-label={title ?? "Node"} data-node-avatar data-node-shape={look.shape} data-work-zone={workZone} data-motion-active={visible && selected || undefined} data-resting={resting || undefined} className={`${thinking ? "node-thinking" : ""} ${dim ? "opacity-50 grayscale" : ""} shrink-0`}>
       {title ? <title>{title}</title> : null}
@@ -134,6 +159,7 @@ export function NodeAvatar({ node, avatar, size = 36, thinking = false, resting 
         </radialGradient>
       </defs>
       <g className="node-work">
+        <g className="node-worker">
         <g className="node-body">
           <g className="node-form"><g className="node-pose">
             <path key={look.shape} className="node-silhouette" d={SHAPES[look.shape]} fill={`url(#${id})`} stroke={tones.edge} strokeWidth="2" strokeLinejoin="round" />
@@ -152,6 +178,16 @@ export function NodeAvatar({ node, avatar, size = 36, thinking = false, resting 
           <path className="node-sparkle" d="m13 7 2 6 6 2-6 2-2 6-2-6-6-2 6-2z" />
           <path className="node-sparkle" d="m88 66 2 5 5 2-5 2-2 5-2-5-5-2 5-2z" />
         </g>
+        </g>
+        {workZone === "chat" && size >= 30 ? <g className="node-laptop" opacity="0">
+          <path d="M22 61Q22 57 26 57H74Q78 57 78 61L74 88H26Z" fill={tones.shade} stroke={tones.edge} strokeWidth="2" />
+          <path className="node-screen-glow" d="M28 63H72L69 82H31Z" fill={tones.light} opacity=".2" />
+          <path d="M18 88H82L78 93H22Z" fill={tones.light} stroke={tones.edge} strokeWidth="2" strokeLinejoin="round" />
+          <path d="M44 88H56" stroke={tones.edge} strokeWidth="2" />
+          <ellipse className="node-hand-left" cx="30" cy="87" rx="6" ry="3" fill={tones.base} stroke={tones.edge} />
+          <ellipse className="node-hand-right" cx="70" cy="87" rx="6" ry="3" fill={tones.base} stroke={tones.edge} />
+          <path d="m47 70-3 3 3 3m6-6 3 3-3 3" fill="none" stroke={tones.eyes} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </g> : null}
       </g>
     </svg>
   );
@@ -174,7 +210,7 @@ const EYES: Array<{ id: Avatar["eyes"]; label: string }> = [
   { id: "line", label: "Line eyes" },
   { id: "wide", label: "Wide eyes" },
 ];
-const SHAPE_NAMES: Record<Avatar["shape"], string> = { orb: "Orb", square: "Square", spark: "Spark", hex: "Hex", leaf: "Leaf", compass: "Compass" };
+const SHAPE_NAMES: Record<Avatar["shape"], string> = { orb: "Orb", square: "Square", spark: "Spark", hex: "Hex", leaf: "Leaf", compass: "Compass", pebble: "Pebble", bloom: "Bloom" };
 
 /** A colour's name in the picker, or its code for a colour outside the palette. */
 export const colorName = (color: string): string => COLOR_NAMES[color.toUpperCase()] ?? color.toUpperCase();

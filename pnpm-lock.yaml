@@ -195,6 +195,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.13
         version: 6.43.15
+      '@ensemble-node/brand':
+        specifier: workspace:*
+        version: link:../../packages/brand
       '@ensemble-node/document-viewers':
         specifier: workspace:*
         version: link:../../packages/document-viewers
@@ -259,6 +262,8 @@ importers:
       typescript:
         specifier: ^5.8.2
         version: 5.9.3
+
+  packages/brand: {}
 
   packages/document-viewers:
     dependencies:

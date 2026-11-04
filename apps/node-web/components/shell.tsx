@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Activity as ActivityIcon, Ellipsis, Inbox, Lock, Menu, Palette, PanelLeftClose, PanelLeftOpen, Plug, Plus, Repeat, Search, Settings, SquareTerminal } from "lucide-react";
+import { Ellipsis, Inbox, Lock, Menu, Palette, PanelLeftClose, PanelLeftOpen, Plug, Plus, Repeat, Search, Settings, SquareTerminal } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { requestJump } from "@/lib/jump";
@@ -101,7 +101,6 @@ function SidebarWorkspace({ boot, compact, waiting, onNavigate }: { boot: Bootst
         <NavLink href="/sessions" icon={SquareTerminal} label="Sessions" active={pathname === "/sessions"} onNavigate={navigate} />
         <NavLink href="/requests" icon={Inbox} label="Invites" badge={boot.invites?.length ?? 0} active={pathname === "/requests"} onNavigate={navigate} />
         <NavLink href="/connections" icon={Plug} label="Connections" active={pathname === "/connections"} onNavigate={navigate} />
-        <NavLink href="/activity" icon={ActivityIcon} label="Activity" badge={waiting} active={pathname === "/activity"} onNavigate={navigate} />
         <div className="my-1 border-t border-line" />
         <NavLink href="/settings#appearance" icon={Palette} label="Appearance" active={false} onNavigate={navigate} />
         <NavLink href="/settings" icon={Settings} label="Settings" active={pathname === "/settings"} onNavigate={navigate} />
@@ -161,7 +160,7 @@ function useNavigationPreference(key: string, initial: boolean) {
   return [value, toggle] as const;
 }
 
-/** Conversations and one focused surface. Questions stay in the chat; Activity has its own page. */
+/** Conversations and one focused surface. Questions stay in the chat. */
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -284,10 +283,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             <IconButton label="Search" onClick={openSearch}>
               <Search size={18} />
             </IconButton>
-            <Link href="/activity" className="relative inline-flex h-9 w-9 items-center justify-center rounded-xl text-muted hover:bg-raised" aria-label="Activity">
-              <ActivityIcon size={18} />
-              {waiting ? <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-warn" /> : null}
-            </Link>
           </span>
         </div>
         <div className="relative flex min-h-0 flex-1">

@@ -1,0 +1,38 @@
+{
+  "repository": "https://github.com/ensemblework/ensemble",
+  "commit": "9d64fb3f7f3e42f6646d5099ddf41ccd22c395bf",
+  "files": [
+    {
+      "path": "packages/brand/index.js",
+      "sha256": "b58955e0ea49b321a70ade46b7f91581bb2e35724b8d4ec243c929f857bd115f"
+    },
+    {
+      "path": "packages/brand/index.d.ts",
+      "sha256": "9537c84f3beccd76107884d2be3bc558b533026c16e1a17aff8dc23352fec16a"
+    },
+    {
+      "path": "packages/brand/artwork.json",
+      "sha256": "d5dc618b453797f82a1ed4ce70fd4a6799a20485a327882de4fa03068854b762"
+    },
+    {
+      "path": "packages/brand/geometry.js",
+      "sha256": "73ae6c681b3c33f7ef3caea3ec94fbf2eaea732e5264f7f5cd4ff0ec0218b210"
+    },
+    {
+      "path": "packages/brand/motion.js",
+      "sha256": "f739561b257079ad8085a5c8eea5890b191431928bc0c66098615ca1a00dbac8"
+    },
+    {
+      "path": "packages/brand/motion.d.ts",
+      "sha256": "fa94777ab4e4cb3d377f7db20857ab83a9df5de39966a7510b8c82f48a15b616"
+    },
+    {
+      "path": "packages/brand/motion-data.json",
+      "sha256": "0c9a3ab3dfee7751a11c5d8484248fed8d9e6fee7fb2719df12282104d648ff5"
+    },
+    {
+      "path": "packages/brand/motion.css",
+      "sha256": "78d5c534ad75a2c148e698101539ded973fb8b9f044b16f49b12a10e3b9a0887"
+    }
+  ]
+}

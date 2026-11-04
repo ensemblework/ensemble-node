@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "@ensemble-node/brand/motion.css";
 import { Providers } from "./providers";
 import { PRODUCT_NAME, TESTING } from "@/lib/config";
 import { APPEARANCE_SCRIPT, APPEARANCE_STYLES } from "@/lib/appearance";

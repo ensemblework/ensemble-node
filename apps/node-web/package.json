@@ -21,6 +21,7 @@
     "@codemirror/view": "^6.43.13",
     "@ensemble/ide-theme": "file:../../vendor/ensemble-ide-theme-0.6.3.tgz",
     "@ensemble-node/document-viewers": "workspace:*",
+    "@ensemble-node/brand": "workspace:*",
     "@gsap/react": "^2.1.2",
     "@lezer/highlight": "^1.2.1",
     "@tanstack/react-query": "^5.87.4",

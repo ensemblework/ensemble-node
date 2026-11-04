@@ -2,7 +2,7 @@ import type { EntityRef } from "./entity-text";
 import type { FileQuote } from "./original-files";
 /** What Ensemble's `/api/node/*` routes send (Ensemble docs/35). */
 
-export type AvatarShape = "orb" | "square" | "spark" | "hex" | "leaf" | "compass";
+export type AvatarShape = "orb" | "square" | "spark" | "hex" | "leaf" | "compass" | "pebble" | "bloom";
 export type Avatar = { shape: AvatarShape; color: string; eyes: "dot" | "line" | "wide" };
 
 /** `parentNodeId`: a temporary helper's node (it works in a read-only task room and reports to that node). */
@@ -219,6 +219,8 @@ export type SessionSummary = {
   summary: string;
   runs: number;
   lastActiveAt: string;
+  usedBy?: Array<{ node: { id: string; name: string; slug: string }; room: { id: string; title: string; kind: string } | null }>;
+  files?: import("./original-files").OriginalEntry[];
 };
 /** `POST /api/node/sessions/:id/control`. replace: stop the run and the queue, then send this. */
 export type SessionAction = { action: "queue" | "steer" | "replace" | "stop"; prompt?: string; title?: string; queued?: "keep" | "drop" };

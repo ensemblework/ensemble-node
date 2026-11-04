@@ -20,7 +20,7 @@ export function EmailChips({ emails, onChange, max, placeholder = "name@example.
   const full = emails.length >= max;
   return (
     <div className="space-y-1">
-      <div className="flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-xl border border-line bg-bg px-2 py-1.5 focus-within:border-accent">
+      <div className="compound-field flex min-h-[42px] flex-wrap items-center gap-1.5 rounded-xl border border-line bg-bg px-2 py-1.5">
         {emails.map((email) => {
           const valid = isEmail(email);
           return (

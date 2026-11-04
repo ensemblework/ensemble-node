@@ -2,6 +2,8 @@
 
 `packages/document-viewers` contains the reused Ensemble Word, PDF and PowerPoint viewers, their parsers/worker, a small Node UI adapter, licence and `provenance.json`. `scripts/sync-document-viewers.mjs` refreshes the canonical source files from an Ensemble checkout; dependency libraries remain lazy-loaded by file format.
 
+`packages/brand` reuses Ensemble's Woven Chorus motion and scheduler with licence/hash provenance; refresh with `scripts/sync-brand.mjs`. `components/brand-motion.tsx` loads it on demand, while `working-status.tsx` varies general waiting copy without inventing task progress.
+
 ```
 ensemble-node/
 ├── apps/node-web/               the website (Next.js 15)
@@ -21,9 +23,9 @@ ensemble-node/
 │   │       ├── search/          search every conversation
 │   │       ├── computers/       opens Settings → Computers
 │   │       ├── routines/        routines by node: pause, run now, edit, delete, runs and a run's card
-│   │       ├── sessions/        my agent sessions: who manages each, Hand to… / Give to…, a session's panel
+│   │       ├── sessions/        session identity, recency, recorded node/crew usage and original-file cards
 │   │       ├── connections/     connected apps, the same list as in Ensemble
-│   │       ├── activity/        approvals, runs, turns, computers, credits
+│   │       ├── activity/        old address redirects home
 │   │       └── settings/        account, credits, links to the pages above and to Ensemble, computers, browsing, sign out
 │   ├── components/
 │   │   ├── files/               split workspace and file list (workspace.tsx), lazy original editor,
@@ -61,7 +63,7 @@ ensemble-node/
 │   │   ├── node-expressions.ts  bounded GSAP greetings, happy morphs, winks, blinks and twinkles
 │   │   ├── routines.tsx         routines: the list, the form (schedules in a time zone, events, webhooks),
 │   │   │                        a webhook's token shown once, runs and a run's card; a node's routines
-│   │   ├── sessions.tsx         sessions: search, each with who manages it and Hand to…, one opened
+│   │   ├── sessions.tsx         compact searchable session inventory, usage and two-file disclosure
 │   │   ├── model-picker.tsx     every model a node can use, grouped (included, own keys, AI plans)
 │   │   ├── node-picker.tsx      my nodes as checkboxes with a Lead radio
 │   │   ├── email-chips.tsx      emails as chips
@@ -77,7 +79,7 @@ ensemble-node/
 │   │   ├── countdown.tsx        the time left on a card or in the remote view, ticking
 │   │   ├── qr-code.tsx          a QR code as a picture phones read (loaded only when shown)
 │   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
-│   │   ├── activity.tsx, credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
+│   │   ├── credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
 │   │   ├── node-avatar.tsx      Node signature faces (shape, a colour shaded in its own hue, eyes that fit the shape),
 │   │   │                        compatible morph outlines, shape-specific working motion, and the appearance picker
 │   │   ├── handle-input.tsx     a node's handle after its @

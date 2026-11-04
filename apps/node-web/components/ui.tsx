@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, ExternalLink, Info, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useId, useLayoutEffect, useRef, useState, type AnchorHTMLAttributes, type RefObject, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { dismissToast, TOAST_MS, toastError, useToasts, type Toast } from "@/lib/toast";
+import { BrandMotion } from "./brand-motion";
 
 type Tone = "primary" | "ghost" | "danger" | "quiet";
 
@@ -111,7 +112,7 @@ export function IconButton({ label, className = "", children, ...rest }: ButtonH
 }
 
 export function Spinner({ className = "" }: { className?: string }) {
-  return <span className={`inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent ${className}`} aria-hidden />;
+  return <span className={`inline-flex h-4 w-4 shrink-0 ${className}`} aria-hidden><BrandMotion size={16} className="!h-full !w-full" /></span>;
 }
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {

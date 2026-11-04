@@ -19,7 +19,7 @@ export type DraftNode = {
   createdId?: string;
 };
 
-const SHAPES: Avatar["shape"][] = ["orb", "square", "spark", "hex", "leaf", "compass"];
+const SHAPES: Avatar["shape"][] = ["orb", "square", "spark", "hex", "leaf", "compass", "pebble", "bloom"];
 const COLORS = ["#D7B56F", "#7FB3D5", "#E07A5F", "#81B29A", "#B39DDB", "#F2CC8F", "#5FB4A2", "#E8A3B5"];
 
 const norm = (name: string) => name.trim().toLowerCase();

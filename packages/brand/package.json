@@ -1,0 +1,9 @@
+{
+  "name": "@ensemble-node/brand",
+  "private": true,
+  "version": "0.1.0",
+  "exports": {
+    "./motion": { "types": "./motion.d.ts", "default": "./motion.js" },
+    "./motion.css": "./motion.css"
+  }
+}

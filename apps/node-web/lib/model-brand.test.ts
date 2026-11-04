@@ -55,7 +55,7 @@ test("signature shape and eyes remain editable without sharing SVG gradients", (
   assert.equal(new Set(gradients).size, faces.length);
   assert.equal(new Set([...markup.matchAll(/<path\b(?=[^>]*class="node-silhouette")[^>]*\bd="([^"]+)"/g)].map(match => match[1])).size, faces.length);
   for (const id of gradients) assert.ok(markup.includes(`fill="url(#${id})"`));
-  for (const element of ["circle", "rect", "ellipse"]) assert.equal([...markup.matchAll(new RegExp(`<${element} `, "g"))].length, 4);
+  for (const [at, element] of ["circle", "rect", "ellipse"].entries()) assert.equal([...markup.matchAll(new RegExp(`<${element} `, "g"))].length, AVATAR_SHAPES.filter((_, index) => index % 3 === at).length * 2);
 });
 
 test("each outline can morph and return without changing its SVG command structure", () => {

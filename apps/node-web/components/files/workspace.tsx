@@ -61,6 +61,7 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
   const [pendingClose, setPendingClose] = useState<string | null>(null);
   const quoteTarget = useRef<string | null>(null);
   const pendingQuote = useRef<{ draftKey: string; quote: FileQuote } | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
   const deliverQuote = useCallback((key: string | null) => {
     quoteTarget.current = key;
     if (!key || pendingQuote.current?.draftKey !== key) return;
@@ -78,11 +79,11 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
     return () => { window.removeEventListener("beforeunload", leave); store.pause(); };
   }, [store]);
   useEffect(() => store.subscribeSaveErrors((key, message) => {
-    if (mode === "chat" || !roomId || shared || active !== key) toastError(new Error(`${fileName(store.get(key)?.entry.source.path ?? "File")}: ${message}`));
+    if (mode === "chat" || shared || active !== key) toastError(new Error(`${fileName(store.get(key)?.entry.source.path ?? "File")}: ${message}`));
   }), [store, mode, roomId, active, shared]);
   useEffect(() => {
     const refresh = (event: Event) => {
-      if (!active || mode === "chat" || !roomId) return;
+      if (!active || mode === "chat") return;
       const data = (event as CustomEvent<{ deviceId?: string; files?: Array<{ fileId: string }> }>).detail;
       const file = store.get(active);
       if (data?.deviceId && file?.entry.deviceId && data.deviceId !== file.entry.deviceId) return;
@@ -93,6 +94,7 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
     return () => window.removeEventListener("node:originals-changed", refresh);
   }, [store, active, mode, roomId]);
   const open = useCallback((entry: OriginalEntry) => {
+    if (document.activeElement instanceof HTMLElement) opener.current = document.activeElement;
     setShared(null);
     let key = originalKey(entry);
     const same = tabs.find(id => {
@@ -126,7 +128,7 @@ export function FileWorkspaceProvider({ accountId, roomId, onAutoCollapse, child
     select: key => { setShared(null); setActive(key); setMode(current => current === "editor" ? current : "split"); void store.refresh(key); },
     hide: () => {
       setMode("chat");
-      requestAnimationFrame(() => document.querySelector<HTMLButtonElement>(".chat-header h1 button")?.focus());
+      requestAnimationFrame(() => (opener.current?.isConnected ? opener.current : document.querySelector<HTMLElement>(".chat-header h1 button") ?? document.querySelector<HTMLElement>("#main-content"))?.focus());
     },
     restore: () => { setMode("split"); if (active) void store.refresh(active); }, focus: () => setMode("editor"),
     toggleFiles: () => {
@@ -190,7 +192,7 @@ function LayoutControls({ accountId, onAutoCollapse, children }: { accountId: st
     return () => clearTimeout(timer);
   }, [filesWidth]);
   useEffect(() => {
-    onAutoCollapse(Boolean(roomId && (filesOpen || mode === "editor" || compressed)));
+    onAutoCollapse(filesOpen || mode === "editor" || compressed);
   }, [roomId, filesOpen, mode, compressed, onAutoCollapse]);
   useEffect(() => { if (mode === "chat" && !filesOpen) setCompressed(false); }, [mode, filesOpen]);
   const value = useMemo<Controls>(() => ({
@@ -205,13 +207,13 @@ export function FileWorkspaceSurface({ children }: { children: ReactNode }) {
   const controls = useContext(ControlsContext)!;
   const surface = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1000);
-  const showEditor = Boolean(workspace.roomId && (workspace.active || workspace.shared) && workspace.mode !== "chat");
+  const showEditor = Boolean((workspace.active || workspace.shared) && workspace.mode !== "chat");
   const dockedFiles = workspace.filesOpen && width - controls.filesWidth >= EDITOR_MIN ? controls.filesWidth : 0;
   const single = width - dockedFiles < CHAT_MIN + EDITOR_MIN + SPLIT_DIVIDER;
   const hideChat = showEditor && (workspace.mode === "editor" || single);
   const required = showEditor ? hideChat ? EDITOR_MIN : CHAT_MIN + EDITOR_MIN + SPLIT_DIVIDER : CHAT_MIN;
   const overlay = width - controls.filesWidth < required;
-  const listOverlay = Boolean(workspace.roomId && workspace.filesOpen && overlay);
+  const listOverlay = Boolean(workspace.filesOpen && overlay);
   const listSpace = workspace.filesOpen && !overlay ? controls.filesWidth : 0;
   const contentWidth = Math.max(CHAT_MIN + EDITOR_MIN, width - listSpace - SPLIT_DIVIDER);
   const ratio = Math.max(EDITOR_MIN / contentWidth, Math.min(1 - CHAT_MIN / contentWidth, controls.ratio));
@@ -246,11 +248,11 @@ export function FileWorkspaceSurface({ children }: { children: ReactNode }) {
         else if (event.key === "Home" || event.key === "End") { event.preventDefault(); event.key === "Home" ? workspace.hide() : workspace.focus(); }
       }} /> : null}
     {showEditor ? <section aria-label="File editor" inert={listOverlay || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-bg">
-      {single && workspace.mode !== "editor" ? <div className="border-b border-line px-2"><button type="button" className="inline-flex min-h-10 items-center gap-2 text-sm text-muted hover:text-ink" onClick={workspace.hide}><ArrowLeft size={16} />Back to chat</button></div> : null}
+      {single && workspace.mode !== "editor" ? <div className="border-b border-line px-2"><button type="button" className="inline-flex min-h-10 items-center gap-2 text-sm text-muted hover:text-ink" onClick={workspace.hide}><ArrowLeft size={16} />{workspace.roomId ? "Back to chat" : "Back to sessions"}</button></div> : null}
       {workspace.shared ? <SharedFile key={workspace.shared.item.id} {...workspace.shared} /> : <Editor key={workspace.active!} fileKey={workspace.active!} />}
     </section> : null}
     {listOverlay ? <button type="button" aria-label="Dismiss file list" onClick={workspace.toggleFiles} className="absolute inset-0 z-20 cursor-default bg-black/15" /> : null}
-    {workspace.roomId && workspace.filesOpen ? <aside aria-label="Changed files" className={`file-list flex min-h-0 shrink-0 flex-col border-l border-line bg-panel ${overlay ? "absolute inset-y-0 right-0 z-30 shadow-2xl" : "relative"}`} style={{ width: Math.min(controls.filesWidth, width - 24) }}>
+    {workspace.filesOpen ? <aside aria-label="Changed files" className={`file-list flex min-h-0 shrink-0 flex-col border-l border-line bg-panel ${overlay ? "absolute inset-y-0 right-0 z-30 shadow-2xl" : "relative"}`} style={{ width: Math.min(controls.filesWidth, width - 24) }}>
       <div role="separator" aria-label="Resize file list" aria-orientation="vertical" aria-valuemin={FILES_MIN} aria-valuemax={FILES_MAX} aria-valuenow={controls.filesWidth} tabIndex={0} className="file-divider absolute inset-y-0 left-0 -translate-x-1/2 w-1 cursor-col-resize touch-none hover:bg-accent/50 focus-visible:bg-accent"
         onPointerDown={event => { event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); }}
         onPointerMove={event => { if (event.currentTarget.hasPointerCapture(event.pointerId)) controls.setFilesWidth(surface.current!.getBoundingClientRect().right - event.clientX); }}
@@ -284,7 +286,7 @@ function OriginalList() {
     <header className="flex h-[60px] shrink-0 items-center gap-2 px-4"><Files size={17} className="text-muted" /><h2 className="min-w-0 flex-1 text-sm font-medium">Files</h2><IconButton label="Close file list" onClick={workspace.toggleFiles}><PanelRightClose size={17} /></IconButton></header>
     <div className="space-y-3 px-3 pb-3">
       <label className="search-field flex items-center gap-2 rounded-xl border border-line px-2.5 py-2 text-muted"><Search size={14} aria-hidden /><input name="file-search" autoComplete="off" spellCheck={false} value={query} onChange={event => setQuery(event.target.value)} aria-label="Search changed files" placeholder="Find a file…" className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none md:text-sm" /></label>
-      <div className="flex gap-1" role="group" aria-label="File scope">{(["chat", "all"] as const).map(value => <button key={value} type="button" onClick={() => setScope(value)} aria-pressed={scope === value} className={`min-h-9 rounded-lg px-2.5 text-xs ${scope === value ? "bg-raised font-medium" : "text-muted hover:bg-raised"}`}>{value === "chat" ? "This chat" : "All chats"}</button>)}</div>
+      {workspace.roomId ? <div className="flex gap-1" role="group" aria-label="File scope">{(["chat", "all"] as const).map(value => <button key={value} type="button" onClick={() => setScope(value)} aria-pressed={scope === value} className={`min-h-9 rounded-lg px-2.5 text-xs ${scope === value ? "bg-raised font-medium" : "text-muted hover:bg-raised"}`}>{value === "chat" ? "This chat" : "All chats"}</button>)}</div> : null}
     </div>
     <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-2 pb-4">
       {files.isLoading ? <div className="py-8 text-center text-muted" role="status"><Spinner /><span className="sr-only">Loading original files</span></div> : null}

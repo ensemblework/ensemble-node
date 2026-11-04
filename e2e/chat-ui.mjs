@@ -314,6 +314,10 @@ try {
     const appearance = settings.getByRole("group", { name: "Appearance", exact: true });
     const drawerBody = settings.locator("[data-drawer-body]");
     const drawerHeader = settings.locator("[data-drawer-header]");
+    const handleField = settings.getByRole("textbox", { name: "Handle", exact: true });
+    await handleField.focus();
+    assert.equal(await handleField.evaluate(element => getComputedStyle(element).outlineStyle), "none", "handle focus is on its compound boundary, not the inner input");
+    assert.equal(await handleField.evaluate(element => getComputedStyle(element).boxShadow), "none");
     let expectedDrawerWidth = 460;
     const headerTop = (await drawerHeader.boundingBox()).y;
     await drawerBody.evaluate(element => { element.scrollTop = 500; });
@@ -370,7 +374,7 @@ try {
       const actor = page.locator("#m-dm-40 .node-companion-message");
       const noCosmeticWrites = writes.length;
       let clicks = 0;
-      for (const shape of ["orb", "square", "spark", "hex", "leaf", "compass"]) {
+      for (const shape of ["orb", "square", "spark", "hex", "leaf", "compass", "pebble", "bloom"]) {
         state.boot.nodes[0].avatar = { shape, color: "#B39DDB", eyes: "dot" };
         await emit("node.room", { roomId: "dm" });
         await page.waitForFunction(shape => document.querySelector("header [data-node-avatar]")?.dataset.nodeShape === shape, shape);
@@ -380,10 +384,11 @@ try {
         assert.ok(["sidebar", "chat"].includes(await workingAvatar.getAttribute("data-work-zone")), "only the sidebar or chat receives working motion");
         assert.equal(await page.locator("header [data-node-avatar]").getAttribute("data-motion-active"), null, "the top bar stays still while working");
         const form = workingAvatar.locator(".node-form");
-        assert.equal(await form.evaluate(el => getComputedStyle(el).animationName), `node-${shape}-work`);
-        const start = await form.evaluate(el => getComputedStyle(el).transform);
+        const laptop = await workingAvatar.getAttribute("data-vignette") === "laptop";
+        const motionPart = laptop ? workingAvatar.locator(".node-worker") : form;
+        const start = await motionPart.evaluate(el => getComputedStyle(el).transform);
         await page.waitForTimeout(220);
-        assert.notEqual(await form.evaluate(el => getComputedStyle(el).transform), start, `${shape} has visible working movement`);
+        assert.notEqual(await motionPart.evaluate(el => getComputedStyle(el).transform), start, `${shape} has visible working movement`);
         if (shots) await page.screenshot({ path: `${shots}/working-${shape}.png` });
         const outline = actor.locator(".node-silhouette");
         while (clicks % 4) { await actor.click(); clicks++; }
@@ -414,6 +419,26 @@ try {
         const active = document.querySelectorAll('[data-node-avatar][data-motion-active="true"]');
         return active.length === 1 && active[0].getAttribute("data-work-zone") !== zone;
       }, firstCue, { timeout: 8500 });
+      const sidebar = page.getByRole("complementary", { name: "Chat sidebar", exact: true, includeHidden: true });
+      await sidebar.evaluate(element => { element.style.display = "none"; });
+      const laptopAvatar = page.locator('[data-node-avatar][data-vignette="laptop"]');
+      await laptopAvatar.waitFor();
+      await page.waitForTimeout(800);
+      const laptop = laptopAvatar.locator(".node-laptop");
+      assert.ok(Number(await laptop.evaluate(element => getComputedStyle(element).opacity)) > .9, "a working node unfolds its laptop");
+      const firstHand = await laptop.locator(".node-hand-left").evaluate(element => getComputedStyle(element).transform);
+      await page.waitForTimeout(90);
+      assert.notEqual(await laptop.locator(".node-hand-left").evaluate(element => getComputedStyle(element).transform), firstHand, "the hands type rather than spin");
+      if (shots) await page.screenshot({ path: `${shots}/node-laptop-working.png` });
+      await laptopAvatar.waitFor({ state: "detached", timeout: 5500 });
+      assert.equal(await page.locator('[data-work-zone="chat"]').last().getAttribute("data-vignette"), null, "the laptop vignette settles after five seconds");
+      await sidebar.evaluate(element => { element.style.removeProperty("display"); });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.waitForTimeout(100);
+      assert.equal(await page.locator('[data-node-avatar][data-vignette="laptop"]').count(), 0, "system reduced motion cancels the vignette");
+      assert.equal(await page.locator('[data-node-avatar][data-motion-active="true"]').count(), 0);
+      assert.equal(await page.locator('.u-morph[data-running="true"]').count(), 0, "suite loaders settle to their static mark");
+      await page.emulateMedia({ reducedMotion: "no-preference" });
       await emit("node.status", { roomId: "dm", nodeId: "scout", state: "idle" });
       await actor.click(); clicks++;
       assert.equal(await actor.getAttribute("data-expression"), "twinkle");
@@ -447,6 +472,7 @@ try {
     await openChats();
     assert.equal(await chats().getByRole("link", { name: "Routines", exact: true }).count(), 0, "workspace links stay out of the chat list");
     await chats().getByRole("button", { name: "Workspace menu", exact: true }).click();
+    assert.equal(await chats().getByRole("link", { name: "Activity", exact: true }).count(), 0, "Activity is removed from navigation");
     assert.equal(await chats().getByRole("combobox", { name: "Sidebar width", exact: true }).count(), 0, "resizing has no menu setting");
     await chats().getByRole("link", { name: "Appearance", exact: true }).click();
     const preferences = page.getByRole("region", { name: "Appearance", exact: true });
@@ -501,6 +527,19 @@ try {
     await fits();
     await page.goto(`${WEB}/connections`);
     await searchFocus(page.getByRole("textbox", { name: "Find an app", exact: true }));
+    await page.goto(`${WEB}/activity`);
+    await page.waitForURL("**/chat");
+    await page.getByRole("heading", { name: "What are we working on?", exact: true }).waitFor();
+    const homeBox = page.getByRole("textbox", { name: /^Ask (Scout|Writer|Builder)$/ });
+    await page.getByRole("button", { name: "Explore an idea", exact: true }).click();
+    assert.equal(await homeBox.inputValue(), "I'd like to explore an idea: ");
+    assert.equal(await homeBox.evaluate(element => element === document.activeElement), true, "starter prepares a draft without sending");
+    await fits();
+    for (const mode of ["dark", "light"]) {
+      await page.evaluate(mode => { document.documentElement.dataset.theme = mode; }, mode);
+      await page.waitForTimeout(250);
+      if (shots) await page.screenshot({ path: `${shots}/home-${mode}-${width}.png` });
+    }
     assert.deepEqual(errors, [], "no client errors");
     assert.deepEqual(unexpected, [], "only the intended API reads/writes");
     console.log(`Node chat UX: ${width}px passed`);

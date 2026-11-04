@@ -176,7 +176,7 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
       </div>
       {error ? <Notice tone="error">{error}</Notice> : null}
 
-      <Section title="Activity" hint={paused ? "Paused: it is not doing anything. A message from you, here or anywhere you mention it, wakes it again." : "Pause stops everything it is doing, including its work on your computer, and it tells you what it stopped."}>
+      <Section title="Availability" hint={paused ? "Paused: it is not doing anything. A message from you, here or anywhere you mention it, wakes it again." : "Pause stops everything it is doing, including its work on your computer, and it tells you what it stopped."}>
         <Button tone={paused ? "primary" : "ghost"} busy={busy === "pause"} onClick={() => void togglePause()}>
           {paused ? <Play size={15} /> : <Pause size={15} />} {paused ? `Resume ${node.name}` : `Pause ${node.name}`}
         </Button>

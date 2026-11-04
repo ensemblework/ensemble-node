@@ -148,9 +148,20 @@ body {
 [data-node-shape="hex"] { --node-work-animation: node-hex-work; --node-work-duration: 4.4s; }
 [data-node-shape="leaf"] { --node-work-animation: node-leaf-work; --node-work-duration: 4.6s; }
 [data-node-shape="compass"] { --node-work-animation: node-compass-work; --node-work-duration: 4.1s; }
+[data-node-shape="pebble"] { --node-work-animation: node-leaf-work; --node-work-duration: 4.9s; }
+[data-node-shape="bloom"] { --node-work-animation: node-spark-work; --node-work-duration: 4.6s; }
 .node-thinking[data-motion-active="true"] .node-form { animation: var(--node-work-animation) var(--node-work-duration) ease-in-out infinite; }
 .node-thinking[data-motion-active="true"] .node-eyes { animation: node-work-blink 5.4s ease-in-out infinite; }
-.node-work, .node-body, .node-form, .node-pose, .node-eyes, .node-eye-left, .node-eye-right, .node-gaze, .node-attention, .node-sparkles, .node-sparkle {
+.node-thinking[data-vignette="laptop"] .node-form { animation: none; }
+.node-laptop { transform-box: fill-box; transform-origin: center bottom; }
+.node-hand-left, .node-hand-right { transform-box: fill-box; transform-origin: center; }
+@keyframes working-words-in { from { opacity: .25; transform: translateY(3px); clip-path: inset(0 100% 0 0); } to { opacity: 1; transform: translateY(0); clip-path: inset(0); } }
+@keyframes surface-in { from { opacity: .5; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.working-words { display: inline-block; animation: working-words-in 600ms ease-out both; }
+.home-surface { animation: surface-in 240ms ease-out both; }
+.session-card { transition: border-color 160ms ease; }
+.session-card:hover { border-color: rgb(var(--muted) / .4); }
+.node-work, .node-worker, .node-body, .node-form, .node-pose, .node-eyes, .node-eye-left, .node-eye-right, .node-gaze, .node-attention, .node-sparkles, .node-sparkle {
   transform-box: fill-box;
   transform-origin: center;
 }
@@ -175,9 +186,9 @@ body {
 .chat-composer:focus-within { box-shadow: 0 0 0 2px rgb(var(--accent) / .08); }
 .chat-composer textarea:focus-visible { outline: none; }
 .chat-composer:has(textarea:focus-visible) { outline: 2px solid rgb(var(--accent) / .75); outline-offset: 2px; }
-.search-field { transition: border-color 140ms ease, box-shadow 140ms ease; }
-.search-field:focus-within, .search-field:focus-visible { outline: none; border-color: rgb(var(--accent) / .8); box-shadow: 0 0 0 2px rgb(var(--accent) / .08); }
-.search-field input:focus-visible { outline: none; box-shadow: none; }
+.search-field, .compound-field { transition: border-color 140ms ease, box-shadow 140ms ease; }
+.search-field:focus-within, .search-field:focus-visible, .compound-field:focus-within { outline: none; border-color: rgb(var(--accent) / .8); box-shadow: 0 0 0 2px rgb(var(--accent) / .08); }
+.search-field input:focus-visible, .compound-field input:focus-visible, .compound-field textarea:focus-visible { outline: none; box-shadow: none; }
 .mention-copy { padding: .5rem .75rem; font-size: 15px; line-height: 1.5; letter-spacing: inherit; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 8; scrollbar-width: thin; scrollbar-gutter: stable; }
 .mention-editor textarea { color: transparent; caret-color: rgb(var(--ink)); }
 .draft-mention { color: rgb(var(--accent)); background: rgb(var(--accent) / .13); border-radius: .2em; box-decoration-break: clone; }
@@ -220,6 +231,7 @@ body {
 }
 .chat-message[data-new-message="true"] { animation: chat-message-in 160ms ease-out; }
 @media (prefers-reduced-motion: reduce) {
+  .working-words, .home-surface { animation: none; }
   .chat-room-row, .node-attention { transition: none; }
   .chat-message[data-new-message="true"] { animation: none; }
   .chat-conversation .animate-bounce, .chat-conversation .animate-pulse { animation: none; }
@@ -242,6 +254,7 @@ body {
 :root[data-motion="off"] .float-slow,
 :root[data-motion="off"] .chat-message[data-new-message="true"] { animation: none; }
 :root[data-motion="off"] .node-attention { transition: none; transform: none !important; }
+:root[data-motion="off"] .working-words, :root[data-motion="off"] .home-surface { animation: none; }
 
 .glow {
   background: radial-gradient(60% 50% at 50% 0%, rgb(var(--accent) / 0.16), transparent 70%);

@@ -121,7 +121,7 @@ export function SudoCard({ message, ctx, node }: { message: Message; ctx: Messag
             ) : null}
             {sealKey ? (
               <>
-                <label className="flex items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2 focus-within:border-accent">
+                <label className="compound-field flex items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2">
                   <KeyRound size={15} className="shrink-0 text-accent" aria-hidden />
                   <input
                     type="password"

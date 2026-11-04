@@ -1,137 +1,86 @@
 "use client";
 
-/**
- * Sessions (Ensemble docs/35 §8.9): every coding-agent session of mine, on any computer, most recently
- * active first, whether a node manages it or it was started in the Hub or the CLI. Each says what it
- * works on, where it runs, what it did last and who manages it, with Hand to… (or Give to…) another of
- * my nodes; opening one shows its queue, its controls when a node manages it, and its recent runs, and
- * "Open in conversation" goes to its newest run card.
- * Read again when a session's card changes on the event stream, and gently while the page is open.
- */
 import Link from "next/link";
-import { MessageSquare, Search, SquareTerminal } from "lucide-react";
+import { ArrowUpRight, FileCode2, Search, SquareTerminal } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
-import { nodesById, useBootstrap, useSessionList } from "@/lib/hooks";
+import { useSessionList } from "@/lib/hooks";
 import { requestJump } from "@/lib/jump";
-import { cardLink, runsCount, sessionLatest, sessionPlace, sessionStatus } from "@/lib/session";
+import { fileName, originalKey } from "@/lib/original-files";
+import { cardLink, runsCount, sessionPlace, sessionStatus } from "@/lib/session";
 import { ago } from "@/lib/text";
-import type { NodePublic, SessionSummary } from "@/lib/types";
-import { SessionDetailView, SessionManager } from "./chat/session";
+import type { SessionSummary } from "@/lib/types";
+import { useFileWorkspace } from "./files/workspace";
 import { ModelLogo } from "./model-logo";
-import { Button, Drawer, Notice, Pill, Spinner } from "./ui";
+import { Button, Notice, Spinner } from "./ui";
 
-function SessionRow({ row, nodes, onOpen }: { row: SessionSummary; nodes: ReadonlyMap<string, NodePublic>; onOpen: () => void }) {
+function SessionRow({ row }: { row: SessionSummary }) {
   const titleId = useId();
+  const workspace = useFileWorkspace();
+  const [expanded, setExpanded] = useState(false);
   const badge = sessionStatus(row.status);
-  const latest = sessionLatest(row);
-  const where = sessionPlace(row);
   const card = cardLink(row.card);
-  return (
-    <li>
-      <article aria-labelledby={titleId} className="rounded-2xl border border-line bg-panel p-3.5">
-        <div className="flex items-start gap-2.5">
-          <span className="mt-0.5">
-            <ModelLogo provider={row.agent} size={20} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <h3 id={titleId} className="min-w-0 break-words text-sm font-semibold">
-                {row.title}
-              </h3>
-              <Pill tone={badge.tone}>{badge.label}</Pill>
-            </div>
-            <p className="mt-0.5 text-xs text-muted">
-              {[row.agentName, row.model, where, runsCount(row.runs)].filter(Boolean).join(" · ")}
-              <span title={new Date(row.lastActiveAt).toLocaleString()}> · {ago(row.lastActiveAt)}</span>
-            </p>
-            {latest ? (
-              <p className="mt-1.5 break-words text-[13px]">
-                <span className="text-muted">Latest: </span>
-                {latest}
-              </p>
-            ) : null}
-            {row.summary ? <p className="mt-1 line-clamp-2 break-words text-[13px] text-muted">{row.summary}</p> : null}
-            <SessionManager sessionId={row.id} managerId={row.nodeId} owner nodes={nodes} />
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-              <Button size="sm" tone="ghost" onClick={onOpen} aria-label={`Open “${row.title}”`}>
-                Open
-              </Button>
-              {card ? (
-                <Link href={card.href} onClick={() => requestJump(card.roomId, card.messageId)} className="inline-flex items-center gap-1 text-xs text-accent hover:underline">
-                  <MessageSquare size={12} aria-hidden /> Open in conversation
-                </Link>
-              ) : null}
-            </div>
+  const files = row.files ?? [];
+  const shown = expanded ? files : files.slice(0, 2);
+  return <li>
+    <article aria-labelledby={titleId} className="session-card rounded-2xl border border-line bg-panel p-4 sm:p-5">
+      <div className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-raised"><ModelLogo provider={row.agent} size={22} /></span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <h2 id={titleId} className="min-w-0 break-words text-sm font-semibold">{row.title}</h2>
+            <time dateTime={row.lastActiveAt} title={`Last interaction: ${new Date(row.lastActiveAt).toLocaleString()}`} aria-label={`Last interaction: ${new Date(row.lastActiveAt).toLocaleString()}`} className="shrink-0 text-xs tabular-nums text-muted">{ago(row.lastActiveAt)}</time>
           </div>
+          <p className="mt-1 break-words text-xs leading-5 text-muted">{[row.agentName, row.model, sessionPlace(row), runsCount(row.runs)].filter(Boolean).join(" · ")}</p>
+          {row.usedBy?.length ? <ul aria-label="Used by" className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
+            {row.usedBy.map(({ node, room }) => <li key={`${node.id}:${room?.id ?? ""}`}><span className="font-medium text-ink">@{node.slug}</span>{room ? <> <span className="px-0.5">in</span> <Link href={`/r/${room.id}`} className="hover:text-ink hover:underline">{room.title}</Link></> : null}</li>)}
+          </ul> : null}
         </div>
-      </article>
-    </li>
-  );
+      </div>
+      {files.length ? <div className="mt-4">
+        <ul aria-label={`Files from ${row.title}`} className="grid gap-2 sm:grid-cols-2">
+          {shown.map(file => <li key={originalKey(file)} className="min-w-0">
+            <button type="button" disabled={file.deleted} onClick={() => workspace.open(file)} aria-label={`Open ${file.source.path}`} title={file.deleted ? `${file.source.path} · deleted on computer` : file.source.path} className="group flex min-h-14 w-full min-w-0 items-center gap-2.5 rounded-xl border border-line px-3 py-2 text-left transition-colors hover:border-accent/50 hover:bg-raised disabled:cursor-not-allowed disabled:opacity-50">
+              <FileCode2 size={17} className="shrink-0 text-accent" aria-hidden />
+              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{fileName(file.source.path)}</span><span className="block truncate text-[11px] text-muted">{file.deleted ? "Deleted on computer" : file.source.path}</span></span>
+              <ArrowUpRight size={13} className="shrink-0 text-muted group-hover:text-accent" aria-hidden />
+            </button>
+          </li>)}
+        </ul>
+        {files.length > 2 ? <button type="button" aria-expanded={expanded} onClick={() => setExpanded(value => !value)} className="mt-1 min-h-9 rounded-lg px-1 text-xs text-muted hover:text-ink">{expanded ? "Show fewer files" : `Show ${files.length - 2} more ${files.length === 3 ? "file" : "files"}`}</button> : null}
+      </div> : null}
+      <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+        <span className={`inline-flex items-center gap-1.5 ${badge.tone === "warn" ? "text-warn" : badge.tone === "accent" ? "text-accent" : "text-muted"}`}><span aria-hidden className="size-1.5 rounded-full bg-current" />{badge.label}</span>
+        {card ? <Link href={card.href} onClick={() => requestJump(card.roomId, card.messageId)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-muted hover:text-ink">Open in conversation <ArrowUpRight size={13} aria-hidden /></Link> : null}
+      </div>
+    </article>
+  </li>;
 }
 
 export function SessionsView() {
-  const boot = useBootstrap();
   const [typed, setTyped] = useState("");
   const [q, setQ] = useState("");
   const [expandedQuery, setExpandedQuery] = useState<string | null>(null);
   const list = useSessionList(q);
-  const [open, setOpen] = useState<SessionSummary | null>(null);
-  const nodes = nodesById(boot.data);
-  // Searching waits for a pause in typing.
   useEffect(() => {
     const timer = setTimeout(() => setQ(typed.trim()), 250);
     return () => clearTimeout(timer);
   }, [typed]);
   const rows = useMemo(() => [...(list.data ?? [])].sort((a, b) => (Date.parse(b.lastActiveAt) || 0) - (Date.parse(a.lastActiveAt) || 0)), [list.data]);
   const expanded = expandedQuery === q;
-  const shown = expanded ? rows : rows.slice(0, 5);
-  // The open session follows the list (who manages it, its state) while it is open.
-  const opened = open ? (rows.find((row) => row.id === open.id) ?? open) : null;
-  return (
-    <div className="scroll-thin h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-5 px-4 py-8 md:px-8">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">Sessions</h1>
-          <p className="text-sm text-muted">Your agents&apos; sessions, most recently used first. Pick up work from Node, Ensemble or the CLI.</p>
-        </div>
-        <label className="search-field flex items-center gap-2 rounded-xl border border-line bg-bg/70 px-3 py-2 text-muted">
-          <Search size={15} className="shrink-0" aria-hidden />
-          <input aria-label="Search sessions" placeholder="Search by task, folder, agent or computer" value={typed} onChange={(event) => setTyped(event.target.value)} className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted sm:text-sm" />
-          {list.isFetching && !list.isLoading ? <Spinner className="h-3.5 w-3.5" /> : null}
-        </label>
-        {list.isLoading ? (
-          <div className="flex justify-center py-8 text-muted">
-            <Spinner />
-          </div>
-        ) : list.error ? (
-          <Notice tone="error">{list.error.message}</Notice>
-        ) : rows.length ? (
-          <div className="space-y-4">
-          <ul className="space-y-2" aria-label="Sessions">
-            {shown.map((row) => (
-              <SessionRow key={row.id} row={row} nodes={nodes} onOpen={() => setOpen(row)} />
-            ))}
-          </ul>
-          {rows.length > 5 ? <div className="flex items-center justify-between gap-3 text-xs text-muted">
-            <span>{expanded ? rows.length : 5} of {rows.length} sessions</span>
-            <Button tone="quiet" size="sm" aria-expanded={expanded} onClick={() => setExpandedQuery(expanded ? null : q)}>{expanded ? "Show less" : `Show more (${rows.length - 5})`}</Button>
-          </div> : null}
-          </div>
-        ) : (
-          <div className="flex items-center gap-3 rounded-2xl border border-dashed border-line px-4 py-6 text-sm text-muted">
-            <SquareTerminal size={20} className="shrink-0" aria-hidden />
-            {q ? "No session matches that." : "No sessions yet. When a node or you start work in a coding agent on your computer, its session shows here."}
-          </div>
-        )}
-      </div>
-      <Drawer open={Boolean(opened)} onClose={() => setOpen(null)} title={opened ? `${opened.agentName} in ${opened.folder}` : "Session"}>
-        {opened ? (
-          <div className="space-y-3">
-            <p className="break-words text-sm font-medium">{opened.title}</p>
-            <SessionDetailView key={opened.id} sessionId={opened.id} fallback={opened} nodes={nodes} />
-          </div>
-        ) : null}
-      </Drawer>
+  return <div className="scroll-thin h-full overflow-y-auto">
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 md:px-8 md:py-12">
+      <header><p className="mb-2 text-xs text-muted">Your workspace</p><h1 className="text-2xl font-semibold tracking-tight">Sessions</h1><p className="mt-2 text-sm text-muted">A place for every piece of work.</p></header>
+      <label className="search-field flex items-center gap-2 rounded-xl border border-line bg-panel px-3 py-2.5 text-muted">
+        <Search size={16} className="shrink-0" aria-hidden />
+        <input name="session-search" autoComplete="off" spellCheck={false} aria-label="Search sessions" placeholder="Find a session, node, crew or file…" value={typed} onChange={event => setTyped(event.target.value)} className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted sm:text-sm" />
+        {list.isFetching && !list.isLoading ? <Spinner className="h-3.5 w-3.5" /> : null}
+      </label>
+      {list.isLoading ? <div className="flex justify-center py-10 text-muted" role="status" aria-label="Loading sessions"><Spinner /></div>
+        : list.error ? <Notice tone="error">{list.error.message}</Notice>
+          : rows.length ? <div className="space-y-4">
+            <ul className="space-y-3" aria-label="Sessions">{(expanded ? rows : rows.slice(0, 5)).map(row => <SessionRow key={row.id} row={row} />)}</ul>
+            {rows.length > 5 ? <div className="flex items-center justify-between gap-3 text-xs text-muted"><span>{expanded ? rows.length : 5} of {rows.length} sessions</span><Button tone="quiet" size="sm" aria-expanded={expanded} onClick={() => setExpandedQuery(expanded ? null : q)}>{expanded ? "Show less" : `Show more (${rows.length - 5})`}</Button></div> : null}
+          </div> : <div className="flex items-center gap-3 rounded-2xl border border-dashed border-line px-4 py-8 text-sm text-muted"><SquareTerminal size={22} className="shrink-0" aria-hidden />{q ? "No session matches that." : "Your coding sessions will appear here, together with the files they change."}</div>}
     </div>
-  );
+  </div>;
 }

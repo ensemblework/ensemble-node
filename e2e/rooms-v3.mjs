@@ -559,7 +559,7 @@ try {
 
     // The live reply shows in My crew, where it is written.
     await crewTab.click();
-    await timeline.getByText("Thinking…").waitFor();
+    await timeline.getByText("Working on your request", { exact: true }).waitFor();
     await emit("node.status", { roomId: "launch", nodeId: "lead", state: "idle", private: true });
 
     // My plan for a task, from its row on the Board: the plan card in My crew.

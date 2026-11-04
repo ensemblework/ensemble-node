@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Columns2, Download, Ellipsis, Files, Handshake, KanbanSquare, Lock, MessagesSquare, Pause, Pin, Search, Settings2, ShieldCheck, UserRound, Users, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, AtSign, Bot, CircleStop, Columns2, Download, Ellipsis, Files, Handshake, KanbanSquare, Lock, MessagesSquare, Pause, Pin, Search, Settings2, ShieldCheck, UserRound, Users, X } from "lucide-react";
 import { api, download } from "@/lib/api";
 import { messageFiles, saveOnComputerAsk } from "@/lib/attachments";
 import { dayKey, dayLabel, firstUnread, inTimeline, matchesAuthor, mentionsMe, messagePreview, resendInput, serverAuthor, type ViewFilter } from "@/lib/chat";
@@ -36,6 +36,7 @@ import { RoomSettings } from "./room-settings";
 import { SearchPanel } from "./search";
 import { WorkStrip } from "./work-strip";
 import { useFileWorkspace } from "../files/workspace";
+import { WorkingStatus } from "../working-status";
 
 const SUGGESTIONS: Record<Room["kind"], string[]> = {
   dm: ["What's on my plate today?", "Add a task to review the onboarding flow next Monday", "Make a page with notes from what I tell you next", "Fix the failing tests in my repo on my laptop"],
@@ -641,7 +642,6 @@ export function RoomView({ roomId }: { roomId: string }) {
                   </MenuItem>
                 </>
               ) : null}
-              <Link href="/activity" role="menuitem" onClick={() => setMenu(false)} className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm hover:bg-raised"><Activity size={15} />Activity</Link>
               <MenuItem onClick={exportRoom}>
                 <Download size={15} /> Export as Markdown
               </MenuItem>
@@ -817,10 +817,10 @@ export function RoomView({ roomId }: { roomId: string }) {
                 const node = ctx.nodes.get(row.nodeId);
                 return (
                   <div key={row.nodeId} className="mt-4 flex gap-3" data-live-row={row.waiting ? "waiting" : "thinking"}>
-                    <NodeCompanion node={node} size={32} thinking={!row.waiting} compact />
+                    <NodeCompanion node={node} size={40} thinking={!row.waiting} compact />
                     <div data-message-surface className="min-w-0 flex-1 rounded-2xl bg-bg px-3 py-2">
                       <div className="mb-0.5 text-sm">
-                        <span className="font-semibold">{node?.name ?? "A node"}</span> <span className="ml-1 text-xs text-muted">{row.waiting ? "" : row.text ? "Writing…" : "Thinking…"}</span>
+                        <span className="font-semibold">{node?.name ?? "A node"}</span> {!row.waiting ? <WorkingStatus writing={Boolean(row.text)} /> : null}
                       </div>
                       {/* Its call waits for the owner's answer on a card: it goes on by itself once answered. */}
                       {row.waiting ? (
@@ -849,13 +849,7 @@ export function RoomView({ roomId }: { roomId: string }) {
                         <div>
                           <RichText text={row.text} handles={ctx.handles} refs={row.refs ?? []} showIds={row.showIds === true} streaming kindLinks />
                         </div>
-                      ) : row.waiting ? null : (
-                        <span className="inline-flex gap-1 py-2">
-                          {[0, 1, 2].map((dot) => (
-                            <span key={dot} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted" style={{ animationDelay: `${dot * 150}ms` }} />
-                          ))}
-                        </span>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                 );

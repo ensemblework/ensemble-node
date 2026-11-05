@@ -219,6 +219,7 @@ export type SessionSummary = {
   summary: string;
   runs: number;
   lastActiveAt: string;
+  deletion?: { state: "pending" | "deleted"; error?: string; until?: number } | null;
   usedBy?: Array<{ node: { id: string; name: string; slug: string }; room: { id: string; title: string; kind: string } | null }>;
   files?: import("./original-files").OriginalEntry[];
 };

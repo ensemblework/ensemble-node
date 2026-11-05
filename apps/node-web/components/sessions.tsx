@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowUpRight, FileCode2, Search, SquareTerminal } from "lucide-react";
+import { ArrowUpRight, FileCode2, Search, SquareTerminal, Trash2 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useMemo, useState } from "react";
 import { useSessionList } from "@/lib/hooks";
+import { api } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { requestJump } from "@/lib/jump";
 import { fileName, originalKey } from "@/lib/original-files";
 import { cardLink, runsCount, sessionPlace, sessionStatus } from "@/lib/session";
@@ -11,12 +14,24 @@ import { ago } from "@/lib/text";
 import type { SessionSummary } from "@/lib/types";
 import { useFileWorkspace } from "./files/workspace";
 import { ModelLogo } from "./model-logo";
-import { Button, Notice, Spinner } from "./ui";
+import { Button, Drawer, IconButton, Notice, Spinner } from "./ui";
 
 function SessionRow({ row }: { row: SessionSummary }) {
   const titleId = useId();
   const workspace = useFileWorkspace();
   const [expanded, setExpanded] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const client = useQueryClient();
+  const deletion = useMutation({
+    mutationFn: () => api<{ deleted: true }>(`/api/node/sessions/${encodeURIComponent(row.id)}`, { method: "DELETE", body: { confirmed: true } }),
+    onSuccess: () => {
+      client.setQueriesData<SessionSummary[]>({ queryKey: ["sessions"] }, current => current?.filter(session => session.id !== row.id));
+      void client.invalidateQueries({ queryKey: ["sessions"] });
+      void client.invalidateQueries({ queryKey: ["session", row.id] });
+      void client.invalidateQueries({ queryKey: ["messages"] });
+      toast("Session deleted. Project files kept.", "ok");
+    },
+  });
   const badge = sessionStatus(row.status);
   const card = cardLink(row.card);
   const files = row.files ?? [];
@@ -28,8 +43,12 @@ function SessionRow({ row }: { row: SessionSummary }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <h2 id={titleId} className="min-w-0 break-words text-sm font-semibold">{row.title}</h2>
-            <time dateTime={row.lastActiveAt} title={`Last interaction: ${new Date(row.lastActiveAt).toLocaleString()}`} aria-label={`Last interaction: ${new Date(row.lastActiveAt).toLocaleString()}`} className="shrink-0 text-xs tabular-nums text-muted">{ago(row.lastActiveAt)}</time>
+            <div className="-mr-1 -mt-2 flex shrink-0 items-center gap-1">
+              <time dateTime={row.lastActiveAt} title={`Last interaction: ${new Date(row.lastActiveAt).toLocaleString()}`} aria-label={`Last interaction: ${new Date(row.lastActiveAt).toLocaleString()}`} className="text-xs tabular-nums text-muted">{ago(row.lastActiveAt)}</time>
+              <IconButton label={`Delete session “${row.title}”`} className="hover:!text-danger" onClick={() => { deletion.reset(); setConfirm(true); }}><Trash2 size={14} aria-hidden /></IconButton>
+            </div>
           </div>
+          {row.deletion?.state === "pending" ? <p className="mt-3 text-xs leading-5 text-warn" role="status">{row.deletion.error ?? "Deletion is in progress. This session cannot be continued."}</p> : null}
           <p className="mt-1 break-words text-xs leading-5 text-muted">{[row.agentName, row.model, sessionPlace(row), runsCount(row.runs)].filter(Boolean).join(" · ")}</p>
           {row.usedBy?.length ? <ul aria-label="Used by" className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
             {row.usedBy.map(({ node, room }) => <li key={`${node.id}:${room?.id ?? ""}`}><span className="font-medium text-ink">@{node.slug}</span>{room ? <> <span className="px-0.5">in</span> <Link href={`/r/${room.id}`} className="hover:text-ink hover:underline">{room.title}</Link></> : null}</li>)}
@@ -53,6 +72,14 @@ function SessionRow({ row }: { row: SessionSummary }) {
         {card ? <Link href={card.href} onClick={() => requestJump(card.roomId, card.messageId)} className="inline-flex min-h-8 items-center gap-1 rounded-lg px-1 text-muted hover:text-ink">Open in conversation <ArrowUpRight size={13} aria-hidden /></Link> : null}
       </div>
     </article>
+    <Drawer open={confirm} onClose={() => { if (!deletion.isPending) setConfirm(false); }} title="Delete session?" side="center">
+      <p className="break-words text-sm font-medium">{row.title}</p>
+      <p className="mt-2 text-sm leading-6 text-muted">Stop active work, cancel queued messages and permanently delete this {row.agentName} session&apos;s saved history on {row.computer ?? "its computer"}.</p>
+      <p className="mt-2 text-sm leading-6 text-muted">Project files and your chat messages stay. This cannot be undone. The computer must be online and running the latest Ensemble.</p>
+      {deletion.error ? <div className="mt-3" role="alert"><Notice tone="error">{deletion.error.message}</Notice></div> : null}
+      {deletion.isPending ? <p className="mt-3 text-xs text-muted" role="status">Stopping work and deleting saved agent history…</p> : null}
+      <div className="mt-5 flex justify-end gap-2"><Button tone="quiet" disabled={deletion.isPending} onClick={() => setConfirm(false)}>Cancel</Button><Button tone="danger" busy={deletion.isPending} onClick={() => deletion.mutate()}>{deletion.error ? "Retry deletion" : "Delete session"}</Button></div>
+    </Drawer>
   </li>;
 }
 

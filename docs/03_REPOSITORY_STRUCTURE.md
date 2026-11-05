@@ -63,7 +63,7 @@ ensemble-node/
 │   │   ├── node-expressions.ts  bounded GSAP greetings, happy morphs, winks, blinks and twinkles
 │   │   ├── routines.tsx         routines: the list, the form (schedules in a time zone, events, webhooks),
 │   │   │                        a webhook's token shown once, runs and a run's card; a node's routines
-│   │   ├── sessions.tsx         compact searchable session inventory, usage and two-file disclosure
+│   │   ├── sessions.tsx         compact session inventory, original-file cards and confirmed native deletion
 │   │   ├── model-picker.tsx     every model a node can use, grouped (included, own keys, AI plans)
 │   │   ├── node-picker.tsx      my nodes as checkboxes with a Lead radio
 │   │   ├── email-chips.tsx      emails as chips

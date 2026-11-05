@@ -135,6 +135,11 @@ export function cardCheckpoint(data: CardData, context: { handle: string; roomTi
       break;
     }
     case "session": {
+      if (data?.action === "delete") {
+        if (status === "applied") return ok("Deleted agent session · project files kept");
+        if (status === "discarded") return no("Kept the agent session");
+        break;
+      }
       if (data?.action === "hand_over") {
         const to = handleOf(data?.input?.to, "another node");
         if (status === "applied") return ok(`Handed the session to ${to}`);

@@ -227,8 +227,9 @@ function HeldCard({ message, ctx, node }: { message: Message; ctx: MessageContex
   const pending = data.status === "pending";
   // Handing a session to another node: the card has no prompt or title, only who it goes to and a note.
   const handOver = data.type === "session" && data.action === "hand_over";
+  const deleteSession = data.type === "session" && data.action === "delete";
   const handedTo = handOver && typeof data.input?.to === "string" ? `@${data.input.to.replace(/^@/, "")}` : "The node";
-  const pill = handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : data.type === "login" ? loginBadge(data) : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
+  const pill = deleteSession && data.status === "applied" ? { label: "Deleted", tone: "ok" as const } : handOver && data.status === "applied" ? { label: "Handed over", tone: "ok" as const } : data.type === "login" ? loginBadge(data) : (STATUS_PILL[data.status] ?? { label: data.status, tone: "muted" as const });
   const error = settle.error?.message ?? (typeof data.error === "string" ? data.error : null);
   // A command's sign-in names its command as code: "az login on Studio needs you to sign in to Microsoft".
   const command = data.type === "login" ? loginCommand(data as { source?: string; command?: string }) : null;

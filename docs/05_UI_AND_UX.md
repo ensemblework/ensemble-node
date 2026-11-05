@@ -45,6 +45,10 @@ On desktop the sidebar starts at 288 px. Drag its edge to resize it (248–420 p
 
 The Sessions page shows the five most recently active sessions, with **Show more** to reveal all and **Show less** to fold them again. Search starts a fresh five-session view. File cards preserve their exact originating run references and use the same editor outside a conversation.
 
+Each session has a labelled Delete control. The in-app confirmation names the session, agent and computer: stop active work, cancel its queue and permanently remove the agent's saved history; project files, tasks and chat messages stay. It never uses a browser popup. Busy deletion disables repeated confirmation; errors stay in the dialog with Retry. The card leaves only after native acknowledgement; offline/outdated computers or native errors do not claim success. Pending deletion cannot be resumed and remains visible with its error. Runtime 0.6.8+ is required on the computer. This removes saved native conversations, not provider inference logs or remote backups.
+
+An owner may ask a node to delete its own or an unmanaged agent session. `node_session_delete` always raises an owner-only **Delete session / Keep session** card in that private conversation; asking is not deletion. Approval follows the same stop/native acknowledgement flow and settles to **Deleted agent session · project files kept**. It does not delete Ensemble nodes.
+
 ## Original files beside the chat
 
 The header's **Files** button opens a separate right-hand list: **This chat** or **All chats**, search and paginated Show more. All chats includes the owner's agent runs started in Ensemble or the CLI, even without a managing node. A node's direct file operations and commands collect original-file references on the computer and update one owner-only card per turn. Dependency/cache folders and secret paths are not collected.

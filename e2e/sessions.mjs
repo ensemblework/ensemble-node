@@ -20,7 +20,7 @@ function fixture() {
     { id: "hub", nodeId: null, card: null, status: "idle", agent: "codex", agentName: "Codex", model: null, computer: "Laptop", folder: "website", title: "Update the pricing table", latestTask: "Hidden latest task", summary: "Hidden summary needle", runs: 3, lastActiveAt: at(30), usedBy: [], files: [] },
     { id: "dm", nodeId: node.id, card: null, status: "idle", agent: "claude-code", agentName: "Claude Code", model: "opus", computer: null, folder: "docs", title: "Rewrite the README", latestTask: "", summary: "", runs: 5, lastActiveAt: at(4 * 1440), usedBy: [{ node, room: null }], files: [] },
   ];
-  return { boot: { me: { id: "me", name: "Mira", email: "mira@example.test", verified: true }, nodes: [node], rooms: [room], computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { options: [] } }, sessions, reads: [], opened: [], content: "export const answer = 41;\n" };
+  return { boot: { me: { id: "me", name: "Mira", email: "mira@example.test", verified: true }, nodes: [node], rooms: [room], computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { options: [] } }, sessions, reads: [], opened: [], content: "export const answer = 41;\n", deleteCalls: 0, deleteFails: true };
 }
 try {
   for (const width of [375, 1440]) {
@@ -50,6 +50,13 @@ try {
         const q = (url.searchParams.get("q") ?? "").toLowerCase();
         state.reads.push(q);
         return json({ sessions: state.sessions.filter(row => !q || [row.title, row.agentName, row.model, row.folder, row.computer, ...row.files.map(file => file.source.path), ...row.usedBy.flatMap(item => [item.node.slug, item.room?.title])].some(value => value?.toLowerCase().includes(q))) });
+      }
+      if (path === "/api/node/sessions/live" && request.method() === "DELETE") {
+        assert.deepEqual(request.postDataJSON(), { confirmed: true });
+        state.deleteCalls++;
+        if (state.deleteFails) return json({ error: "The computer could not delete its native history. Retry." }, 409);
+        state.sessions = state.sessions.filter(row => row.id !== "live");
+        return json({ deleted: true, sessionId: "live" });
       }
       unexpected.push(path);
       return json({ error: `Unmocked: ${path}` }, 404);
@@ -112,6 +119,19 @@ try {
     assert.equal(await list.getByRole("article").count(), 7);
     await page.getByRole("button", { name: "Show less", exact: true }).click();
     assert.equal(await list.getByRole("article").count(), 5);
+    await live.getByRole("button", { name: "Delete session “Fix the login redirect”", exact: true }).click();
+    const confirm = page.getByRole("dialog", { name: "Delete session?", exact: true });
+    await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(state.deleteCalls, 0, "opening/cancelling confirmation never deletes native history");
+    await live.getByRole("button", { name: "Delete session “Fix the login redirect”", exact: true }).click();
+    await confirm.getByRole("button", { name: "Delete session", exact: true }).click();
+    await confirm.getByText("The computer could not delete its native history. Retry.", { exact: true }).waitFor();
+    assert.ok(await live.isVisible(), "failed native deletion is never a hidden session");
+    state.deleteFails = false;
+    await confirm.getByRole("button", { name: "Retry deletion", exact: true }).click();
+    await live.waitFor({ state: "detached" });
+    assert.equal(state.deleteCalls, 2);
+    await page.getByText("Session deleted. Project files kept.", { exact: true }).waitFor();
     assert.ok(await page.locator("main").evaluate(element => element.scrollWidth <= element.clientWidth + 2));
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);

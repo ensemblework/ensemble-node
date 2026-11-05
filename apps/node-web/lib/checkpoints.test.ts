@@ -6,6 +6,11 @@ import type { AgentDecision } from "./types";
 const where = { handle: "assistant-3", roomTitle: "Launch" };
 const words = (data: Record<string, unknown>) => cardCheckpoint(data, where).text;
 
+test("confirmed session deletion checkpoints never claim that new work started", () => {
+  assert.equal(words({ type: "session", action: "delete", status: "applied" }), "Deleted agent session · project files kept");
+  assert.equal(words({ type: "session", action: "delete", status: "discarded" }), "Kept the agent session");
+});
+
 test("a card stays open while it waits or its answer is carried out, and folds once it is settled", () => {
   for (const status of ["pending", "needs_code", "applying", "saving", "working", "running", undefined]) assert.equal(cardOpen({ status }), true, String(status));
   for (const status of ["allowed", "denied", "expired", "done", "failed", "applied", "discarded", "saved", "signed_in", "passed", "released", "posted", "approved", "answered", "closed"]) assert.equal(cardOpen({ status }), false, status);

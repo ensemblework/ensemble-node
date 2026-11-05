@@ -118,6 +118,7 @@ export function cardWords(data: CardData, handle: string, roomTitle: string): Ca
         : { title: `Post this in “${roomTitle}” for you?`, wants: "wants to post for you", approve: "Post", discard: "Discard" };
     }
     case "session": {
+      if (data?.action === "delete") return { title: `@${handle} wants to delete an agent session`, wants: "wants to delete an agent session", approve: "Delete session", discard: "Keep session" };
       if (data?.action !== "hand_over") return { title: `@${handle} wants to start work on your computer`, wants: "wants to start work on your computer", approve: "Start it", discard: "Discard" };
       // Hand-over cards have no prompt or title: only the session, the node it goes to and a note.
       const to = text(data.input?.to, "");

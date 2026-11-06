@@ -1,7 +1,9 @@
 /**
  * What Node reads from the owner's Ensemble settings (`GET /api/settings`, saved with `PATCH
  * /api/settings`): which run profile a node's agent sessions use, and whether a node asks before it
- * opens a website for the first time (`node.askBeforeBrowsing`, off unless the owner turns it on).
+ * opens a website for the first time (`node.askBeforeBrowsing`, off unless the owner turns it on), and
+ * whether the requests your nodes' agent sessions raise also wait in Ensemble's Needs me
+ * (`node.needsInEnsemble`, on unless the owner turns it off).
  */
 import { engineName } from "./work-log";
 
@@ -12,7 +14,7 @@ export type RunProfileView = { id: string; name: string; engine?: string; model?
 export type OwnerSettings = {
   runProfiles?: RunProfileView[];
   defaultRunProfileId?: string | null;
-  node?: { askBeforeBrowsing?: boolean } | null;
+  node?: { askBeforeBrowsing?: boolean; needsInEnsemble?: boolean } | null;
 };
 
 /** Ensemble's built-in profile while none is saved: its own agent, its default model. */
@@ -53,4 +55,14 @@ export function askBeforeBrowsing(settings: OwnerSettings | null | undefined): b
   const section = settings?.node;
   if (!section || typeof section !== "object") return null;
   return section.askBeforeBrowsing === true;
+}
+
+/**
+ * Whether your nodes' sessions' requests also wait in Ensemble's Needs me and bell (on unless turned
+ * off), or null when this Ensemble cannot keep the choice yet.
+ */
+export function needsInEnsemble(settings: OwnerSettings | null | undefined): boolean | null {
+  const section = settings?.node;
+  if (!section || typeof section !== "object") return null;
+  return section.needsInEnsemble !== false;
 }

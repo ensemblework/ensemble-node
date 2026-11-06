@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { ENSEMBLE_LINKS } from "@/lib/config";
 import { liveDevices } from "@/lib/ensemble";
 import { useBootstrap, useDevices, useOwnerSettings, useSaveOwnerSettings } from "@/lib/hooks";
-import { askBeforeBrowsing } from "@/lib/owner-settings";
+import { askBeforeBrowsing, needsInEnsemble } from "@/lib/owner-settings";
 import { toast, toastError } from "@/lib/toast";
 import { ComputerList, DeviceList, PairComputer } from "@/components/connect-computer";
 import { AppearanceSettings } from "@/components/appearance-settings";
@@ -42,6 +42,40 @@ function BrowsingSetting() {
       label="Ask before a node opens a new website"
       hint={value === null ? "Your Ensemble does not offer this yet." : value ? "On: the first visit to each new website asks you in the chat, on a card." : "Off: your nodes open and read public websites without asking. Signing in to a site always asks."}
       checked={value === true}
+      disabled={value === null || save.isPending}
+      onChange={change}
+    />
+  );
+}
+
+/**
+ * Whether the requests your nodes' agent sessions raise also wait in Ensemble's Needs me and bell
+ * (Ensemble's `node.needsInEnsemble`, on by default). Either way they are asked here, in the chat; a
+ * request answered, expired or stopped anywhere leaves everywhere at once.
+ */
+function NeedsSetting() {
+  const settings = useOwnerSettings();
+  const save = useSaveOwnerSettings();
+  const value = needsInEnsemble(settings.data);
+  if (settings.isLoading) return <Spinner className="h-4 w-4 text-muted" />;
+  if (settings.error) return <p className="text-sm text-danger">{settings.error.message}</p>;
+  const change = (next: boolean) =>
+    save.mutate(
+      { node: { needsInEnsemble: next } },
+      {
+        onSuccess: (saved) => {
+          if (needsInEnsemble(saved) !== next) toastError(new Error("Ensemble did not keep this setting. Update Ensemble, then try again."));
+          else toast(next ? "Saved: your nodes' requests also wait in Ensemble's Needs me." : "Saved: your nodes' requests stay in their chats.", "ok");
+        },
+        onError: toastError,
+      },
+    );
+  return (
+    <Switch
+      label="Show my nodes' requests in Ensemble"
+      hint={value === null ? "Your Ensemble does not offer this yet." : value ? "On: they also wait in Ensemble's Needs me." : "Off: your nodes ask only in their chats."}
+      info="A question or permission a node's session asks is always asked in its chat. On, it also waits in Ensemble's Needs me and bell, and can be answered there. Answered, expired or stopped anywhere, it leaves everywhere at once."
+      checked={value !== false}
       disabled={value === null || save.isPending}
       onChange={change}
     />
@@ -157,6 +191,9 @@ export default function SettingsPage() {
                 {label}
               </External>
             ))}
+          </div>
+          <div className="border-t border-line pt-3">
+            <NeedsSetting />
           </div>
         </section>
 

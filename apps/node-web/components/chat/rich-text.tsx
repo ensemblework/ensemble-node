@@ -3,6 +3,7 @@
 import { Fragment } from "react";
 import { ENSEMBLE_APP } from "@/lib/config";
 import { formatEntityText, type EntityRef } from "@/lib/entity-text";
+import { BULLETS } from "@/lib/chat-format";
 import { blocks, boldParts } from "@/lib/markdown";
 import { linkTarget, pieces } from "@/lib/text";
 import { CodeBlock } from "./code-block";
@@ -112,15 +113,20 @@ export function RichText({
           );
         }
         if (block.kind === "list") {
-          const List = block.ordered ? "ol" : "ul";
+          // One list for nested and mixed items: each keeps its own marker, its number as written and its depth.
           return (
-            <List key={index} className={`space-y-1 pl-5 ${block.ordered ? "list-decimal" : "list-disc"}`}>
+            <ul key={index} role="list" className="space-y-1">
               {block.items.map((item, at) => (
-                <li key={at}>
-                  <Inline text={item} handles={handles} />
+                <li key={at} className="flex gap-2" style={item.depth ? { paddingLeft: `${item.depth * 1.25}rem` } : undefined}>
+                  <span className={`shrink-0 text-accent ${item.ordered ? "min-w-[1.25rem] text-right tabular-nums" : "w-3 text-center"}`} aria-hidden={!item.ordered || undefined}>
+                    {item.task !== null ? (item.task ? "☑" : "☐") : item.ordered ? `${item.number}.` : BULLETS[item.depth % BULLETS.length]}
+                  </span>
+                  <span className="min-w-0 flex-1 whitespace-pre-wrap">
+                    <Inline text={item.text} handles={handles} />
+                  </span>
                 </li>
               ))}
-            </List>
+            </ul>
           );
         }
         return (

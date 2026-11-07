@@ -13,6 +13,7 @@ import { awayLine, awayUntil, requestBody, requestProblems, REQUEST_KINDS, type 
 import { toast, toastError } from "@/lib/toast";
 import { ACCEPT_KINDS, budgetLine, mergeTrust, ownSettings, TRUST_FIELDS, trustPatch, trustSummary } from "@/lib/trust";
 import type { Member, PeerKind, PeerRequest, Room, ShareableItem, TrustSettings } from "@/lib/types";
+import { DateTimeInput, dayKey } from "../date-time";
 import { PersonAvatar } from "../node-avatar";
 import { Button, Drawer, Field, Input, Notice, Segmented, Spinner, Textarea } from "../ui";
 
@@ -339,7 +340,7 @@ export function MyStatus({ roomId, meId, open }: { roomId: string; meId: string;
               ))}
             </select>
           </Field>
-          {until === "custom" ? <Input type="datetime-local" aria-label="Away until" value={picked} onChange={(event) => setPicked(event.target.value)} /> : null}
+          {until === "custom" ? <DateTimeInput label="Away until" value={picked} defaultTime="09:00" min={dayKey(new Date())} onChange={setPicked} /> : null}
           <Input aria-label="A note (optional)" placeholder="A note (optional): “At a workshop”" value={note} onChange={(event) => setNote(event.target.value)} maxLength={200} />
           <div className="flex flex-wrap gap-2">
             <Button size="sm" busy={setAway.isPending} onClick={submit}>

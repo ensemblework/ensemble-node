@@ -7,6 +7,8 @@ import { draftMentionParts, insertMention, matchHandles, typingMention } from "@
 import type { Avatar, MessageFile, NodePublic } from "@/lib/types";
 import { fileName, type FileQuote } from "@/lib/original-files";
 import { toastError } from "@/lib/toast";
+import { toMarkdown } from "@/lib/chat-format";
+import { useChatFormat } from "@/lib/use-chat-format";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { AttachButton, AttachmentShelf, DropHint, pasteFiles, useAttachments, useFileDrop } from "./attachments";
 
@@ -68,6 +70,10 @@ export function Composer({
   const [isPrivate, setPrivate] = useState(() => drafts.get(draftKey)?.private ?? false);
   const area = useRef<HTMLTextAreaElement>(null);
   const mirror = useRef<HTMLDivElement>(null);
+  const format = useChatFormat(value, (next) => {
+    setValue(next);
+    setCursor(area.current?.selectionStart ?? next.length);
+  });
   const attachments = useAttachments();
   const canAttach = Boolean(attachHint) && !disabled;
   const fileTarget = fileQuotes[0]?.target;
@@ -153,7 +159,7 @@ export function Composer({
     if (!canSend) return;
     if (fileTarget && (files.length || reply)) { toastError(new Error("Send your attachments or message reply separately from this file question.")); return; }
     drafts.delete(draftKey);
-    onSend(value.trim(), privateNow, files, fileQuotes);
+    onSend(toMarkdown(value).trim(), privateNow, files, fileQuotes);
     setValue("");
     setCursor(0);
     attachments.clear();
@@ -230,8 +236,12 @@ export function Composer({
           onChange={(event) => {
             setValue(event.target.value);
             setCursor(event.target.selectionStart);
+            format.onChange(event);
           }}
-          onSelect={(event) => setCursor((event.target as HTMLTextAreaElement).selectionStart)}
+          onSelect={(event) => {
+            setCursor((event.target as HTMLTextAreaElement).selectionStart);
+            format.onSelect(event);
+          }}
           onScroll={event => { if (mirror.current) { mirror.current.scrollTop = event.currentTarget.scrollTop; mirror.current.scrollLeft = event.currentTarget.scrollLeft; } }}
           onPaste={canAttach ? (event) => pasteFiles(event, attachments.addFiles) : undefined}
           onKeyDown={(event) => {
@@ -246,6 +256,7 @@ export function Composer({
               onCancelReply?.();
               return;
             }
+            if (format.onKeyDown(event)) return;
             if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault();
               send();
@@ -302,6 +313,8 @@ export function Composer({
               </span>
             ) : null}
           </div>
+          <div className="flex shrink-0 items-center gap-2">
+          {format.inList ? <span className="hidden text-[11px] text-muted md:inline" aria-live="polite">Enter for the next item · Ctrl/⌘+Enter to send</span> : null}
           {busy && !value.trim() && !attachments.items.length ? (
             <button type="button" onClick={onStop} className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-raised text-ink hover:bg-line" aria-label="Stop">
               <Square size={14} fill="currentColor" />
@@ -319,6 +332,7 @@ export function Composer({
               <ArrowUp size={18} />
             </button>
           )}
+          </div>
         </div>
       </div>
     </div>

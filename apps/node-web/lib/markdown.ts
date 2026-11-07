@@ -1,15 +1,20 @@
 /** A small Markdown subset for node replies, including GFM tables. */
 export type Block =
   | { kind: "heading"; level: number; text: string }
-  | { kind: "list"; ordered: boolean; items: string[] }
+  /** `ordered`: the first item's. Items nest by `depth`; a numbered item keeps the number it was written with. */
+  | { kind: "list"; ordered: boolean; items: ListItem[] }
   /** `lang`: the fence's language ("ts" from ```ts), or null. */
   | { kind: "code"; text: string; lang: string | null }
   | { kind: "quote"; text: string }
   | { kind: "table"; header: string[]; align: Array<"left" | "center" | "right" | null>; rows: string[][] }
   | { kind: "paragraph"; text: string };
 
+/** `task`: a checklist item's tick ("- [x] done"), or null. */
+export type ListItem = { text: string; depth: number; ordered: boolean; number: number; task: boolean | null };
+
 const HEADING = /^(#{1,4})\s+(.*)$/;
-const LIST_ITEM = /^\s*(?:([-*•])|(\d+)[.)])\s+(.*)$/;
+const LIST_ITEM = /^([ \t]*)(?:([-*•◦▪])|(\d{1,9})[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/;
+const width = (indent: string) => indent.replace(/\t/g, "    ").length;
 
 function tableRow(line: string): { cells: string[]; hasPipe: boolean } {
   const text = line.trim();
@@ -40,6 +45,8 @@ export function blocks(source: string): Block[] {
   const lines = source.replace(/\r\n/g, "\n").split("\n");
   const out: Block[] = [];
   let paragraph: string[] = [];
+  // The items of the list being read, by indentation, for nesting and for lines that continue an item.
+  let levels: Array<{ indent: number; content: number }> = [];
   const flush = () => {
     if (paragraph.length) out.push({ kind: "paragraph", text: paragraph.join("\n") });
     paragraph = [];
@@ -64,12 +71,26 @@ export function blocks(source: string): Block[] {
     const item = LIST_ITEM.exec(line);
     if (item) {
       flush();
-      const ordered = Boolean(item[2]);
       const last = out[out.length - 1];
-      if (last?.kind === "list" && last.ordered === ordered) last.items.push(item[3]!);
-      else out.push({ kind: "list", ordered, items: [item[3]!] });
+      const indent = width(item[1]!);
+      const ordered = Boolean(item[3]);
+      if (last?.kind !== "list") levels = [];
+      while (levels.length && levels[levels.length - 1]!.indent >= indent) levels.pop();
+      const depth = levels.length;
+      const entry: ListItem = { text: item[5]!, depth, ordered, number: ordered ? Number(item[3]) : 0, task: item[4] ? item[4].toLowerCase() === "x" : null };
+      // A nested item stays in its list whatever its kind; at the top a change of kind starts a new list.
+      if (last?.kind === "list" && (depth > 0 || last.ordered === ordered)) last.items.push(entry);
+      else out.push({ kind: "list", ordered, items: [entry] });
+      levels.push({ indent, content: line.length - item[5]!.length });
       continue;
     }
+    const tail = out[out.length - 1];
+    if (tail?.kind === "list" && !paragraph.length && line.trim() && levels.length && width(/^[ \t]*/.exec(line)![0]) >= 2) {
+      // Indented under an item: more of that item.
+      tail.items[tail.items.length - 1]!.text += `\n${line.trim()}`;
+      continue;
+    }
+    if (line.trim()) levels = [];
     if (line.startsWith(">")) {
       flush();
       out.push({ kind: "quote", text: line.replace(/^>\s?/, "") });

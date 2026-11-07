@@ -2,13 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { blocks, boldParts } from "./markdown";
 
+const item = (text: string, depth = 0, number = 0, task: boolean | null = null) => ({ text, depth, ordered: number > 0, number, task });
+
 test("node replies become headings, lists, code and paragraphs", () => {
   const parsed = blocks("## Plan\n1. Write tests\n2. Fix it\n\nThen:\n- docs\n- ship\n```\npnpm test\n```\n> note");
   assert.deepEqual(parsed, [
     { kind: "heading", level: 2, text: "Plan" },
-    { kind: "list", ordered: true, items: ["Write tests", "Fix it"] },
+    { kind: "list", ordered: true, items: [item("Write tests", 0, 1), item("Fix it", 0, 2)] },
     { kind: "paragraph", text: "Then:" },
-    { kind: "list", ordered: false, items: ["docs", "ship"] },
+    { kind: "list", ordered: false, items: [item("docs"), item("ship")] },
     { kind: "code", text: "pnpm test", lang: null },
     { kind: "quote", text: "note" },
   ]);
@@ -78,7 +80,7 @@ test("tables preserve surrounding blocks and do not parse fenced examples", () =
   for (const [suffix, expected] of [
     ["\n\nAfter", { kind: "paragraph", text: "After" }],
     ["\n## After", { kind: "heading", level: 2, text: "After" }],
-    ["\n- After", { kind: "list", ordered: false, items: ["After"] }],
+    ["\n- After", { kind: "list", ordered: false, items: [item("After")] }],
     ["\n> After", { kind: "quote", text: "After" }],
     ["\n```ts\nconst after = true;\n```", { kind: "code", text: "const after = true;", lang: "ts" }],
   ]) {
@@ -107,4 +109,12 @@ test("invalid or unfinished table delimiters and ordinary pipes remain text", ()
 test("single-column and header-only GFM tables are supported", () => {
   assert.deepEqual(blocks("| Task |\n| --- |"), [{ kind: "table", header: ["Task"], align: [null], rows: [] }]);
   assert.deepEqual(blocks("Task\n| :--: |"), [{ kind: "table", header: ["Task"], align: ["center"], rows: [] }]);
+});
+
+test("lists nest by indentation, keep their numbers and checklists, and continue on indented lines", () => {
+  assert.deepEqual(blocks("1. Milk\n   oat or soy\n   - [x] bought\n3. Eggs\nAfter"), [
+    { kind: "list", ordered: true, items: [item("Milk\noat or soy", 0, 1), item("bought", 1, 0, true), item("Eggs", 0, 3)] },
+    { kind: "paragraph", text: "After" },
+  ]);
+  assert.deepEqual(blocks("• a\n  ◦ b\n    ▪ c"), [{ kind: "list", ordered: false, items: [item("a"), item("b", 1), item("c", 2)] }]);
 });

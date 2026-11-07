@@ -114,7 +114,7 @@ A focused field shows one edge, the outer one. Search fields share `.search-fiel
 
 Dates and times are picked in Node's own fields (`components/date-time.tsx`, the same as Ensemble's): a button that reads naturally ("Fri, 14 Nov", "09:30") opens a calendar in the accent (today marked, keyboard arrows, Page Up/Down for months, Today/Tomorrow/Next week) or a list of times, and either can be typed ("tomorrow", "fri", "14 nov", "9:30pm"). Away until and a routine's time use them; the browser's own date and time inputs are not used.
 
-Notifications (`ToastItem` in `components/ui.tsx`, `lib/toast.ts`) sit at the bottom with a three-second countdown bar and Dismiss, without a pause button. Hovering, keyboard focus or a hidden tab pauses the remaining time and its bar. Leaving resumes from that point, not from three seconds again. Touch does not create a sticky hover. Errors keep their alert semantics; reduced motion uses a still bar. Timers are cleaned up when a notification leaves.
+Notifications (`ToastItem` in `components/ui.tsx`, `lib/toast.ts`) stack at most two (a third pushes out the oldest, and the same note again replaces the earlier one) and sit at the bottom with a three-second countdown bar and Dismiss, without a pause button. Hovering, keyboard focus or a hidden tab pauses the remaining time and its bar. Leaving resumes from that point, not from three seconds again. Touch does not create a sticky hover. Errors keep their alert semantics; reduced motion uses a still bar. Timers are cleaned up when a notification leaves.
 
 ## Model and agent marks
 

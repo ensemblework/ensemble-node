@@ -21,7 +21,8 @@ export function dismissToast(id: number) {
 
 export function toast(text: string, tone: Toast["tone"] = "info") {
   const id = next++;
-  toasts = [...toasts.slice(-3), { id, text, tone }];
+  // At most two at once, newest last: the same note again replaces the earlier one, a third pushes out the oldest.
+  toasts = [...toasts.filter((row) => row.text !== text || row.tone !== tone), { id, text, tone }].slice(-2);
   emit();
 }
 

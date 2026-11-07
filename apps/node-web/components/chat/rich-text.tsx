@@ -113,7 +113,21 @@ export function RichText({
           );
         }
         if (block.kind === "list") {
-          // One list for nested and mixed items: each keeps its own marker, its number as written and its depth.
+          const first = block.items[0];
+          const flat = block.items.every((item, at) => !item.depth && item.task === null && item.ordered === block.ordered && (!item.ordered || item.number === (first?.number ?? 1) + at));
+          if (flat) {
+            const List = block.ordered ? "ol" : "ul";
+            return (
+              <List key={index} start={block.ordered && first && first.number !== 1 ? first.number : undefined} className={`space-y-1 pl-5 ${block.ordered ? "list-decimal" : "list-disc"}`}>
+                {block.items.map((item, at) => (
+                  <li key={at}>
+                    <Inline text={item.text} handles={handles} />
+                  </li>
+                ))}
+              </List>
+            );
+          }
+          // Nested, mixed or task lists: each item keeps its own marker, its number as written and its depth.
           return (
             <ul key={index} role="list" className="space-y-1">
               {block.items.map((item, at) => (

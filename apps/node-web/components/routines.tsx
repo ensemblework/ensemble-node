@@ -49,6 +49,7 @@ import { ago } from "@/lib/text";
 import { toast, toastError } from "@/lib/toast";
 import type { Bootstrap, Member, Message, NodeFull, Routine, RoutineRun } from "@/lib/types";
 import type { MessageContext } from "./chat/message";
+import { TimeInput } from "./date-time";
 import { CodeBlock } from "./chat/code-block";
 import { PlanCard } from "./chat/plan-card";
 import { NodeAvatar } from "./node-avatar";
@@ -540,7 +541,7 @@ function ScheduleFields({ formId, draft, set, problems }: { formId: string; draf
             <Input type="number" inputMode="numeric" min={0} max={59} aria-label="Minute past the hour" className="w-20" value={Number.isFinite(schedule.minute) ? schedule.minute : ""} onChange={(event) => change({ minute: number(event.target.value) })} />
           </label>
         ) : null}
-        {TIMED.has(schedule.preset) ? <Input type="time" aria-label="Time" className="w-32" value={schedule.time} onChange={(event) => change({ time: event.target.value })} /> : null}
+        {TIMED.has(schedule.preset) ? <TimeInput label="Time" className="w-32" value={schedule.time} onChange={(time) => change({ time })} /> : null}
       </div>
       {schedule.preset === "custom" ? (
         <Field label="Cron" hint="Five fields: minute, hour, day of month, month and day of week. 0 9 * * 1-5 is weekdays at 09:00.">

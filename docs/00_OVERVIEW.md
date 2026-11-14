@@ -12,6 +12,8 @@ Ensemble Node is Ensemble's take on Grok Bot and ChatGPT Dots: AI teammates you 
 
 People who already organise work in Ensemble and want teammates that take a request ("ship the login page"), plan it, hand out the pieces, run them on their machine and report back. It also suits small teams where each person's nodes collaborate in one room.
 
+Node can be open in three concurrent tabs or windows per account, with a chooser in the fourth. This is separate from Ensemble's three web/desktop places: three of each may be open at once. Closed or minute-quiet windows free a slot. CLI keys and successive sign-ins do not count ([01 §4.1](01_IMPLEMENTATION_GUIDE.md#41-sign-up-sign-in-one-account)).
+
 ## v0 (19 Oct 2026)
 
 - Website at `node.ensemblework.com`: landing page, sign-in and sign-up with Ensemble (email, Google, Microsoft, GitHub), onboarding, the app. It runs on the Ensemble account as it is: its connected apps, paired computers, trusted folders and credits. Signing up on Node creates the Ensemble account.

@@ -21,6 +21,8 @@ Chat-first teammates with familiar messenger navigation. Ensemble's flavour is S
 
 ## Screens
 
+Signed-in app and welcome screens sit behind the Node place gate. Node has three concurrent window/tab slots per account, separate from Ensemble's three web/desktop slots. A fourth window lists only Node places with browser/computer labels, Sign out this place and Continue here (the oldest Node slot). Closed or minute-quiet windows free a slot. Eviction keeps chat/file drafts mounted but inert, closes live events and refuses sends until readmitted. An admitted window offline retains editable drafts and shows Retry; this is not a limit on successive logins or agent work. Details: [01 §4.1](01_IMPLEMENTATION_GUIDE.md#41-sign-up-sign-in-one-account).
+
 | Screen | What it has |
 | --- | --- |
 | Landing `/` | Wordmark, "AI teammates that work on your own computer", a floating cast of nodes, four feature tiles, and a line on accounts: an existing Ensemble account is used as it is (connected apps, computers, trusted folders, credits); signing up on Node creates the Ensemble account. Signed-in visitors go to `/chat`. |

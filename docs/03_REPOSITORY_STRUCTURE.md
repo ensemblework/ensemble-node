@@ -177,4 +177,5 @@ ensemble-node/
 | A new Hub tool nodes should have | Ensemble's assistant registry: every Hub tool is a node tool too |
 | The CLI's Node tab | Ensemble: `apps/cli/src/tui/node.ts`, `app.tsx` |
 | Sign-in behaviour | Ensemble: `routes/auth*.ts` (Node only calls them) |
+| Open Node windows and the three-place chooser | `components/active-place-gate.tsx`, `lib/active-place.ts`, `lib/api.ts`; admission, expiry and independent pools in Ensemble's `lib/active-places.ts` |
 | Hosting, environments, deploys, CI | `.github/workflows/`, `.github/actions/vercel-deploy/`, `apps/node-web/lib/environment.ts`, the Vercel projects ([04](04_DEPLOYMENT_AND_DNS.md)) |

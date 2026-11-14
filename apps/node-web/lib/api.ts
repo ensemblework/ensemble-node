@@ -1,5 +1,6 @@
 import { liveMeta } from "./captures";
 import { ENSEMBLE_API } from "./config";
+import { placeAllowed, placeHeaders, placeQuery, PLACE_BLOCKED_EVENT } from "./active-place";
 import { evidenceErrorWords, evidencePath } from "./evidence";
 import type { OwnerSettings } from "./owner-settings";
 import type { SudoAnswer, SudoTarget } from "./sudo";
@@ -10,29 +11,48 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly code?: string,
+    readonly data?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
+function reportPlaceRefusal(data: { code?: string }) {
+  if (typeof window !== "undefined" && data.code?.startsWith("PLACE_")) window.dispatchEvent(new CustomEvent(PLACE_BLOCKED_EVENT, { detail: data }));
+}
+
+/** JSON, downloads and takeover streams use the same per-window lease. */
+export async function nodeFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  if (!placeAllowed() && !path.startsWith("/api/auth/")) throw new ApiError(409, "Choose an open Node place to continue here.", "PLACE_BLOCKED");
+  const headers = new Headers(init.headers);
+  for (const [key, value] of Object.entries(placeHeaders())) headers.set(key, value);
+  const response = await fetch(`${ENSEMBLE_API}${path}`, { ...init, headers, credentials: "include" });
+  if (response.status === 409) {
+    const data: { code?: string } = await response.clone().json().catch(() => ({}));
+    reportPlaceRefusal(data);
+  }
+  return response;
+}
+
 /** Calls Ensemble's API with the shared session cookie. */
 export async function api<T>(path: string, init: { method?: string; body?: unknown; signal?: AbortSignal; headers?: Record<string, string> } = {}): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${ENSEMBLE_API}${path}`, {
+    response = await nodeFetch(path, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
       credentials: "include",
       headers: { ...(init.body === undefined ? { accept: "application/json" } : { accept: "application/json", "content-type": "application/json" }), ...init.headers },
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       signal: init.signal,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
   }
   if (response.status === 204) return undefined as T;
   const data = (await response.json().catch(() => ({}))) as { error?: string; message?: string; code?: string };
-  if (!response.ok) throw new ApiError(response.status, data.error ?? data.message ?? `Something went wrong (${response.status}).`, data.code);
+  if (!response.ok) throw new ApiError(response.status, data.error ?? data.message ?? `Something went wrong (${response.status}).`, data.code, data);
   return data as T;
 }
 
@@ -61,8 +81,9 @@ async function blobWithProgress(response: Response, onProgress: (percent: number
 export async function downloadData(path: string, init: { body?: unknown } = {}, onProgress?: (percent: number) => void, expected?: number | null): Promise<{ blob: Blob; name: string | null }> {
   let response: Response;
   try {
-    response = await fetch(`${ENSEMBLE_API}${path}`, { credentials: "include", ...(init.body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(init.body) }) });
-  } catch {
+    response = await nodeFetch(path, { ...(init.body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(init.body) }) });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
   }
   if (!response.ok) {
@@ -95,15 +116,16 @@ export async function download(path: string, fallbackName: string, onProgress?: 
 
 /** What `POST /api/documents` answered: the new file, or an error with the server's words. */
 export function uploadResult(status: number, text: string): FileRecord {
-  let data: { file?: FileRecord; error?: string; message?: string } = {};
+  let data: { file?: FileRecord; error?: string; message?: string; code?: string } = {};
   try {
     data = JSON.parse(text || "{}");
   } catch {
     data = {};
   }
   if (status >= 200 && status < 300 && data.file?.id) return data.file;
+  reportPlaceRefusal(data);
   if (status === 0) throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
-  throw new ApiError(status, data.error ?? data.message ?? (status === 413 ? "This file is too large for your Files." : `The upload failed (${status}).`));
+  throw new ApiError(status, data.error ?? data.message ?? (status === 413 ? "This file is too large for your Files." : `The upload failed (${status}).`), data.code, data);
 }
 
 /** Set on the error of an upload that was cancelled. */
@@ -121,6 +143,7 @@ export function uploadFile(file: File, onProgress: (percent: number) => void): {
   let cancelled = false;
   const cancel = () => new ApiError(0, "Upload cancelled.", UPLOAD_CANCELLED);
   const promise = new Promise<FileRecord>((resolve, reject) => {
+    if (!placeAllowed()) { reject(new ApiError(409, "Choose an open Node place to continue here.", "PLACE_BLOCKED")); return; }
     reader = new FileReader();
     reader.onerror = () => reject(new ApiError(0, "This file could not be read from your computer."));
     reader.onabort = () => reject(cancel());
@@ -133,6 +156,7 @@ export function uploadFile(file: File, onProgress: (percent: number) => void): {
       xhr.withCredentials = true;
       xhr.setRequestHeader("content-type", "application/json");
       xhr.setRequestHeader("accept", "application/json");
+      for (const [key, value] of Object.entries(placeHeaders())) xhr.setRequestHeader(key, value);
       xhr.upload.onprogress = (event) => {
         if (event.lengthComputable && event.total) onProgress(Math.min(99, Math.floor((event.loaded / event.total) * 100)));
       };
@@ -161,7 +185,7 @@ export function uploadFile(file: File, onProgress: (percent: number) => void): {
 
 /** A file's original bytes from the person's own Files (`GET /api/documents/:id/original`). */
 export async function fileOriginal(id: string, signal?: AbortSignal): Promise<Blob> {
-  const response = await fetch(`${ENSEMBLE_API}/api/documents/${encodeURIComponent(id)}/original`, { credentials: "include", signal });
+  const response = await nodeFetch(`/api/documents/${encodeURIComponent(id)}/original`, { signal });
   if (!response.ok) throw new ApiError(response.status, `The file could not be read (${response.status}).`);
   return response.blob();
 }
@@ -175,9 +199,10 @@ export async function fileOriginal(id: string, signal?: AbortSignal): Promise<Bl
 export async function evidenceBlob(id: string, signal?: AbortSignal, messageId?: string | null): Promise<Blob> {
   let response: Response;
   try {
-    response = await fetch(`${ENSEMBLE_API}${evidencePath(id, messageId)}`, { credentials: "include", signal });
+    response = await nodeFetch(evidencePath(id, messageId), { signal });
   } catch (error) {
     if (signal?.aborted) throw error;
+    if (error instanceof ApiError) throw error;
     throw new ApiError(0, evidenceErrorWords(0));
   }
   if (!response.ok) {
@@ -195,8 +220,9 @@ export async function evidenceHead(id: string, max: number, messageId?: string |
   const stop = new AbortController();
   let response: Response;
   try {
-    response = await fetch(`${ENSEMBLE_API}${evidencePath(id, messageId)}`, { credentials: "include", signal: stop.signal });
-  } catch {
+    response = await nodeFetch(evidencePath(id, messageId), { signal: stop.signal });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
     throw new ApiError(0, evidenceErrorWords(0));
   }
   if (!response.ok) {
@@ -248,9 +274,10 @@ export const evidence = {
 export async function liveFrame(jobId: string, signal?: AbortSignal): Promise<LiveFrame | null> {
   let response: Response;
   try {
-    response = await fetch(`${ENSEMBLE_API}/api/node/live/${encodeURIComponent(jobId)}`, { credentials: "include", cache: "no-store", signal });
+    response = await nodeFetch(`/api/node/live/${encodeURIComponent(jobId)}`, { cache: "no-store", signal });
   } catch (error) {
     if (signal?.aborted) throw error;
+    if (error instanceof ApiError) throw error;
     throw new ApiError(0, "Ensemble cannot be reached. Check your connection and try again.");
   }
   const meta = liveMeta(response.headers);
@@ -388,4 +415,4 @@ export const shareToRoom = (messageId: string, as: "me" | "lead") => api<{ messa
 
 export const oauthStartUrl = (provider: string): string => `${ENSEMBLE_API}/api/auth/oauth/${provider}/start?return=node`;
 
-export const eventsUrl = (): string => `${ENSEMBLE_API}/api/node/events`;
+export const eventsUrl = (): string => `${ENSEMBLE_API}/api/node/events${placeQuery()}`;

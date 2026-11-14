@@ -54,6 +54,7 @@ The cost is coupling: Node's backend ships with Ensemble's releases and must fol
 | --- | --- |
 | Accounts, sessions, OAuth, email verification, Turnstile | Sign-in and sign-up on Node call the same routes. `?return=node` brings a provider sign-in back to Node. |
 | Session cookie on `ensemblework.com` + CORS allowlist | `ENSEMBLE_NODE_WEB_ORIGIN` joins the allowlist (production refuses it unless it is https and shares the cookie domain). |
+| Open-place leases | `POST /api/auth/places` registers each Node window with `surface: "node"`; Node has three slots separate from Ensemble's web/desktop pool. Heartbeat, expiry, release and replacement use Ensemble's lease API. |
 | Assistant loop (`runAssistantTurn`), tools, playbooks/skills, write policy, Apply, undo, ledger | A node turn is an assistant turn in the owner's space with `agentPersona`, `extraTools` and `purpose: "Ensemble Node"`. Held calls are applied through `POST /api/assistant/apply`. |
 | Run profiles, agent sessions, `WorkspaceJob`, device protocol, sandbox, Needs me decisions | Computer work is an Ensemble job in an agent session. Node adds which node owns a session, queue/steer/replace/stop, the run card and the report afterwards. A question from the computer is Ensemble's decision, shown as a card in the chat. |
 | Included AI and credits (`includedUsage`, `assertIncludedOpen`) | Node turns and room routing are included calls on the owner's/author's account. One allowance across all three apps. |
@@ -72,6 +73,10 @@ The cost is coupling: Node's backend ships with Ensemble's releases and must fol
 - **Existing Ensemble user:** sign in with email or a provider. Providers go through `/api/auth/oauth/:provider/start?return=node`. The callback stays on the API host (no provider console change) and returns to Node's `/welcome` (new account) or `/`. Node uses the account as it is: its connected apps, paired computers, trusted folders, run profiles and credits. Nothing is copied.
 - **Later on Ensemble or the CLI:** same account and session. The Hub may ask a Node‑made account to finish its profile once. The CLI's `ensemble login` approves in the browser as the same account and pairs the computer.
 - Signing out on Node signs out of Ensemble in that browser (one cookie).
+
+**Open windows.** `components/active-place-gate.tsx` admits each signed-in app or welcome window before mounting its content. Node may be open in three places per account, independently of Ensemble's three web/desktop places. The fourth shows the three Node windows and asks which to sign out, or offers Continue here to replace Node's least recently heard place. This is simultaneous use, not a lifetime or consecutive sign-in limit. `lib/active-place.ts` keeps a tab id and rising sequence in session storage, distinguishes duplicate tabs with Web Locks, heartbeats every 10 seconds and releases on pagehide/navigation. Sixty seconds without a heartbeat frees its slot. Replacement stops only that Node place, not Ensemble or the shared account cookie.
+
+`lib/api.ts` sends `x-ensemble-place`, `x-ensemble-place-account` and `x-ensemble-place-surface: node` on JSON, uploads, bytes and takeover streams. EventSource uses `place` and `placeAccount` query fields; stopped windows close the stream and refuse writes. Unsent chat and file buffers remain mounted and inert until readmitted. A network failure leaves an admitted window's offline drafts editable with a visible retry notice. An account switch reloads before stale buffers can write under another account. Sign-in and landing pages take no slot; a closed or quiet place does not hold one.
 
 ### 4.2 Onboarding
 

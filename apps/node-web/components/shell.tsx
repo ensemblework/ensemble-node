@@ -24,6 +24,7 @@ import { RoomAvatar } from "./room-avatar";
 import { SidebarFrame, useSidebarWidth } from "./sidebar-frame";
 import { Drawer, IconButton, Spinner, Toaster, useDismiss } from "./ui";
 import { FileWorkspaceProvider, FileWorkspaceSurface } from "./files/workspace";
+import { usePlaceAccess } from "./active-place-gate";
 
 export function dmRoomOf(boot: Bootstrap | undefined, nodeId: string): Room | undefined {
   return boot?.rooms.find((room) => room.kind === "dm" && room.members.some((member) => member.kind === "node" && member.node.id === nodeId));
@@ -166,9 +167,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const client = useQueryClient();
   const me = useMe();
-  const signedIn = Boolean(me.data);
+  const placeAccess = usePlaceAccess();
+  const signedIn = Boolean(me.data) && placeAccess;
   const boot = useBootstrap(signedIn);
-  const activity = useActivity();
+  const activity = useActivity(placeAccess);
   const [menu, setMenu] = useState(false);
   const [collapsed, toggleCollapsed] = useNavigationPreference("node.sidebar-collapsed", false);
   const [autoCollapsed, setAutoCollapsed] = useState(false);

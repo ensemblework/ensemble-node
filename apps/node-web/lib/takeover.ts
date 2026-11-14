@@ -10,8 +10,7 @@
  * order); a resting pointer is sent once it stops, a drag at most 20 times a second. Ensemble's server
  * relays ciphertext it cannot read. The capability and the keys live in this page's memory only.
  */
-import { ApiError } from "./api";
-import { ENSEMBLE_API } from "./config";
+import { ApiError, nodeFetch } from "./api";
 import { sealFor, type SealKeyInfo } from "./seal";
 import { channelBase64Url, newTakeoverSecret, openMessage, sealMessage, takeoverKeys, unpackMessage, type ChannelKeys, type ChannelMessage } from "./takeover-channel";
 import { terminalScreen, type TerminalInput, type TerminalScreen } from "./terminal";
@@ -396,7 +395,7 @@ export class EventStreamParser {
 /** A stream's response, from Ensemble's API with the session cookie. */
 export type StreamFetch = (path: string, init: { headers: Record<string, string>; signal: AbortSignal }) => Promise<Response>;
 
-const fetchStream: StreamFetch = (path, init) => fetch(`${ENSEMBLE_API}${path}`, { credentials: "include", cache: "no-store", headers: init.headers, signal: init.signal });
+const fetchStream: StreamFetch = (path, init) => nodeFetch(path, { cache: "no-store", headers: init.headers, signal: init.signal });
 
 /** A stream that brought nothing for this long (not even its first comment) is given up: a proxy holds it back. */
 export const STREAM_FIRST_MS = 10_000;

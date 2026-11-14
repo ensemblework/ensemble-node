@@ -143,8 +143,8 @@ export function useBootstrap(enabled = true) {
   }, enabled });
 }
 
-export function useActivity() {
-  return useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), refetchInterval: 30_000 });
+export function useActivity(enabled = true) {
+  return useQuery({ queryKey: keys.activity, queryFn: () => api<Activity>("/api/node/activity"), refetchInterval: 30_000, enabled });
 }
 
 /** A run's open sign-in card, from the cards waiting for me that the shell keeps fresh: no request of its own. */

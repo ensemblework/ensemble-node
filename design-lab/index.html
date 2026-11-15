@@ -1,0 +1,1938 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Design lab · Ensemble Node</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6.2' fill='%23E07A5F'/%3E%3Ccircle cx='6.2' cy='7.2' r='1' fill='%2314110C'/%3E%3Ccircle cx='9.8' cy='7.2' r='1' fill='%2314110C'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #081113;
+    --panel: #0d1b1e;
+    --raised: #14272b;
+    --line: #223a3e;
+    --ink: #ece9e0;
+    --muted: #8c9b99;
+    --accent: #d7b56f;
+    --ok: #68be8c;
+    --danger: #e86e6e;
+    --glow: #e07a5f;
+    --shadow: 0 20px 50px rgba(0, 0, 0, .28);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background:
+      radial-gradient(900px 420px at 12% -10%, rgba(215, 181, 111, .09), transparent 55%),
+      radial-gradient(800px 480px at 100% 0%, rgba(224, 122, 95, .06), transparent 50%),
+      var(--bg);
+    color: var(--ink);
+    font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  button:disabled { cursor: default; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 22px 22px 56px; }
+  header { margin-bottom: 18px; }
+  .eyebrow {
+    margin: 0 0 6px;
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+  h1 { margin: 0; font-size: 32px; letter-spacing: -.03em; font-weight: 650; }
+  .lede { margin: 8px 0 0; max-width: 62ch; color: var(--muted); }
+  h2 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  h2 span, .section-head p { color: var(--muted); font-weight: 450; }
+  .studio {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .stage-card, .panel, .board {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+  }
+  .stage-card { padding: 14px 14px 16px; box-shadow: var(--shadow); }
+  #stage {
+    position: relative;
+    min-height: 430px;
+    border-radius: 18px;
+    display: grid;
+    place-items: center;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    background:
+      radial-gradient(70% 55% at 50% 42%, color-mix(in srgb, var(--glow) 32%, transparent), transparent 70%),
+      radial-gradient(80% 40% at 50% 100%, rgba(0, 0, 0, .38), transparent 60%),
+      linear-gradient(180deg, #102428, #0b191c 72%);
+  }
+  #stage[data-dragging="true"] { cursor: grabbing; }
+  .hero-slot { width: min(390px, 94%); aspect-ratio: 144 / 156; }
+  .hero-slot svg, .slot svg, .state-slot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .stage-meta { padding: 12px 8px 0; text-align: center; }
+  .stage-meta h2 { font-size: 20px; }
+  .blurb { margin: 4px 0 0; color: var(--muted); min-height: 1.4em; }
+  .idline { margin: 4px 0 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .idline code { color: var(--ink); font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 11.5px; }
+  .status { margin: 6px 0 0; min-height: 1.3em; color: var(--accent); font-size: 13px; font-weight: 650; }
+  .hint { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+  .motion {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 18px;
+    margin-top: 14px;
+    padding: 0 8px;
+  }
+  .motion label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+  .motion output { color: var(--ink); font-variant-numeric: tabular-nums; }
+  .motion input { grid-row: auto; width: 100%; margin-top: 6px; }
+  .motion .slider { display: flex; flex-direction: column; }
+  .motion-note { grid-column: 1 / -1; margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 999px;
+    background: #2c4a4e;
+    accent-color: var(--accent);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--ink);
+    border: 2px solid #0b191c;
+    box-shadow: 0 0 0 1px var(--line);
+    cursor: pointer;
+  }
+  .panel { padding: 14px 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+  .picker-row {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr);
+    gap: 8px;
+    align-items: center;
+  }
+  .picker-row .label { color: var(--muted); font-size: 13px; }
+  .choices, .swatches, .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .choice, .swatch, .chip, .vote, .text-btn, .saved-item {
+    border: 1px solid transparent;
+    background: transparent;
+  }
+  .choice {
+    position: relative;
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    padding: 2px;
+    display: grid;
+    place-items: center;
+  }
+  .choice:hover, .chip:hover, .vote:hover, .text-btn:hover, .saved-item:hover { background: var(--raised); }
+  .choice[aria-pressed="true"] {
+    box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ink);
+    background: var(--raised);
+  }
+  .choice .tag {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, .28);
+  }
+  .swatch[aria-pressed="true"] {
+    box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ink), inset 0 0 0 1.5px rgba(0, 0, 0, .28);
+  }
+  .chip {
+    border-color: var(--line);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+  .chip[aria-pressed="true"] { background: var(--ink); color: #14110c; border-color: var(--ink); }
+  .state-hint { margin: -6px 0 0 72px; color: var(--muted); font-size: 12.5px; min-height: 1.3em; }
+  .feedback h2 { margin-bottom: 4px; }
+  .variant-label { margin: 0; font-size: 14px; }
+  .vote-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .vote {
+    width: 36px;
+    height: 32px;
+    border-radius: 999px;
+    border-color: var(--line);
+    display: grid;
+    place-items: center;
+    color: var(--ink);
+  }
+  .vote[aria-pressed="true"][data-vote="up"] { background: #17352c; color: #9ee0bc; border-color: #1f6b48; }
+  .vote[aria-pressed="true"][data-vote="down"] { background: #3a2226; color: #f3b0b0; border-color: #8a4548; }
+  .vote.down svg { transform: scaleY(-1); }
+  .vote-hint { color: var(--muted); font-size: 12px; }
+  label.note-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+  textarea {
+    width: 100%;
+    min-height: 74px;
+    resize: vertical;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 12px;
+  }
+  .saved { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+  .saved .empty { margin: 0; color: var(--muted); font-size: 12.5px; }
+  .saved-item {
+    text-align: left;
+    border-color: var(--line);
+    border-radius: 12px;
+    padding: 8px 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 8px;
+    align-items: baseline;
+  }
+  .saved-label { font-size: 12.5px; }
+  .saved-vote { font-size: 11px; color: var(--accent); }
+  .saved-note {
+    flex-basis: 100%;
+    color: var(--muted);
+    font-size: 12px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .actions { display: flex; gap: 8px; margin-top: 10px; }
+  .text-btn {
+    border-color: var(--line);
+    border-radius: 999px;
+    padding: 7px 12px;
+    background: var(--raised);
+  }
+  .text-btn.primary { background: var(--ink); color: #14110c; border-color: var(--ink); }
+  .board { margin-top: 16px; padding: 14px 14px 16px; }
+  .section-head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; margin-bottom: 10px; }
+  .section-head p { margin: 0; font-size: 12.5px; }
+  .group-label {
+    margin: 12px 0 8px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+  }
+  .grid, .states { display: flex; flex-wrap: wrap; gap: 8px 6px; }
+  .cell { width: 104px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .pick {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    border-radius: 16px;
+    padding: 2px 2px 4px;
+    color: inherit;
+  }
+  .pick .slot, .state-slot { width: 92px; height: 100px; }
+  .pick .name { display: block; font-size: 12.5px; }
+  .pick .aka { display: block; color: var(--muted); font-size: 11px; min-height: 1.2em; }
+  .cell .votes { display: flex; gap: 4px; }
+  .cell .vote { width: 28px; height: 24px; }
+  .cell[data-selected="true"] .pick { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+  .states .cell { width: 112px; }
+  .states .state-slot { width: 100px; height: 108px; margin: 0 auto; }
+  footer { margin-top: 18px; color: var(--muted); font-size: 12.5px; }
+  #boot-error {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #3a2226;
+    color: #f3b0b0;
+  }
+  @media (max-width: 980px) {
+    .studio { grid-template-columns: 1fr; }
+    h1 { font-size: 28px; }
+    #stage { min-height: 360px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .choice, .chip, .swatch { transition: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Ensemble Node</p>
+    <h1>Design lab</h1>
+    <p class="lede">A private stage for a softer, more alive node. The eight shapes, eight colours, and three eye styles match the app. Anything marked with a gold dot is a proposal. Nothing here changes the product.</p>
+  </header>
+
+  <div class="studio">
+    <section class="stage-card" aria-label="Stage">
+      <div id="stage" tabindex="0" role="button" aria-label="Node stage"></div>
+      <div class="stage-meta">
+        <h2 id="hero-name">Node</h2>
+        <p class="blurb" id="hero-blurb"></p>
+        <p class="idline" id="hero-id"></p>
+        <p class="status" id="status" aria-live="polite"></p>
+        <p class="hint">Poke, double-click, drag to throw, or rub to pet. Eyes follow the pointer.</p>
+      </div>
+      <div class="motion" aria-label="Animation speed and intensity">
+        <div class="slider">
+          <label for="speed">Speed <output id="speed-out" for="speed">1.0×</output></label>
+          <input id="speed" type="range" min="0" max="2" step="0.05" value="1" aria-describedby="motion-note">
+        </div>
+        <div class="slider">
+          <label for="intensity">Intensity <output id="intensity-out" for="intensity">100%</output></label>
+          <input id="intensity" type="range" min="0" max="1.5" step="0.05" value="1">
+        </div>
+        <p class="motion-note" id="motion-note" hidden></p>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Appearance">
+      <div class="picker-row">
+        <div class="label" id="shape-label">Shape</div>
+        <div class="choices" id="shape-row" role="group" aria-labelledby="shape-label"></div>
+      </div>
+      <div class="picker-row">
+        <div class="label" id="colour-label">Colour</div>
+        <div class="swatches" id="colour-row" role="group" aria-labelledby="colour-label"></div>
+      </div>
+      <div class="picker-row">
+        <div class="label" id="eyes-label">Eyes</div>
+        <div class="choices" id="eye-row" role="group" aria-labelledby="eyes-label"></div>
+      </div>
+      <div class="picker-row" style="align-items: start">
+        <div class="label" id="state-label" style="padding-top: 6px">State</div>
+        <div class="chips" id="state-row" role="group" aria-labelledby="state-label"></div>
+      </div>
+      <p class="state-hint" id="state-hint"></p>
+
+      <div class="feedback">
+        <h2>Feedback</h2>
+        <p class="variant-label" id="variant-label"></p>
+        <div class="vote-row">
+          <button type="button" class="vote" id="vote-up" data-vote="up" aria-pressed="false" aria-label="Thumbs up for this variant"></button>
+          <button type="button" class="vote down" id="vote-down" data-vote="down" aria-pressed="false" aria-label="Thumbs down for this variant"></button>
+          <span class="vote-hint">Saved in this browser</span>
+        </div>
+        <label class="note-label" for="note">Note for this variant</label>
+        <textarea id="note" placeholder="What should change, and what already feels right?" autocomplete="off"></textarea>
+        <div class="saved" id="saved" aria-live="polite"></div>
+        <div class="actions">
+          <button type="button" class="text-btn primary" id="export">Export JSON</button>
+          <button type="button" class="text-btn" id="clear">Clear</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="board" aria-labelledby="states-heading">
+    <div class="section-head">
+      <h2 id="states-heading">Every state</h2>
+      <p id="states-caption"></p>
+    </div>
+    <div class="states" id="state-strip"></div>
+  </section>
+
+  <section class="board" aria-labelledby="shapes-heading">
+    <div class="section-head">
+      <h2 id="shapes-heading">All shapes</h2>
+      <p id="shapes-caption">About 50px tall, the size of a sidebar node.</p>
+    </div>
+    <div class="group-label">In the app</div>
+    <div class="grid" id="grid-app"></div>
+    <div class="group-label">Proposals</div>
+    <div class="grid" id="grid-new"></div>
+  </section>
+
+  <footer>Prototype only. This page does not change the app. Thumbs and notes stay in local storage until you export them.</footer>
+  <div id="boot-error" hidden></div>
+</div>
+
+<script>
+"use strict";
+/**
+ * Design-lab nodes stay compatible with the app's Avatar model
+ * (apps/node-web/lib/types.ts, components/node-avatar.tsx):
+ *   shape: orb | square | spark | hex | leaf | compass | pebble | bloom
+ *   eyes:  dot | line | wide
+ *   colour: the eight avatar hexes
+ * Proposals add shape cloud | heart | gem | mochi and eyes cheer | star | soft.
+ * States are a lab vocabulary. Today the app only distinguishes idle, a shared
+ * "thinking" work wobble, resting (forced line eyes), and paused (dimmed).
+ * Face coordinates still live in the same 0–100 space as NodeAvatar. The viewBox
+ * is wider so cues (progress, thought, zzz, badge) fit at small sizes.
+ */
+const SVG = "http://www.w3.org/2000/svg";
+const FEED_KEY = "ensemble.node.designLab.feedback.v1";
+const CENTER = { x: 50, y: 56 };
+const GROUND = 96;
+const VIEW_FULL = "-22 -30 144 156";
+const VIEW_TIGHT = "12 14 76 84";
+
+const SHAPES = [
+  { id: "orb", name: "Orb", aka: "Round blob", proposed: false, blurb: "The bounciest body. It squashes hard when it lands." },
+  { id: "square", name: "Square", aka: "Soft square", proposed: false, blurb: "Steady. The eyes look around while the body stays put." },
+  { id: "spark", name: "Spark", aka: "Spiky star", proposed: false, blurb: "Twitchy, with a spin always waiting in the points." },
+  { id: "hex", name: "Hex", aka: "Hexagon", proposed: false, blurb: "Deliberate. Working, it rocks rather than bounces." },
+  { id: "leaf", name: "Leaf", aka: "Droplet", proposed: false, blurb: "Floaty. The personality is the sway." },
+  { id: "compass", name: "Compass", aka: "Sparkle", proposed: false, blurb: "Turns like a needle. Working, it searches." },
+  { id: "pebble", name: "Pebble", aka: "Bean", proposed: false, blurb: "Slow and heavy. The softest landing of the original set." },
+  { id: "bloom", name: "Bloom", aka: "Flower", proposed: false, blurb: "Gentle. It turns the way a flower follows light." },
+  { id: "cloud", name: "Cloud", aka: "Cloud", proposed: true, blurb: "A proposal. Drifts, and gives under a poke." },
+  { id: "heart", name: "Heart", aka: "Heart", proposed: true, blurb: "A proposal. Working, it beats instead of bouncing." },
+  { id: "gem", name: "Gem", aka: "Soft gem", proposed: true, blurb: "A proposal. Crisp, small movements, a stiffer spring." },
+  { id: "mochi", name: "Mochi", aka: "Bun", proposed: true, blurb: "A proposal. The heaviest squash in the lab." },
+];
+const COLORS = [
+  { hex: "#D7B56F", name: "Mustard", app: "Gold" },
+  { hex: "#7FB3D5", name: "Sky blue", app: "Blue" },
+  { hex: "#E07A5F", name: "Coral", app: "Coral" },
+  { hex: "#81B29A", name: "Sage", app: "Sage" },
+  { hex: "#B39DDB", name: "Lavender", app: "Lavender" },
+  { hex: "#F2CC8F", name: "Sand", app: "Sand" },
+  { hex: "#5FB4A2", name: "Teal", app: "Teal" },
+  { hex: "#E8A3B5", name: "Pink", app: "Pink" },
+];
+const EYES = [
+  { id: "dot", name: "Dot", proposed: false },
+  { id: "line", name: "Sleepy", proposed: false },
+  { id: "wide", name: "Wide", proposed: false },
+  { id: "cheer", name: "Cheer", proposed: true },
+  { id: "star", name: "Star", proposed: true },
+  { id: "soft", name: "Soft", proposed: true },
+];
+const STATES = [
+  { id: "idle", name: "Idle", hint: "Breathing, a blink, and the occasional glance." },
+  { id: "listening", name: "Listening", hint: "Perked up. Sound marks, and the eyes stay with you." },
+  { id: "thinking", name: "Thinking", hint: "Looks up and away. A thought is turning over." },
+  { id: "working", name: "Working", hint: "Busy on a task. The ring is progress, the squash is effort." },
+  { id: "success", name: "Success", hint: "Done, and pleased. A check stays so it reads when still." },
+  { id: "attention", name: "Needs you", hint: "Something wants a look. A shake, a frown, a badge." },
+  { id: "sleeping", name: "Sleeping", hint: "Offline. Closed eyes, a slump, and zzz." },
+];
+const PERSONALITY = {
+  orb:     { stiff: 150, damp: 11, breathe: 1.05, sway: 0.35, spin: 0.15, squash: 1.15 },
+  square:  { stiff: 270, damp: 18, breathe: 0.4, sway: 0.1, spin: 0.05, squash: 0.55 },
+  spark:   { stiff: 200, damp: 9.5, breathe: 0.65, sway: 0.28, spin: 1, squash: 0.75 },
+  hex:     { stiff: 220, damp: 15, breathe: 0.5, sway: 0.45, spin: 0.2, squash: 0.62 },
+  leaf:    { stiff: 130, damp: 10, breathe: 0.9, sway: 1, spin: 0.2, squash: 0.85 },
+  compass: { stiff: 240, damp: 13, breathe: 0.35, sway: 0.16, spin: 1, squash: 0.5 },
+  pebble:  { stiff: 108, damp: 12.5, breathe: 1.2, sway: 0.42, spin: 0.05, squash: 1.25 },
+  bloom:   { stiff: 150, damp: 11, breathe: 0.85, sway: 0.8, spin: 0.4, squash: 0.8 },
+  cloud:   { stiff: 118, damp: 9, breathe: 1.15, sway: 0.95, spin: 0.12, squash: 1 },
+  heart:   { stiff: 160, damp: 10.5, breathe: 1.1, sway: 0.4, spin: 0.12, squash: 0.9 },
+  gem:     { stiff: 310, damp: 18, breathe: 0.28, sway: 0.08, spin: 0.3, squash: 0.4 },
+  mochi:   { stiff: 92, damp: 11, breathe: 1.35, sway: 0.2, spin: 0.04, squash: 1.4 },
+};
+const FACES = {
+  orb:     { x: 50, y: 52, gap: 13, s: 1 },
+  square:  { x: 50, y: 52, gap: 12.5, s: 0.98 },
+  spark:   { x: 50, y: 54, gap: 8.2, s: 0.66 },
+  hex:     { x: 50, y: 54, gap: 11.5, s: 0.92 },
+  leaf:    { x: 50, y: 60, gap: 11, s: 0.9 },
+  compass: { x: 50, y: 54, gap: 6.6, s: 0.54 },
+  pebble:  { x: 56, y: 60, gap: 11, s: 0.9 },
+  bloom:   { x: 50, y: 56, gap: 9.2, s: 0.72 },
+  cloud:   { x: 50, y: 58, gap: 12, s: 0.86 },
+  heart:   { x: 50, y: 50, gap: 10, s: 0.78 },
+  gem:     { x: 50, y: 56, gap: 8.6, s: 0.68 },
+  mochi:   { x: 50, y: 64, gap: 12.5, s: 0.92 },
+};
+const POKE = ["giggle", "wink", "surprise", "delight"];
+const POKE_LINE = { giggle: "Giggle", wink: "Wink", surprise: "Surprise", delight: "Delight" };
+const THUMB = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path fill="currentColor" d="M8 10.2V21H4.8V10.2H8zm2.2 10.8h6.7a2 2 0 0 0 2-1.6l1.3-6.4a1.7 1.7 0 0 0-1.7-2H15V6.3A2.3 2.3 0 0 0 12.7 4c-.5 0-.8.3-1 .7L8.8 10.2h1.4V21z"/></svg>';
+
+const selection = { shape: "spark", color: "#E07A5F", eyes: "wide", state: "idle" };
+const pointer = { x: 0, y: 0, ok: false };
+const live = [];
+let uid = 0;
+let feedback = {};
+let hero = null;
+const gallery = [];
+const strip = [];
+const shapeThumbs = [];
+const eyeThumbs = [];
+let flashTimer = 0;
+let clearTimer = 0;
+let clearArmed = false;
+
+const speedInput = document.getElementById("speed");
+const intensityInput = document.getElementById("intensity");
+const speedOut = document.getElementById("speed-out");
+const intensityOut = document.getElementById("intensity-out");
+const motionNote = document.getElementById("motion-note");
+const statusEl = document.getElementById("status");
+const stageEl = document.getElementById("stage");
+const noteEl = document.getElementById("note");
+const savedEl = document.getElementById("saved");
+const lab = {
+  get speed() { return Number(speedInput.value); },
+  get intensity() { return Number(intensityInput.value); },
+};
+
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+function n(v) { return (Math.round(v * 100) / 100).toString(); }
+function S(tag, attrs) {
+  const el = document.createElementNS(SVG, tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) if (v != null) el.setAttribute(k, String(v));
+  return el;
+}
+function parseHex(color) {
+  const match = /^#?([0-9a-f]{6})$/i.exec(String(color).trim());
+  const value = match ? parseInt(match[1], 16) : 0xd7b56f;
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+}
+function mix(rgb, target, amount) {
+  return rgb.map((part) => Math.round(part + (target - part) * amount));
+}
+function hex(rgb) {
+  return "#" + rgb.map((part) => part.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+function luminance(rgb) {
+  const lin = rgb.map((part) => {
+    const c = part / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+}
+function tones(color) {
+  const rgb = parseHex(color);
+  return {
+    base: hex(rgb),
+    lighter: hex(mix(rgb, 255, 0.72)),
+    light: hex(mix(rgb, 255, 0.46)),
+    shade: hex(mix(rgb, 0, 0.14)),
+    deep: hex(mix(rgb, 0, 0.32)),
+    edge: hex(mix(rgb, 0, 0.38)),
+    eyes: luminance(rgb) > 0.179 ? "#14110C" : "#FBF8F1",
+  };
+}
+function byId(list, id) { return list.find((item) => item.id === id) || list[0]; }
+function colorByHex(color) {
+  return COLORS.find((item) => item.hex.toUpperCase() === String(color).toUpperCase()) || COLORS[2];
+}
+function familyOf(shape) {
+  if (shape === "square" || shape === "hex" || shape === "gem") return "rock";
+  if (shape === "spark" || shape === "compass") return "twist";
+  if (shape === "leaf" || shape === "bloom" || shape === "cloud") return "sway";
+  if (shape === "heart") return "beat";
+  return "bounce";
+}
+function springTo(state, target, stiff, damp, dt) {
+  const acc = (target - state.p) * stiff - state.v * damp;
+  state.v += acc * dt;
+  state.p += state.v * dt;
+}
+function variantId(shape, color, eyes, state) {
+  return [shape, String(color).toUpperCase(), eyes, state].join("|");
+}
+function describe(shape, color, eyes, state) {
+  const s = byId(SHAPES, shape);
+  const c = colorByHex(color);
+  const e = byId(EYES, eyes);
+  const st = byId(STATES, state);
+  return {
+    id: variantId(s.id, c.hex, e.id, st.id),
+    shape: s.id,
+    color: c.hex,
+    colorName: c.name,
+    appColor: c.app,
+    eyes: e.id,
+    eyeName: e.name,
+    state: st.id,
+    stateName: st.name,
+    label: s.name + " · " + c.name + " · " + e.name + " · " + st.name,
+  };
+}
+
+function ellipsePath(cx, cy, rx, ry) {
+  return "M" + n(cx - rx) + " " + n(cy) + "A" + n(rx) + " " + n(ry) + " 0 1 0 " + n(cx + rx) + " " + n(cy) + "A" + n(rx) + " " + n(ry) + " 0 1 0 " + n(cx - rx) + " " + n(cy) + "Z";
+}
+function roundRect(x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  return "M" + n(x + r) + " " + n(y) + "H" + n(x + w - r) + "Q" + n(x + w) + " " + n(y) + " " + n(x + w) + " " + n(y + r) + "V" + n(y + h - r) + "Q" + n(x + w) + " " + n(y + h) + " " + n(x + w - r) + " " + n(y + h) + "H" + n(x + r) + "Q" + n(x) + " " + n(y + h) + " " + n(x) + " " + n(y + h - r) + "V" + n(y + r) + "Q" + n(x) + " " + n(y) + " " + n(x + r) + " " + n(y) + "Z";
+}
+function regular(sides, radius, rot, cx, cy) {
+  const pts = [];
+  for (let i = 0; i < sides; i++) {
+    const a = rot + (i * 2 * Math.PI) / sides;
+    pts.push([cx + Math.cos(a) * radius, cy + Math.sin(a) * radius]);
+  }
+  return pts;
+}
+function starPoints(cx, cy, outer, inner, spikes, rot) {
+  const pts = [];
+  for (let i = 0; i < spikes * 2; i++) {
+    const a = rot + (i * Math.PI) / spikes;
+    const r = i % 2 === 0 ? outer : inner;
+    pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+  }
+  return pts;
+}
+function roundedPoly(points, radius) {
+  const len = points.length;
+  let d = "";
+  for (let i = 0; i < len; i++) {
+    const prev = points[(i - 1 + len) % len];
+    const curr = points[i];
+    const next = points[(i + 1) % len];
+    const v1x = prev[0] - curr[0], v1y = prev[1] - curr[1];
+    const v2x = next[0] - curr[0], v2y = next[1] - curr[1];
+    const l1 = Math.hypot(v1x, v1y) || 1;
+    const l2 = Math.hypot(v2x, v2y) || 1;
+    const r = Math.min(radius, l1 / 2.05, l2 / 2.05);
+    const p1x = curr[0] + (v1x / l1) * r, p1y = curr[1] + (v1y / l1) * r;
+    const p2x = curr[0] + (v2x / l2) * r, p2y = curr[1] + (v2y / l2) * r;
+    d += (i === 0 ? "M" : "L") + n(p1x) + " " + n(p1y);
+    d += "Q" + n(curr[0]) + " " + n(curr[1]) + " " + n(p2x) + " " + n(p2y);
+  }
+  return d + "Z";
+}
+function beanPath() {
+  const steps = 80;
+  let d = "";
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * Math.PI * 2;
+    const dent = Math.exp(-((t - Math.PI) ** 2) / 0.9) * 14;
+    const x = 54 + Math.cos(t) * (37 - dent);
+    const y = 58 + Math.sin(t) * (35 - dent * 0.25);
+    d += (i ? "L" : "M") + n(x) + " " + n(y);
+  }
+  return d + "Z";
+}
+function scallop(cx, cy, base, amp, petals) {
+  const steps = petals * 28;
+  let d = "";
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * Math.PI * 2;
+    const r = base + Math.cos(petals * t) * amp;
+    const x = cx + Math.cos(t - Math.PI / 2) * r;
+    const y = cy + Math.sin(t - Math.PI / 2) * r;
+    d += (i ? "L" : "M") + n(x) + " " + n(y);
+  }
+  return d + "Z";
+}
+function shapePath(id) {
+  switch (id) {
+    case "orb": return ellipsePath(50, 55, 38.5, 39);
+    case "square": return roundRect(14, 17, 72, 77, 26);
+    case "spark": return roundedPoly(starPoints(50, 55, 42, 21, 8, -Math.PI / 2), 7);
+    case "hex": return roundedPoly(regular(6, 41, -Math.PI / 2, 50, 55), 14);
+    case "leaf": return "M50 16C64 20 82 36 84 56C87 78 70 96 50 96C30 96 13 78 16 56C18 36 36 20 50 16Z";
+    case "compass": return roundedPoly(starPoints(50, 55, 44, 16, 4, -Math.PI / 2), 10);
+    case "pebble": return beanPath();
+    case "bloom": return scallop(50, 57, 29, 13, 6);
+    case "cloud": return "M24 76C12 76 8 64 16 56C8 46 18 32 34 36C38 20 58 18 66 34C78 22 96 32 92 48C106 54 100 72 86 76C82 92 58 94 44 86C32 94 26 88 24 76Z";
+    case "heart": return roundedPoly([
+      [50, 42], [36, 24], [22, 22], [14, 38], [16, 56], [32, 74], [50, 90],
+      [68, 74], [84, 56], [86, 38], [78, 22], [64, 24],
+    ], 13);
+    case "gem": return roundedPoly([[50, 14], [86, 54], [50, 96], [14, 54]], 16);
+    case "mochi": return ellipsePath(50, 60, 40, 35);
+    default: return ellipsePath(50, 55, 37, 40);
+  }
+}
+function decalFor(id, tone) {
+  if (id === "mochi") return { d: "M30 42Q50 50 70 42", fill: "none", stroke: tone.deep, width: 2.6, opacity: 0.5 };
+  if (id === "gem") return { d: "M50 32L68 56L50 50L32 56Z", fill: tone.lighter, stroke: "none", width: 0, opacity: 0.42 };
+  if (id === "leaf") return { d: "M50 24C50 34 50 42 50 48", fill: "none", stroke: tone.lighter, width: 2.2, opacity: 0.45 };
+  return null;
+}
+
+function addEyeGraphic(parent, style, s, fill) {
+  parent.replaceChildren();
+  if (style === "line") {
+    parent.appendChild(S("rect", { x: n(-7.2 * s), y: n(-2.15 * s), width: n(14.4 * s), height: n(4.3 * s), rx: n(2.15 * s), fill: fill }));
+    return;
+  }
+  if (style === "cheer") {
+    parent.appendChild(S("path", {
+      d: "M" + n(-6.4 * s) + " " + n(1.6 * s) + "Q0 " + n(-4.6 * s) + " " + n(6.4 * s) + " " + n(1.6 * s),
+      fill: "none", stroke: fill, "stroke-width": n(3.15 * s), "stroke-linecap": "round",
+    }));
+    return;
+  }
+  if (style === "star") {
+    parent.appendChild(S("path", { d: roundedPoly(starPoints(0, 0, 7.6 * s, 3.3 * s, 4, -Math.PI / 2), 1.15 * s), fill: fill }));
+    parent.appendChild(S("circle", { cx: n(-1.5 * s), cy: n(-1.8 * s), r: n(1.35 * s), fill: "#FFFFFF", opacity: "0.92" }));
+    return;
+  }
+  const wide = style === "wide";
+  const soft = style === "soft";
+  const rx = wide ? 6.3 * s : soft ? 7.1 * s : 5.25 * s;
+  const ry = wide ? 8.5 * s : soft ? 4.9 * s : 5.25 * s;
+  parent.appendChild(S("ellipse", { cx: 0, cy: 0, rx: n(rx), ry: n(ry), fill: fill }));
+  parent.appendChild(S("circle", {
+    cx: n((wide ? -2.1 : -1.7) * s),
+    cy: n((wide ? -3.1 : soft ? -1.3 : -1.8) * s),
+    r: n((wide ? 2 : 1.55) * s),
+    fill: "#FFFFFF",
+    opacity: "0.92",
+  }));
+  if (wide) parent.appendChild(S("circle", { cx: n(2.1 * s), cy: n(2.5 * s), r: n(0.85 * s), fill: "#FFFFFF", opacity: "0.4" }));
+}
+function addClosed(parent, s, fill) {
+  parent.replaceChildren();
+  parent.appendChild(S("path", {
+    d: "M" + n(-6.2 * s) + " 0Q0 " + n(3.5 * s) + " " + n(6.2 * s) + " 0",
+    fill: "none", stroke: fill, "stroke-width": n(2.7 * s), "stroke-linecap": "round",
+  }));
+}
+
+function NodeView(host, opts) {
+  this.id = "n" + (++uid);
+  this.host = host;
+  this.role = opts.role || "live";
+  this.live = opts.live !== false;
+  this.interactive = !!opts.interactive;
+  this.shape = opts.shape;
+  this.color = opts.color;
+  this.eyes = opts.eyes;
+  this.state = opts.state || "idle";
+  this.tight = !!opts.tight;
+  this.ox = { p: 0, v: 0 };
+  this.oy = { p: 0, v: 0 };
+  this.orot = { p: 0, v: 0 };
+  this.osx = { p: 0, v: 0 };
+  this.osy = { p: 0, v: 0 };
+  this.gx = { p: 0, v: 0 };
+  this.gy = { p: 0, v: 0 };
+  this.pose = { x: 0, y: 0, rot: 0, sx: 1, sy: 1 };
+  this.time = Math.random() * 20;
+  this.raw = Math.random() * 4;
+  this.eyeOpen = 1;
+  this.blinkUntil = 0;
+  this.blinkDur = 0.15;
+  this.nextBlink = this.time + 0.8 + Math.random() * 2.4;
+  this.nextIdleWink = this.time + 5 + Math.random() * 6;
+  this.glance = { x: 0, y: 0, until: 0, next: this.time + 1.5 + Math.random() * 3 };
+  this.expr = null;
+  this.hoverLift = 0;
+  this.hoverTarget = 0;
+  this.lean = 0;
+  this.leanTarget = 0;
+  this.dist = 9999;
+  this.box = null;
+  this.pointerDX = 0;
+  this.pointerDY = 0;
+  this.shake = 0;
+  this.spinAngle = 0;
+  this.spinTo = 0;
+  this.spinT = 1;
+  this.spinDur = 0.7;
+  this.thrown = false;
+  this.petting = false;
+  this.wiggleAmp = 0;
+  this.pokes = 0;
+  this.lastPoke = 0;
+  this.drag = null;
+  this.prevWork = null;
+  this.stateStart = this.raw - 2;
+  this.face = FACES[this.shape];
+  this.build();
+  if (this.live) live.push(this);
+  else this.renderStill();
+}
+NodeView.prototype.build = function () {
+  const id = this.id;
+  const svg = S("svg", { viewBox: this.tight ? VIEW_TIGHT : VIEW_FULL, role: "presentation", "aria-hidden": "true" });
+  svg.dataset.role = this.role;
+  const defs = S("defs");
+  const fillGrad = S("radialGradient", { id: id + "-fill", cx: "32%", cy: "26%", r: "78%" });
+  this.fillStops = ["0%", "18%", "50%", "78%", "100%"].map((offset) => {
+    const stop = S("stop", { offset: offset });
+    fillGrad.appendChild(stop);
+    return stop;
+  });
+  const specGrad = S("radialGradient", { id: id + "-spec", cx: "40%", cy: "40%", r: "55%" });
+  this.specStops = [0, 1, 2].map(() => S("stop"));
+  this.specStops[0].setAttribute("offset", "0%");
+  this.specStops[1].setAttribute("offset", "42%");
+  this.specStops[2].setAttribute("offset", "100%");
+  specGrad.append(...this.specStops);
+  const aoGrad = S("radialGradient", { id: id + "-ao", cx: "50%", cy: "45%", r: "55%" });
+  this.aoStops = [0, 1].map(() => S("stop"));
+  this.aoStops[0].setAttribute("offset", "0%");
+  this.aoStops[1].setAttribute("offset", "100%");
+  aoGrad.append(...this.aoStops);
+  const ground = S("radialGradient", { id: id + "-ground", cx: "50%", cy: "50%", r: "50%" });
+  ground.append(S("stop", { offset: "0%", "stop-color": "#000000", "stop-opacity": "0.42" }));
+  ground.append(S("stop", { offset: "58%", "stop-color": "#000000", "stop-opacity": "0.14" }));
+  ground.append(S("stop", { offset: "100%", "stop-color": "#000000", "stop-opacity": "0" }));
+  this.clip = S("clipPath", { id: id + "-clip" });
+  this.clipPath = S("path");
+  this.clip.appendChild(this.clipPath);
+  defs.append(fillGrad, specGrad, aoGrad, ground, this.clip);
+  svg.appendChild(defs);
+
+  this.slide = S("g");
+  this.shadow = S("ellipse", { cx: 50, cy: 106, rx: 32, ry: 9, fill: "url(#" + id + "-ground)" });
+  this.rise = S("g");
+  this.squash = S("g");
+  this.spinGroup = S("g");
+  this.fillPath = S("path", { fill: "url(#" + id + "-fill)" });
+  this.decal = S("path", { "stroke-linecap": "round", display: "none" });
+  this.ao = S("ellipse", { cx: 60, cy: 78, rx: 30, ry: 20, fill: "url(#" + id + "-ao)" });
+  this.spec = S("ellipse", { cx: 34, cy: 36, rx: 24, ry: 16, fill: "url(#" + id + "-spec)" });
+  this.sweat = S("g", { opacity: "0" });
+  this.sweat.appendChild(S("path", {
+    d: "M0 0C2.2 0 4.2 2.4 4.2 5.2C4.2 8.2 2.4 11 0 12.2C-2.4 11 -4.2 8.2 -4.2 5.2C-4.2 2.4 -2.2 0 0 0Z",
+    fill: "#F4FBFF", stroke: "#9EC9E8", "stroke-width": "0.6",
+  }));
+  const clipped = S("g", { "clip-path": "url(#" + id + "-clip)" });
+  clipped.append(this.decal, this.ao, this.spec);
+  this.rim = S("path", { fill: "none", "stroke-linejoin": "round", "stroke-width": "1.7" });
+  this.face = S("g");
+  this.gaze = S("g");
+  this.eyeL = S("g");
+  this.eyeR = S("g");
+  this.lidL = S("g");
+  this.lidR = S("g");
+  this.closedL = S("g", { opacity: "0" });
+  this.closedR = S("g", { opacity: "0" });
+  this.eyeL.append(this.lidL, this.closedL);
+  this.eyeR.append(this.lidR, this.closedR);
+  this.mouth = S("path", { fill: "none", "stroke-linecap": "round", opacity: "0" });
+  this.mouthO = S("ellipse", { rx: "3.2", ry: "3.8", opacity: "0" });
+  this.blushL = S("ellipse", { rx: "7", ry: "3.4", fill: "#D4537E", opacity: "0" });
+  this.blushR = S("ellipse", { rx: "7", ry: "3.4", fill: "#D4537E", opacity: "0" });
+  this.gaze.append(this.eyeL, this.eyeR, this.mouth, this.mouthO, this.blushL, this.blushR);
+  this.face.append(this.gaze, this.sweat);
+  this.spinGroup.append(this.fillPath, clipped, this.rim, this.face);
+  this.squash.appendChild(this.spinGroup);
+
+  this.cues = S("g");
+  this.listen = S("g", { transform: "translate(100 50)", opacity: "0" });
+  this.arc1 = S("path", { d: "M-4 -13A15 15 0 0 1 -4 13", fill: "none", stroke: "#E7F0F1", "stroke-width": "3.2", "stroke-linecap": "round" });
+  this.arc2 = S("path", { d: "M3 -19A21 21 0 0 1 3 19", fill: "none", stroke: "#E7F0F1", "stroke-width": "3.2", "stroke-linecap": "round" });
+  this.listen.append(this.arc1, this.arc2);
+
+  this.think = S("g", { transform: "translate(78 2)", opacity: "0" });
+  this.think.append(S("circle", { cx: -18, cy: 16, r: 3.4, fill: "#E4EEF0" }));
+  this.think.append(S("circle", { cx: -10, cy: 8, r: 5.5, fill: "#E4EEF0" }));
+  this.think.append(S("circle", { cx: 6, cy: -2, r: 15, fill: "#E4EEF0" }));
+  this.dots = [-5, 2, 9].map((x) => S("circle", { cx: x, cy: -2, r: 1.7, fill: "#1C2C30" }));
+  this.think.append(...this.dots);
+
+  this.work = S("g", { opacity: "0" });
+  this.workTrack = S("circle", { cx: "50", cy: "56", r: "52", fill: "none", stroke: "#F4EFE4", "stroke-width": "4.6", "stroke-opacity": "0.2" });
+  this.workArc = S("circle", {
+    cx: "50", cy: "56", r: "52", fill: "none", stroke: "#F7F1E4", "stroke-width": "4.6", "stroke-linecap": "round",
+    transform: "rotate(-90 50 56)",
+  });
+  this.workCirc = 2 * Math.PI * 52;
+  this.workArc.setAttribute("stroke-dasharray", String(this.workCirc));
+  this.work.append(this.workTrack, this.workArc);
+
+  this.sleep = S("g", { transform: "translate(72 8)", opacity: "0" });
+  this.zz = [0, 1, 2].map(() => S("text", {
+    fill: "#F4EFE4", "font-family": "ui-sans-serif, system-ui, sans-serif", "font-weight": "750", "font-size": "14", "text-anchor": "middle",
+  }));
+  this.zz.forEach((z) => { z.textContent = "z"; this.sleep.appendChild(z); });
+
+  this.sparkles = S("g", { opacity: "0" });
+  this.sparks = [[18, 18], [84, 14], [14, 70]].map(([x, y], i) => {
+    const g = S("g", { transform: "translate(" + x + " " + y + ")" });
+    g.appendChild(S("path", {
+      d: roundedPoly(starPoints(0, 0, i === 2 ? 5 : 6.5, 2.2, 4, -Math.PI / 2), 0.8),
+      fill: "#F4EFE4",
+    }));
+    this.sparkles.appendChild(g);
+    return g;
+  });
+
+  this.badge = S("g", { transform: "translate(102 86)", opacity: "0" });
+  this.badgeCircle = S("circle", { r: 11, fill: "#68BE8C", stroke: "#0B191C", "stroke-width": "2" });
+  this.check = S("path", { d: "M-5 0.5L-1.6 4.2L5.2 -3.4", fill: "none", stroke: "#FBF8F1", "stroke-width": "2.4", "stroke-linecap": "round", "stroke-linejoin": "round" });
+  this.bang = S("text", {
+    y: "1", fill: "#FBF8F1", "font-family": "ui-sans-serif, system-ui, sans-serif", "font-weight": "800", "font-size": "15", "text-anchor": "middle", "dominant-baseline": "middle",
+  });
+  this.bang.textContent = "!";
+  this.badge.append(this.badgeCircle, this.check, this.bang);
+
+  this.cues.append(this.work, this.listen, this.think, this.sleep, this.sparkles, this.badge);
+  this.rise.append(this.squash, this.cues);
+  this.slide.append(this.shadow, this.rise);
+  svg.appendChild(this.slide);
+  this.svg = svg;
+  this.host.replaceChildren(svg);
+  this.applyLook();
+};
+NodeView.prototype.applyLook = function () {
+  const tone = tones(this.color);
+  const face = FACES[this.shape] || FACES.orb;
+  this.face = face;
+  const d = shapePath(this.shape);
+  this.fillPath.setAttribute("d", d);
+  this.rim.setAttribute("d", d);
+  this.clipPath.setAttribute("d", d);
+  this.rim.setAttribute("stroke", tone.edge);
+  ["lighter", "light", "base", "shade", "deep"].forEach((key, index) => {
+    this.fillStops[index].setAttribute("stop-color", tone[key]);
+  });
+  this.specStops[0].setAttribute("stop-color", tone.lighter);
+  this.specStops[0].setAttribute("stop-opacity", "0.95");
+  this.specStops[1].setAttribute("stop-color", tone.light);
+  this.specStops[1].setAttribute("stop-opacity", "0.28");
+  this.specStops[2].setAttribute("stop-color", tone.light);
+  this.specStops[2].setAttribute("stop-opacity", "0");
+  this.aoStops[0].setAttribute("stop-color", tone.deep);
+  this.aoStops[0].setAttribute("stop-opacity", "0.55");
+  this.aoStops[1].setAttribute("stop-color", tone.deep);
+  this.aoStops[1].setAttribute("stop-opacity", "0");
+  const decal = decalFor(this.shape, tone);
+  if (decal) {
+    this.decal.removeAttribute("display");
+    this.decal.setAttribute("d", decal.d);
+    this.decal.setAttribute("fill", decal.fill);
+    this.decal.setAttribute("stroke", decal.stroke);
+    this.decal.setAttribute("stroke-width", String(decal.width));
+    this.decal.setAttribute("opacity", String(decal.opacity));
+  } else {
+    this.decal.setAttribute("display", "none");
+  }
+  addEyeGraphic(this.lidL, this.eyes, face.s, tone.eyes);
+  addEyeGraphic(this.lidR, this.eyes, face.s, tone.eyes);
+  addClosed(this.closedL, face.s, tone.eyes);
+  addClosed(this.closedR, face.s, tone.eyes);
+  const drop = this.eyes === "line" ? 1.8 * face.s : 0;
+  this.eyeL.setAttribute("data-x", n(face.x - face.gap));
+  this.eyeL.setAttribute("data-y", n(face.y + drop));
+  this.eyeR.setAttribute("data-x", n(face.x + face.gap));
+  this.eyeR.setAttribute("data-y", n(face.y + drop));
+  const my = face.y + 14.2 * face.s;
+  this.mouth.setAttribute("stroke", tone.eyes);
+  this.mouth.setAttribute("stroke-width", n(2.5 * face.s));
+  this.mouthO.setAttribute("fill", tone.eyes);
+  this.mouthO.setAttribute("cx", n(face.x));
+  this.mouthO.setAttribute("cy", n(my));
+  this.mouthO.setAttribute("rx", n(2.7 * face.s));
+  this.mouthO.setAttribute("ry", n(3.3 * face.s));
+  this.mouthY = my;
+  this.mouthX = face.x;
+  const blushY = face.y + 9 * face.s;
+  const blushX = face.gap + 2 * face.s;
+  this.blushL.setAttribute("cx", n(face.x - blushX));
+  this.blushR.setAttribute("cx", n(face.x + blushX));
+  this.blushL.setAttribute("cy", n(blushY));
+  this.blushR.setAttribute("cy", n(blushY));
+  this.blushL.setAttribute("rx", n(6.4 * face.s));
+  this.blushR.setAttribute("rx", n(6.4 * face.s));
+  this.blushL.setAttribute("ry", n(3.2 * face.s));
+  this.blushR.setAttribute("ry", n(3.2 * face.s));
+  this.sweatBase = { x: face.x + face.gap + 3.2 * face.s, y: face.y + 7.5 * face.s };
+  this.svg.dataset.shape = this.shape;
+  this.svg.dataset.eyes = this.eyes;
+  this.svg.dataset.state = this.state;
+  this.svg.dataset.color = tone.base;
+  if (this.live) this.paint(lab.intensity);
+  else this.renderStill();
+};
+NodeView.prototype.setState = function (state, quiet) {
+  const changed = this.state !== state;
+  this.state = state;
+  this.svg.dataset.state = state;
+  if (quiet) return;
+  if (!changed && state !== "success" && state !== "attention" && state !== "working") return;
+  this.stateStart = this.raw;
+  if (lab.intensity <= 0.01) return;
+  const pers = PERSONALITY[this.shape];
+  const amp = lab.intensity;
+  if (state === "success") {
+    this.oy.v = -150 * amp;
+    this.osx.p = -0.05 * pers.squash;
+    this.osy.p = 0.1 * pers.squash;
+    this.thrown = true;
+  } else if (state === "attention") {
+    this.shake = 1;
+  } else if (state === "sleeping") {
+    this.osx.p = 0.08 * pers.squash;
+    this.osy.p = -0.1 * pers.squash;
+  } else if (state === "listening") {
+    this.osy.p = 0.08;
+    this.osx.p = -0.05;
+  } else if (state === "thinking") {
+    this.orot.v = (Math.random() < 0.5 ? -1 : 1) * 40;
+  } else if (state === "working") {
+    this.oy.v = -70 * amp;
+    this.prevWork = null;
+  } else if (state === "idle") {
+    this.osy.p = -0.05;
+  }
+};
+NodeView.prototype.stillPose = function () {
+  if (this.state === "listening") return { x: 0, y: 2, rot: 0, sx: 0.98, sy: 1.05 };
+  if (this.state === "thinking") return { x: 0, y: -1, rot: -4, sx: 1, sy: 1 };
+  if (this.state === "working") return { x: 0, y: 1, rot: 0, sx: 1.05, sy: 0.94 };
+  if (this.state === "success") return { x: 0, y: -1.5, rot: 0, sx: 0.98, sy: 1.04 };
+  if (this.state === "sleeping") return { x: 0, y: 3.5, rot: -8, sx: 1.04, sy: 0.94 };
+  return { x: 0, y: 0, rot: 0, sx: 1, sy: 1 };
+};
+NodeView.prototype.computePose = function (intensity) {
+  if (intensity <= 0.001) return this.stillPose();
+  const p = PERSONALITY[this.shape];
+  const t = this.time;
+  const breathe = Math.sin(t * (this.state === "sleeping" ? 0.85 : 1.75));
+  let x = 0;
+  let y = breathe * -1.35 * p.breathe * intensity;
+  let rot = Math.sin(t * 0.72) * 3.2 * p.sway * intensity;
+  let sx = 1 - breathe * 0.02 * p.breathe * intensity;
+  let sy = 1 + breathe * 0.034 * p.breathe * intensity;
+  const fam = familyOf(this.shape);
+  if (this.state === "listening") {
+    sy += 0.05;
+    sx -= 0.02;
+    y += 2;
+    rot *= 0.3;
+  } else if (this.state === "thinking") {
+    rot += Math.sin(t * 0.5) * 5 * (0.35 + p.sway) * intensity;
+    y -= 1.4 * intensity;
+    x += Math.sin(t * 0.5) * 1.4 * intensity;
+    if (this.shape === "compass") rot += Math.sin(t * 0.45) * 10 * intensity;
+  } else if (this.state === "working") {
+    const w = t * 3.05;
+    if (fam === "bounce") {
+      const hop = Math.sin(w);
+      y += hop * -3.4 * intensity;
+      const down = Math.max(0, -hop);
+      sy += down * 0.08 * intensity;
+      sx += down * 0.05 * intensity;
+    } else if (fam === "rock") {
+      rot += Math.sin(w) * (this.shape === "gem" ? 5 : 9) * intensity;
+      sy += Math.cos(w) * 0.03 * intensity;
+    } else if (fam === "twist") {
+      rot += Math.sin(w * 0.75) * (this.shape === "compass" ? 16 : 11) * intensity;
+      const pulse = 0.5 + 0.5 * Math.sin(w);
+      sx += pulse * 0.045 * intensity;
+      sy -= pulse * 0.03 * intensity;
+    } else if (fam === "sway") {
+      rot += Math.sin(w * 0.65) * 11 * p.sway * intensity;
+      x += Math.sin(w * 0.65) * 2.6 * intensity;
+    } else if (fam === "beat") {
+      const ph = (t * 1.15) % 1;
+      const beat = ph < 0.12 ? Math.sin((ph / 0.12) * Math.PI) : ph < 0.24 ? Math.sin(((ph - 0.12) / 0.12) * Math.PI) * 0.55 : 0;
+      sy += beat * 0.11 * intensity;
+      sx -= beat * 0.05 * intensity;
+      y -= beat * 2.2 * intensity;
+    }
+  } else if (this.state === "success") {
+    sy += 0.03;
+    y -= 1.2 * intensity;
+    rot += Math.sin(t * 2.1) * 2.4 * (0.3 + p.sway) * intensity;
+  } else if (this.state === "attention") {
+    rot *= 0.45;
+    x += Math.sin(t * 13) * 0.35 * intensity;
+  } else if (this.state === "sleeping") {
+    rot = -8 * (0.6 + 0.4 * Math.min(p.sway, 1)) + Math.sin(t * 0.45) * 1.1 * intensity;
+    y = 3.5 + breathe * 0.4 * intensity;
+    sx = 1.045 + breathe * 0.012 * intensity;
+    sy = 0.94 + breathe * 0.02 * p.breathe * intensity;
+  }
+  if (this.state !== "sleeping") {
+    const follow = this.state === "working" ? 0.45 : 1;
+    rot += this.lean * 8 * Math.max(p.sway, 0.18) * intensity * follow;
+    y -= this.hoverLift * (this.state === "working" ? 2 : 4.5) * intensity;
+  }
+  return { x: x, y: y, rot: rot, sx: sx, sy: sy };
+};
+NodeView.prototype.updatePointer = function (dt) {
+  const rect = this.svg.getBoundingClientRect();
+  if (rect.width < 2) {
+    this.hoverTarget = 0;
+    this.leanTarget = 0;
+    this.dist = 9999;
+    return;
+  }
+  this.box = rect;
+  if (!pointer.ok) {
+    this.dist = 9999;
+    this.hoverTarget = 0;
+    this.leanTarget = 0;
+  } else {
+    const dx = pointer.x - (rect.left + rect.width / 2);
+    const dy = pointer.y - (rect.top + rect.height / 2);
+    this.pointerDX = dx;
+    this.pointerDY = dy;
+    this.dist = Math.hypot(dx, dy);
+    const near = clamp(1 - this.dist / 230, 0, 1);
+    this.hoverTarget = near;
+    this.leanTarget = clamp(dx / 150, -1, 1) * near;
+  }
+  const k = 1 - Math.exp(-dt * 7);
+  this.hoverLift += (this.hoverTarget - this.hoverLift) * k;
+  this.lean += (this.leanTarget - this.lean) * k;
+};
+NodeView.prototype.updateBlink = function () {
+  if (this.blinkUntil && this.raw < this.blinkUntil) {
+    const p = 1 - (this.blinkUntil - this.raw) / this.blinkDur;
+    const close = p < 0.38 ? p / 0.38 : 1 - (p - 0.38) / 0.62;
+    this.eyeOpen = 1 - 0.92 * clamp(close, 0, 1);
+    return;
+  }
+  this.eyeOpen = 1;
+  if (lab.speed <= 0.02 || this.state === "sleeping" || this.expr) return;
+  if (this.time > this.nextBlink) {
+    this.blinkDur = 0.15;
+    this.blinkUntil = this.raw + this.blinkDur;
+    if (this.state === "idle" && Math.random() < 0.22) this.nextBlink = this.time + 0.22;
+    else {
+      const base = this.state === "listening" ? 5.4 : this.state === "attention" ? 2.1 : 3.5;
+      this.nextBlink = this.time + base + Math.random() * base;
+    }
+  }
+};
+NodeView.prototype.updateGlance = function () {
+  if (lab.speed <= 0.02 || (this.state !== "idle" && this.state !== "success")) {
+    this.glance.x = 0;
+    this.glance.y = 0;
+    return;
+  }
+  if (this.time > this.glance.until) { this.glance.x = 0; this.glance.y = 0; }
+  if (this.time > this.glance.next) {
+    this.glance.x = (Math.random() * 2 - 1) * 3.3;
+    this.glance.y = (Math.random() * 2 - 1) * 1.3;
+    this.glance.until = this.time + 0.6 + Math.random() * 0.35;
+    this.glance.next = this.time + 3.4 + Math.random() * 3.2;
+  }
+};
+NodeView.prototype.computeGaze = function () {
+  const face = this.face;
+  const s = face.s;
+  const maxX = 5.4 * s;
+  const maxY = 4.3 * s;
+  const expr = this.expr && this.raw < this.expr.t0 + this.expr.dur ? this.expr.name : null;
+  if (this.state === "sleeping" || expr === "purr" || this.petting) return { x: 0, y: 0.3 * s };
+  if (this.state === "thinking") {
+    const phase = Math.floor(this.time / 2.15) % 3;
+    const x = phase === 0 ? -4.2 : phase === 1 ? 3.4 : -0.6;
+    return { x: x * s, y: -7.2 * s };
+  }
+  let x = 0;
+  let y = 0;
+  const tracked = pointer.ok && this.box && this.dist < 680;
+  if (tracked) {
+    x = clamp(this.pointerDX / this.box.width * 18, -maxX, maxX);
+    y = clamp(this.pointerDY / this.box.height * 16, -maxY, maxY);
+  } else if (this.state === "idle" || this.state === "success") {
+    x = this.glance.x * s;
+    y = this.glance.y * s;
+  }
+  if (this.state === "listening") {
+    x = clamp(x * 1.22, -maxX * 1.15, maxX * 1.15);
+    y = clamp(y * 1.12, -maxY * 1.05, maxY);
+  }
+  if (this.state === "working") {
+    const focus = 1 - this.hoverLift;
+    x *= 1 - focus * 0.62;
+    y = y * (1 - focus * 0.62) + 2.3 * s * focus;
+  }
+  if (this.state === "attention") y -= 0.8 * s;
+  return { x: x, y: y };
+};
+NodeView.prototype.facePlan = function () {
+  const expr = this.expr && this.raw < this.expr.t0 + this.expr.dur ? this.expr.name : null;
+  if (this.expr && !expr) this.expr = null;
+  let mouth = "none", blush = 0, worry = 0, pop = 1, lift = 0;
+  let openL = this.eyeOpen, openR = this.eyeOpen, closed = false, surprise = false;
+  if (this.state === "sleeping") { closed = true; mouth = "smile"; blush = 0.22; }
+  else if (this.state === "success") { mouth = "smile"; blush = 0.5; lift = -1.4; }
+  else if (this.state === "attention") {
+    mouth = "frown"; worry = 15; pop = 1.06;
+    if (openL > 0.45) { openL = Math.max(openL, 0.92); openR = Math.max(openR, 0.92); }
+  } else if (this.state === "listening") pop = 1.12;
+  else if (this.state === "working") {
+    if (openL > 0.45) openL *= 0.8;
+    if (openR > 0.45) openR *= 0.8;
+  }
+  if (expr === "giggle") {
+    closed = false; mouth = "smile"; blush = 0.85; lift = -1;
+    openL = openR = 0.2 + Math.abs(Math.sin(this.raw * 22)) * 0.14;
+  } else if (expr === "wink") {
+    closed = false; mouth = "smile"; blush = 0.45;
+    const u = (this.raw - this.expr.t0) / this.expr.dur;
+    if (u > 0.12 && u < 0.62) openL = 0.08;
+  } else if (expr === "surprise") {
+    closed = false; surprise = true; mouth = "o"; pop = 1.18; openL = openR = 1; lift = -0.4;
+  } else if (expr === "delight") {
+    closed = false; mouth = "smile"; blush = 0.72; lift = -1.3;
+  } else if (expr === "purr" || this.petting) {
+    closed = true; mouth = "smile"; blush = 0.9;
+  }
+  return {
+    mouth: mouth, blush: blush, openL: openL, openR: openR, closed: closed,
+    worry: worry, pop: pop, surprise: surprise, lift: lift,
+    sparkle: this.state === "success" || expr === "delight" || expr === "giggle",
+  };
+};
+NodeView.prototype.frame = function (dt) {
+  const speed = lab.speed;
+  const intensity = lab.intensity;
+  this.raw += dt;
+  this.time += dt * Math.max(0, speed);
+  this.updatePointer(dt);
+  this.updateBlink();
+  this.updateGlance();
+  if (this.role === "hero" && this.state === "idle" && !this.expr && speed > 0.02 && this.time > this.nextIdleWink) {
+    this.expr = { name: "wink", t0: this.raw, dur: 0.55 };
+    this.nextIdleWink = this.time + 8 + Math.random() * 8;
+  }
+  const target = this.computePose(intensity);
+  const k = 1 - Math.exp(-dt * 8);
+  this.pose.x += (target.x - this.pose.x) * k;
+  this.pose.y += (target.y - this.pose.y) * k;
+  this.pose.rot += (target.rot - this.pose.rot) * k;
+  this.pose.sx += (target.sx - this.pose.sx) * k;
+  this.pose.sy += (target.sy - this.pose.sy) * k;
+  const pers = PERSONALITY[this.shape];
+  let tx = 0, ty = 0;
+  if (this.shake > 0) {
+    tx = Math.sin(this.raw * 42) * 5.5 * this.shake * Math.max(intensity, 0.45);
+    this.shake = Math.max(0, this.shake - dt * 1.35);
+  }
+  if (this.drag && this.drag.mode === "drag") {
+    tx = this.drag.desiredX - CENTER.x - this.pose.x;
+    ty = this.drag.desiredY - CENTER.y - this.pose.y;
+    springTo(this.ox, tx, 420, 20, dt);
+    springTo(this.oy, ty, 420, 20, dt);
+  } else {
+    springTo(this.ox, tx, pers.stiff, pers.damp, dt);
+    springTo(this.oy, ty, pers.stiff * 0.92, pers.damp, dt);
+  }
+  springTo(this.orot, 0, pers.stiff, pers.damp, dt);
+  springTo(this.osx, 0, pers.stiff * 1.15, pers.damp * 0.82, dt);
+  springTo(this.osy, 0, pers.stiff * 1.15, pers.damp * 0.82, dt);
+  if (this.thrown && this.oy.p > -2 && this.oy.p < 8 && this.oy.v > 36) {
+    const impact = clamp(this.oy.v / 240, 0.25, 1) * Math.max(intensity, 0.35);
+    this.osx.p = (0.08 + impact * 0.2) * pers.squash;
+    this.osy.p = -(0.1 + impact * 0.22) * pers.squash;
+    this.osx.v = 0;
+    this.osy.v = 0;
+    if (impact > 0.55) this.orot.v = (Math.random() * 2 - 1) * 70;
+    this.thrown = false;
+    if (this.role === "hero" && this.oy.v > 90) flash("Landed");
+  } else if (this.thrown && Math.abs(this.oy.p) < 0.5 && Math.abs(this.oy.v) < 10) {
+    this.thrown = false;
+  }
+  if (this.spinT < this.spinDur) {
+    this.spinT += dt;
+    const u = clamp(this.spinT / this.spinDur, 0, 1);
+    const eased = 1 - Math.pow(1 - u, 3);
+    this.spinAngle = this.spinTo * eased;
+    if (u >= 1) this.spinAngle = 0;
+  }
+  const gaze = this.computeGaze();
+  springTo(this.gx, gaze.x, 86, 14, dt);
+  springTo(this.gy, gaze.y, 86, 14, dt);
+  const petTarget = this.petting ? 7 : 0;
+  this.wiggleAmp += (petTarget - this.wiggleAmp) * Math.min(1, dt * 8);
+  if (this.state === "working" && speed > 0.02 && intensity > 0.02) {
+    const p = (this.time * 0.2) % 1;
+    if (this.prevWork != null && p < this.prevWork) {
+      this.osx.p = Math.max(this.osx.p, 0.045 * intensity);
+      this.osy.p = Math.min(this.osy.p, -0.055 * intensity);
+    }
+    this.prevWork = p;
+  }
+  this.paint(intensity);
+};
+NodeView.prototype.renderStill = function () {
+  this.pose = this.stillPose();
+  this.ox.p = this.oy.p = this.orot.p = this.osx.p = this.osy.p = 0;
+  this.gx.p = this.gy.p = 0;
+  this.eyeOpen = 1;
+  this.hoverLift = 0;
+  this.lean = 0;
+  this.paint(1);
+};
+NodeView.prototype.paint = function (intensity) {
+  const pers = PERSONALITY[this.shape];
+  const hv = Math.abs(this.ox.v), vv = Math.abs(this.oy.v);
+  const sp = Math.hypot(this.ox.v, this.oy.v);
+  const stretch = clamp(sp / 340, 0, 0.3) * Math.max(intensity, this.drag ? 0.5 : 0) * pers.squash;
+  const horiz = sp > 8 ? hv / sp : 0;
+  let sx = this.pose.sx * (1 + this.osx.p) * (1 + stretch * horiz - stretch * (1 - horiz) * 0.4);
+  let sy = this.pose.sy * (1 + this.osy.p) * (1 + stretch * (1 - horiz) - stretch * horiz * 0.4);
+  sx = clamp(sx, 0.45, 1.55);
+  sy = clamp(sy, 0.42, 1.55);
+  const x = this.pose.x + this.ox.p;
+  const y = this.pose.y + this.oy.p;
+  const wiggle = Math.sin(this.raw * 30) * this.wiggleAmp * Math.max(intensity, 0.4);
+  const rot = this.pose.rot + this.orot.p + this.spinAngle + wiggle;
+  this.slide.setAttribute("transform", "translate(" + n(x) + " 0)");
+  this.rise.setAttribute("transform", "translate(0 " + n(y) + ")");
+  this.squash.setAttribute("transform", "translate(50 " + GROUND + ") scale(" + n(sx) + " " + n(sy) + ") translate(-50 " + (-GROUND) + ")");
+  this.spinGroup.setAttribute("transform", "rotate(" + n(rot) + " 50 56)");
+  const lift = Math.max(0, -(y));
+  const shadowScale = clamp(1.02 + this.osx.p * 0.8 - lift * 0.012, 0.55, 1.45);
+  const shadowOpacity = clamp(0.95 - lift * 0.02 - this.hoverLift * 0.12, 0.25, 1);
+  this.shadow.setAttribute("transform", "translate(50 106) scale(" + n(shadowScale) + " 1) translate(-50 -106)");
+  this.shadow.setAttribute("opacity", n(shadowOpacity));
+
+  const plan = this.facePlan();
+  const placeEye = (group, open, worry) => {
+    const ex = Number(group.getAttribute("data-x"));
+    const ey = Number(group.getAttribute("data-y"));
+    group.setAttribute("transform", "translate(" + n(ex) + " " + n(ey) + ") rotate(" + n(worry) + ") scale(" + n(plan.pop) + ")");
+    group.firstChild.setAttribute("transform", "scale(1 " + n(clamp(open, 0.06, 1.25)) + ")");
+    group.lastChild.setAttribute("opacity", plan.closed ? "1" : "0");
+    group.firstChild.setAttribute("opacity", plan.closed ? "0" : "1");
+  };
+  placeEye(this.eyeL, plan.openL, -plan.worry);
+  placeEye(this.eyeR, plan.openR, plan.worry);
+  this.gaze.setAttribute("transform", "translate(" + n(this.gx.p) + " " + n(this.gy.p + plan.lift) + ")");
+  const s = this.face.s;
+  const w = 7 * s;
+  let mouthD = "M" + n(this.mouthX - w * 0.3) + " " + n(this.mouthY) + "Q" + n(this.mouthX) + " " + n(this.mouthY + s) + " " + n(this.mouthX + w * 0.3) + " " + n(this.mouthY);
+  if (plan.mouth === "smile") mouthD = "M" + n(this.mouthX - w) + " " + n(this.mouthY) + "Q" + n(this.mouthX) + " " + n(this.mouthY + 5.6 * s) + " " + n(this.mouthX + w) + " " + n(this.mouthY);
+  if (plan.mouth === "frown") mouthD = "M" + n(this.mouthX - w * 0.85) + " " + n(this.mouthY + 3.2 * s) + "Q" + n(this.mouthX) + " " + n(this.mouthY - 2.2 * s) + " " + n(this.mouthX + w * 0.85) + " " + n(this.mouthY + 3.2 * s);
+  this.mouth.setAttribute("d", mouthD);
+  const showMouth = plan.mouth === "smile" || plan.mouth === "frown";
+  this.mouth.setAttribute("opacity", showMouth ? "1" : "0");
+  this.mouthO.setAttribute("opacity", plan.surprise ? "1" : "0");
+  const blush = plan.blush.toFixed(3);
+  this.blushL.setAttribute("opacity", blush);
+  this.blushR.setAttribute("opacity", blush);
+
+  const show = (el, on) => el.setAttribute("opacity", on ? "1" : "0");
+  show(this.listen, this.state === "listening");
+  show(this.think, this.state === "thinking");
+  show(this.work, this.state === "working");
+  show(this.sleep, this.state === "sleeping");
+  show(this.sparkles, plan.sparkle);
+  show(this.badge, this.state === "success" || this.state === "attention");
+  this.spinGroup.setAttribute("opacity", this.state === "sleeping" ? "0.9" : "1");
+  this.spec.setAttribute("opacity", this.state === "sleeping" ? "0.45" : "1");
+
+  const frozen = lab.speed <= 0.02;
+  if (this.state === "listening") {
+    const a = frozen ? 0.9 : 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(this.time * 5));
+    const b = frozen ? 0.55 : 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(this.time * 5 - 0.9));
+    this.arc1.setAttribute("opacity", n(a));
+    this.arc2.setAttribute("opacity", n(b));
+    this.arc1.setAttribute("transform", "scale(" + n(0.92 + a * 0.1) + ")");
+    this.arc2.setAttribute("transform", "scale(" + n(0.9 + b * 0.12) + ")");
+  }
+  if (this.state === "thinking") {
+    this.dots.forEach((dot, index) => {
+      const o = frozen ? 0.85 : 0.25 + 0.75 * Math.max(0, Math.sin(this.time * 3.1 - index * 0.75));
+      dot.setAttribute("opacity", n(o));
+    });
+  }
+  if (this.state === "working") {
+    const p = frozen || !this.live ? 0.66 : (this.time * 0.22) % 1;
+    this.workArc.setAttribute("stroke-dashoffset", n(this.workCirc * (1 - p)));
+    const cycle = frozen ? 0.2 : (this.time * 0.42) % 1;
+    const drip = cycle > 0.62;
+    const u = drip ? (cycle - 0.62) / 0.38 : 0;
+    this.sweat.setAttribute("opacity", drip ? n(Math.sin(u * Math.PI) * 0.9) : "0");
+    this.sweat.setAttribute("transform", "translate(" + n(this.sweatBase.x) + " " + n(this.sweatBase.y + u * 9) + ")");
+  } else {
+    this.sweat.setAttribute("opacity", "0");
+  }
+  if (this.state === "sleeping") {
+    this.zz.forEach((z, index) => {
+      if (frozen) {
+        z.setAttribute("opacity", "0.85");
+        z.setAttribute("transform", "translate(" + (6 + index * 11) + " " + (4 - index * 8) + ") scale(" + n(0.75 + index * 0.22) + ")");
+      } else {
+        const p = (this.time * 0.26 + index * 0.33) % 1;
+        z.setAttribute("opacity", n(Math.sin(p * Math.PI)));
+        z.setAttribute("transform", "translate(" + n(4 + index * 10) + " " + n(12 - p * 26) + ") scale(" + n(0.7 + index * 0.24) + ")");
+      }
+    });
+  }
+  if (plan.sparkle) {
+    this.sparks.forEach((spark, index) => {
+      const o = frozen ? 0.85 : 0.25 + 0.75 * (0.5 + 0.5 * Math.sin(this.time * 4 + index * 1.6));
+      const origin = [[18, 18], [84, 14], [14, 70]][index];
+      spark.setAttribute("opacity", n(o));
+      spark.setAttribute("transform", "translate(" + origin[0] + " " + origin[1] + ") scale(" + n(0.75 + o * 0.4) + ")");
+    });
+  }
+  if (this.state === "success" || this.state === "attention") {
+    const age = Math.max(0, this.raw - this.stateStart);
+    const popIn = Math.min(1, age / 0.28);
+    const over = Math.sin(Math.min(1, age / 0.42) * Math.PI) * 0.14;
+    const pulse = this.state === "attention" && !frozen ? 1 + Math.sin(this.time * 5) * 0.06 * intensity : 1;
+    this.badge.setAttribute("transform", "translate(102 86) scale(" + n((popIn + over) * pulse) + ")");
+    this.badgeCircle.setAttribute("fill", this.state === "success" ? "#68BE8C" : "#E86E6E");
+    this.check.setAttribute("display", this.state === "success" ? "" : "none");
+    this.bang.setAttribute("display", this.state === "attention" ? "" : "none");
+  }
+};
+NodeView.prototype.clientToSvg = function (clientX, clientY) {
+  const rect = this.svg.getBoundingClientRect();
+  const vb = this.svg.viewBox.baseVal;
+  return {
+    x: ((clientX - rect.left) / rect.width) * vb.width + vb.x,
+    y: ((clientY - rect.top) / rect.height) * vb.height + vb.y,
+  };
+};
+NodeView.prototype.pointerDown = function (event) {
+  if (!this.interactive || event.button !== 0) return;
+  const local = this.clientToSvg(event.clientX, event.clientY);
+  const centerX = CENTER.x + this.pose.x + this.ox.p;
+  const centerY = CENTER.y + this.pose.y + this.oy.p;
+  this.drag = {
+    id: event.pointerId,
+    mode: "down",
+    startX: local.x,
+    startY: local.y,
+    lastX: local.x,
+    lastY: local.y,
+    lastT: performance.now(),
+    grabX: local.x - centerX,
+    grabY: local.y - centerY,
+    desiredX: centerX,
+    desiredY: centerY,
+    vx: 0,
+    vy: 0,
+    dir: 0,
+    reversals: 0,
+  };
+  this.osx.p = 0.045;
+  this.osy.p = -0.06;
+  stageEl.dataset.dragging = "false";
+  try { stageEl.setPointerCapture(event.pointerId); } catch (error) { /* synthetic events have no active pointer */ }
+};
+NodeView.prototype.pointerMove = function (event) {
+  if (!this.drag || this.drag.id !== event.pointerId) return;
+  const local = this.clientToSvg(event.clientX, event.clientY);
+  const now = performance.now();
+  const dt = Math.max(0.008, (now - this.drag.lastT) / 1000);
+  this.drag.vx = clamp((local.x - this.drag.lastX) / dt, -700, 700);
+  this.drag.vy = clamp((local.y - this.drag.lastY) / dt, -700, 700);
+  const moved = Math.hypot(local.x - this.drag.startX, local.y - this.drag.startY);
+  const home = Math.hypot(local.x - CENTER.x, local.y - CENTER.y);
+  if (this.drag.mode === "down" && moved > 11) this.drag.mode = home < 46 ? "maybe-pet" : "drag";
+  if (this.drag.mode === "maybe-pet") {
+    if (home > 54) this.drag.mode = "drag";
+    const dir = Math.sign(local.x - this.drag.lastX);
+    if (dir && this.drag.dir && dir !== this.drag.dir) this.drag.reversals += 1;
+    if (dir) this.drag.dir = dir;
+    if (this.drag.reversals >= 2) {
+      this.drag.mode = "pet";
+      this.petting = true;
+      this.expr = { name: "purr", t0: this.raw, dur: 0.45 };
+      flash("Petting");
+    }
+  }
+  if (this.drag.mode === "pet") {
+    this.expr = { name: "purr", t0: this.raw, dur: 0.45 };
+  }
+  if (this.drag.mode === "drag") {
+    this.drag.desiredX = local.x - this.drag.grabX;
+    this.drag.desiredY = local.y - this.drag.grabY;
+    stageEl.dataset.dragging = "true";
+    this.petting = false;
+  }
+  this.drag.lastX = local.x;
+  this.drag.lastY = local.y;
+  this.drag.lastT = now;
+};
+NodeView.prototype.pointerUp = function (event) {
+  if (!this.drag || this.drag.id !== event.pointerId) return;
+  const mode = this.drag.mode;
+  if (mode === "drag") {
+    if (performance.now() - this.drag.lastT > 80) { this.drag.vx = 0; this.drag.vy = 0; }
+    this.ox.v = this.drag.vx;
+    this.oy.v = this.drag.vy;
+    this.thrown = Math.hypot(this.ox.v, this.oy.v) > 40;
+    if (this.thrown) flash("Thrown");
+  } else if (mode === "pet") {
+    this.petting = false;
+  } else {
+    const now = performance.now();
+    if (now - this.lastPoke < 340) {
+      this.lastPoke = 0;
+      this.spin();
+    } else {
+      this.lastPoke = now;
+      this.poke();
+    }
+  }
+  this.drag = null;
+  this.petting = false;
+  stageEl.dataset.dragging = "false";
+};
+NodeView.prototype.poke = function () {
+  const name = POKE[this.pokes % POKE.length];
+  this.pokes += 1;
+  const pers = PERSONALITY[this.shape];
+  const amp = Math.max(lab.intensity, 0.45);
+  this.expr = { name: name, t0: this.raw, dur: name === "surprise" ? 0.55 : 0.72 };
+  this.osx.p = 0.16 * pers.squash * amp;
+  this.osy.p = -0.2 * pers.squash * amp;
+  this.osx.v = 0;
+  this.osy.v = 0;
+  if (name === "surprise") this.oy.v = -80 * amp;
+  if (name === "giggle") this.orot.v = 80 * amp;
+  flash(POKE_LINE[name]);
+};
+NodeView.prototype.spin = function () {
+  const amp = Math.max(lab.intensity, 0.4);
+  this.spinT = 0;
+  this.spinDur = 0.72;
+  this.spinTo = (this.pokes % 2 === 0 ? 1 : -1) * 360;
+  this.pokes += 1;
+  this.oy.v = -150 * amp;
+  this.osx.p = -0.06;
+  this.osy.p = 0.1;
+  this.thrown = true;
+  this.expr = { name: "delight", t0: this.raw, dur: 0.85 };
+  flash("Spin");
+};
+
+function flash(text) {
+  statusEl.textContent = text;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    if (statusEl.textContent === text) statusEl.textContent = "";
+  }, 1600);
+}
+
+function loadFeedback() {
+  try {
+    const raw = localStorage.getItem(FEED_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    if (!data || typeof data.items !== "object" || Array.isArray(data.items)) return {};
+    return data.items;
+  } catch (error) {
+    return {};
+  }
+}
+function saveFeedback() {
+  try {
+    localStorage.setItem(FEED_KEY, JSON.stringify({ items: feedback }));
+  } catch (error) {
+    flash("Could not save in this browser");
+  }
+}
+function currentItem() {
+  return feedback[describe(selection.shape, selection.color, selection.eyes, selection.state).id] || null;
+}
+function writeFeedback(shape, color, eyes, state, patch) {
+  const meta = describe(shape, color, eyes, state);
+  const prev = feedback[meta.id] || {};
+  const next = Object.assign({}, prev, patch, meta, { updatedAt: new Date().toISOString() });
+  if (!next.vote && !(next.note && String(next.note).trim())) delete feedback[meta.id];
+  else feedback[meta.id] = next;
+  saveFeedback();
+  updateChrome();
+}
+
+function updateChrome() {
+  const shape = byId(SHAPES, selection.shape);
+  const color = colorByHex(selection.color);
+  const eyes = byId(EYES, selection.eyes);
+  const state = byId(STATES, selection.state);
+  const meta = describe(shape.id, color.hex, eyes.id, state.id);
+  document.getElementById("hero-name").textContent = shape.name + " · " + state.name;
+  document.getElementById("hero-blurb").textContent = shape.blurb;
+  document.getElementById("hero-id").innerHTML = "App id <code>" + meta.shape + " · " + meta.color + " · " + meta.eyes + " · " + meta.state + "</code>";
+  document.getElementById("variant-label").textContent = meta.label;
+  document.getElementById("state-hint").textContent = state.hint;
+  document.getElementById("states-caption").textContent = shape.name + " · " + color.name + " · " + eyes.name;
+  stageEl.style.setProperty("--glow", color.hex);
+  stageEl.setAttribute("aria-label", meta.label + ". Poke, double-click, drag, or pet.");
+  speedOut.textContent = lab.speed.toFixed(1) + "×";
+  intensityOut.textContent = Math.round(lab.intensity * 100) + "%";
+
+  document.querySelectorAll("#shape-row .choice").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.shape === shape.id));
+  });
+  document.querySelectorAll("#colour-row .swatch").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.color.toUpperCase() === color.hex));
+  });
+  document.querySelectorAll("#eye-row .choice").forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.eyes === eyes.id));
+  });
+  document.querySelectorAll("#state-row .chip, #state-strip .cell").forEach((el) => {
+    const on = el.dataset.state === state.id;
+    if (el.classList.contains("chip")) el.setAttribute("aria-pressed", String(on));
+    el.dataset.selected = on ? "true" : "false";
+  });
+  document.querySelectorAll("#grid-app .cell, #grid-new .cell").forEach((cell) => {
+    cell.dataset.selected = cell.dataset.shape === shape.id ? "true" : "false";
+    const item = feedback[describe(cell.dataset.shape, color.hex, eyes.id, state.id).id];
+    cell.querySelectorAll(".vote").forEach((button) => {
+      button.setAttribute("aria-pressed", String(!!item && item.vote === button.dataset.vote));
+    });
+  });
+  const item = currentItem();
+  document.getElementById("vote-up").setAttribute("aria-pressed", String(!!item && item.vote === "up"));
+  document.getElementById("vote-down").setAttribute("aria-pressed", String(!!item && item.vote === "down"));
+  if (document.activeElement !== noteEl) noteEl.value = item && item.note ? item.note : "";
+  renderSaved();
+}
+function renderSaved() {
+  savedEl.replaceChildren();
+  const items = Object.values(feedback).filter(Boolean).sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "Nothing saved yet. A thumb or a note stays in this browser until you export it.";
+    savedEl.appendChild(empty);
+    return;
+  }
+  items.slice(0, 12).forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "saved-item";
+    const name = document.createElement("span");
+    name.className = "saved-label";
+    name.textContent = item.label || item.id;
+    const mark = document.createElement("span");
+    mark.className = "saved-vote";
+    mark.textContent = item.vote === "up" ? "Thumbs up" : item.vote === "down" ? "Thumbs down" : "Note";
+    button.append(name, mark);
+    if (item.note && String(item.note).trim()) {
+      const note = document.createElement("span");
+      note.className = "saved-note";
+      note.textContent = item.note;
+      button.appendChild(note);
+    }
+    button.addEventListener("click", () => {
+      if (!SHAPES.some((shape) => shape.id === item.shape)) return;
+      if (!EYES.some((eye) => eye.id === item.eyes)) return;
+      if (!STATES.some((state) => state.id === item.state)) return;
+      applySelection({ shape: item.shape, color: item.color, eyes: item.eyes, state: item.state });
+    });
+    savedEl.appendChild(button);
+  });
+}
+function exportFeedback() {
+  const items = Object.values(feedback).filter((item) => item && (item.vote || (item.note && String(item.note).trim())));
+  const payload = {
+    lab: "ensemble-node-design-lab",
+    exportedAt: new Date().toISOString(),
+    selection: describe(selection.shape, selection.color, selection.eyes, selection.state),
+    motion: { speed: lab.speed, intensity: lab.intensity },
+    catalog: {
+      shapes: SHAPES.map((shape) => ({ id: shape.id, name: shape.name, aka: shape.aka, proposed: shape.proposed })),
+      colors: COLORS.map((color) => ({ hex: color.hex, name: color.name, app: color.app })),
+      eyes: EYES.map((eye) => ({ id: eye.id, name: eye.name, proposed: eye.proposed })),
+      states: STATES.map((state) => ({ id: state.id, name: state.name, hint: state.hint })),
+    },
+    feedback: items,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "node-design-lab-feedback.json";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1500);
+  flash(items.length ? "Exported " + items.length + " notes" : "Exported an empty file");
+}
+
+function applySelection(patch, quiet) {
+  const prevState = selection.state;
+  if (patch.shape) selection.shape = patch.shape;
+  if (patch.color) selection.color = patch.color;
+  if (patch.eyes) selection.eyes = patch.eyes;
+  if (patch.state) selection.state = patch.state;
+  const stateChanged = selection.state !== prevState || !!patch.replay;
+  hero.shape = selection.shape;
+  hero.color = selection.color;
+  hero.eyes = selection.eyes;
+  hero.setState(selection.state, quiet || !stateChanged);
+  hero.applyLook();
+  gallery.forEach((node) => {
+    node.color = selection.color;
+    node.eyes = selection.eyes;
+    const changed = node.state !== selection.state;
+    node.setState(selection.state, quiet || !changed);
+    node.applyLook();
+  });
+  strip.forEach((node) => {
+    node.shape = selection.shape;
+    node.color = selection.color;
+    node.eyes = selection.eyes;
+    node.applyLook();
+  });
+  shapeThumbs.forEach((node) => {
+    node.color = selection.color;
+    node.eyes = selection.eyes;
+    node.applyLook();
+  });
+  eyeThumbs.forEach((node) => {
+    node.shape = selection.shape;
+    node.color = selection.color;
+    node.applyLook();
+  });
+  updateChrome();
+}
+
+function makeThumb(shape, color, eyes) {
+  const slot = document.createElement("span");
+  slot.className = "slot";
+  const node = new NodeView(slot, { role: "thumb", live: false, tight: true, shape: shape, color: color, eyes: eyes, state: "idle" });
+  return { slot: slot, node: node };
+}
+function voteButton(vote, label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "vote" + (vote === "down" ? " down" : "");
+  button.dataset.vote = vote;
+  button.innerHTML = THUMB;
+  button.setAttribute("aria-pressed", "false");
+  button.setAttribute("aria-label", label);
+  return button;
+}
+
+function boot() {
+  feedback = loadFeedback();
+  const shapeRow = document.getElementById("shape-row");
+  SHAPES.forEach((shape) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "choice";
+    button.dataset.shape = shape.id;
+    button.title = shape.name + " · " + shape.aka;
+    button.setAttribute("aria-label", shape.name + ", " + shape.aka + (shape.proposed ? ", proposal" : ""));
+    const thumb = makeThumb(shape.id, selection.color, selection.eyes);
+    shapeThumbs.push(thumb.node);
+    button.appendChild(thumb.slot);
+    if (shape.proposed) {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.title = "Proposal";
+      button.appendChild(tag);
+    }
+    button.addEventListener("click", () => applySelection({ shape: shape.id }));
+    shapeRow.appendChild(button);
+  });
+  const colourRow = document.getElementById("colour-row");
+  COLORS.forEach((color) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "swatch";
+    button.dataset.color = color.hex;
+    button.style.background = color.hex;
+    button.title = color.name + " · " + color.hex + " · app name " + color.app;
+    button.setAttribute("aria-label", color.name + ", " + color.hex);
+    button.addEventListener("click", () => applySelection({ color: color.hex }));
+    colourRow.appendChild(button);
+  });
+  const eyeRow = document.getElementById("eye-row");
+  EYES.forEach((eye) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "choice";
+    button.dataset.eyes = eye.id;
+    button.title = eye.name + (eye.id === "line" ? " · app id line" : "");
+    button.setAttribute("aria-label", eye.name + " eyes" + (eye.proposed ? ", proposal" : ""));
+    const thumb = makeThumb(selection.shape, selection.color, eye.id);
+    eyeThumbs.push(thumb.node);
+    button.appendChild(thumb.slot);
+    if (eye.proposed) {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.title = "Proposal";
+      button.appendChild(tag);
+    }
+    button.addEventListener("click", () => applySelection({ eyes: eye.id }));
+    eyeRow.appendChild(button);
+  });
+  const stateRow = document.getElementById("state-row");
+  STATES.forEach((state) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chip";
+    button.dataset.state = state.id;
+    button.textContent = state.name;
+    button.title = state.hint;
+    button.setAttribute("aria-label", state.name);
+    button.addEventListener("click", () => applySelection({ state: state.id, replay: true }));
+    stateRow.appendChild(button);
+  });
+
+  const heroSlot = document.createElement("div");
+  heroSlot.className = "hero-slot";
+  stageEl.appendChild(heroSlot);
+  hero = new NodeView(heroSlot, {
+    role: "hero", live: true, interactive: true,
+    shape: selection.shape, color: selection.color, eyes: selection.eyes, state: selection.state,
+  });
+
+  const stripHost = document.getElementById("state-strip");
+  STATES.forEach((state) => {
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.dataset.state = state.id;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "pick";
+    button.setAttribute("aria-label", state.name + ". " + state.hint);
+    const slot = document.createElement("span");
+    slot.className = "state-slot";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = state.name;
+    button.append(slot, name);
+    button.addEventListener("click", () => applySelection({ state: state.id, replay: true }));
+    cell.appendChild(button);
+    stripHost.appendChild(cell);
+    strip.push(new NodeView(slot, {
+      role: "state", live: true, shape: selection.shape, color: selection.color, eyes: selection.eyes, state: state.id,
+    }));
+  });
+
+  function addCell(shape, host) {
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    cell.dataset.shape = shape.id;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "pick";
+    button.setAttribute("aria-label", shape.name + ", " + shape.aka);
+    const slot = document.createElement("span");
+    slot.className = "slot";
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = shape.name;
+    const aka = document.createElement("span");
+    aka.className = "aka";
+    aka.textContent = shape.proposed ? "New · " + shape.aka : shape.aka;
+    button.append(slot, name, aka);
+    button.addEventListener("click", () => applySelection({ shape: shape.id }));
+    const votes = document.createElement("div");
+    votes.className = "votes";
+    votes.setAttribute("role", "group");
+    votes.setAttribute("aria-label", "Feedback for " + shape.name);
+    ["up", "down"].forEach((vote) => {
+      const control = voteButton(vote, (vote === "up" ? "Thumbs up for " : "Thumbs down for ") + shape.name);
+      control.addEventListener("click", () => {
+        const meta = describe(shape.id, selection.color, selection.eyes, selection.state);
+        const prev = feedback[meta.id];
+        writeFeedback(shape.id, selection.color, selection.eyes, selection.state, { vote: prev && prev.vote === vote ? null : vote });
+      });
+      votes.appendChild(control);
+    });
+    cell.append(button, votes);
+    host.appendChild(cell);
+    gallery.push(new NodeView(slot, {
+      role: "gallery", live: true, shape: shape.id, color: selection.color, eyes: selection.eyes, state: selection.state,
+    }));
+  }
+  const appGrid = document.getElementById("grid-app");
+  const newGrid = document.getElementById("grid-new");
+  SHAPES.forEach((shape) => addCell(shape, shape.proposed ? newGrid : appGrid));
+
+  document.getElementById("vote-up").innerHTML = THUMB;
+  document.getElementById("vote-down").innerHTML = THUMB;
+  document.getElementById("vote-up").addEventListener("click", () => {
+    const prev = currentItem();
+    writeFeedback(selection.shape, selection.color, selection.eyes, selection.state, { vote: prev && prev.vote === "up" ? null : "up" });
+  });
+  document.getElementById("vote-down").addEventListener("click", () => {
+    const prev = currentItem();
+    writeFeedback(selection.shape, selection.color, selection.eyes, selection.state, { vote: prev && prev.vote === "down" ? null : "down" });
+  });
+  noteEl.addEventListener("input", () => {
+    writeFeedback(selection.shape, selection.color, selection.eyes, selection.state, { note: noteEl.value });
+  });
+  document.getElementById("export").addEventListener("click", exportFeedback);
+  document.getElementById("clear").addEventListener("click", () => {
+    const button = document.getElementById("clear");
+    if (!clearArmed) {
+      clearArmed = true;
+      button.textContent = "Confirm clear";
+      clearTimeout(clearTimer);
+      clearTimer = setTimeout(() => { clearArmed = false; button.textContent = "Clear"; }, 2500);
+      return;
+    }
+    feedback = {};
+    saveFeedback();
+    clearArmed = false;
+    button.textContent = "Clear";
+    updateChrome();
+    flash("Cleared");
+  });
+
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
+  if (reduced.matches) {
+    intensityInput.value = "0";
+    motionNote.hidden = false;
+    motionNote.textContent = "Your system asks for less motion, so intensity starts at zero. Turn it up to see them move.";
+  }
+  speedInput.addEventListener("input", updateChrome);
+  intensityInput.addEventListener("input", updateChrome);
+
+  stageEl.addEventListener("pointerdown", (event) => hero.pointerDown(event));
+  stageEl.addEventListener("pointermove", (event) => hero.pointerMove(event));
+  stageEl.addEventListener("pointerup", (event) => hero.pointerUp(event));
+  stageEl.addEventListener("pointercancel", (event) => hero.pointerUp(event));
+  stageEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      hero.poke();
+    }
+  });
+  stageEl.addEventListener("contextmenu", (event) => event.preventDefault());
+  window.addEventListener("pointermove", (event) => {
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    pointer.ok = true;
+  });
+  window.addEventListener("blur", () => { pointer.ok = false; });
+
+  applySelection({}, true);
+  const probe = S("svg");
+  const probePath = S("path");
+  probe.appendChild(probePath);
+  document.body.appendChild(probe);
+  SHAPES.forEach((shape) => {
+    const d = shapePath(shape.id);
+    if (!d || d.includes("NaN")) throw new Error("Bad path for " + shape.id);
+    probePath.setAttribute("d", d);
+    const len = probePath.getTotalLength();
+    if (!Number.isFinite(len) || len < 20) throw new Error("Short path for " + shape.id);
+  });
+  probe.remove();
+  document.body.dataset.ready = "1";
+}
+
+window.addEventListener("error", (event) => {
+  const box = document.getElementById("boot-error");
+  box.hidden = false;
+  box.textContent = "Something in the lab broke: " + (event.message || "unknown error");
+});
+window.addEventListener("unhandledrejection", (event) => {
+  const box = document.getElementById("boot-error");
+  box.hidden = false;
+  box.textContent = "Something in the lab broke: " + (event.reason && event.reason.message ? event.reason.message : "unknown error");
+});
+
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(0.034, (now - last) / 1000 || 0.016);
+  last = now;
+  for (let i = 0; i < live.length; i++) live[i].frame(dt);
+  requestAnimationFrame(tick);
+}
+
+boot();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

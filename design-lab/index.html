@@ -620,7 +620,7 @@
     if (present < 0.02) return;
     const small = bodyPx < 34;
     const w = bodyPx * (peek ? 0.78 : 1.05);
-    const lidH = Math.max(small ? 5 : 8, bodyPx * (peek ? 0.5 : 0.58) * Math.max(open, 0.08));
+    const lidH = Math.max(small ? 5 : 8, bodyPx * (peek ? 0.42 : 0.46) * Math.max(open, 0.08));
     const baseH = Math.max(small ? 2.5 : 4, bodyPx * 0.11);
     ctx.save();
     ctx.translate(cx, baseY);
@@ -771,7 +771,7 @@
       pose.shiftX += dir * 0.45 * g;
     }
     const blinkAt = (simTime + actor.phase * 1.7) % (look.state === "sleeping" ? 9 : 4.2);
-    if (blinkAt > 3.85 && look.state !== "sleeping" && look.eyes !== "sleepy") pose.eye = "sleepy";
+    if (blinkAt > 3.85 && look.state === "idle" && look.eyes === "dot") pose.eye = "sleepy";
 
     if (look.state === "thinking") {
       const radius = shape.radius ? shape.radius + 0.42 : 1.15;
@@ -936,7 +936,7 @@
     }
     if (pose.laptop) {
       const lap = pose.laptop;
-      const baseY = center.y + bodyPx * (lap.peek ? 1.0 : 1.12);
+      const baseY = center.y + bodyPx * (lap.peek ? 1.05 : 1.22);
       drawLaptop(ctx, center.x, baseY, bodyPx, lap.open, lap.present, lap.peek, tones);
     }
     if (pose.hand > 0) {

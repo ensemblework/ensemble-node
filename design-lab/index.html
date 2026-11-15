@@ -119,7 +119,7 @@
   <header>
     <p class="eyebrow">Ensemble Node · design lab · round 2</p>
     <h1>Solid forms, face toward you</h1>
-    <p>Each soft body is one continuous surface. It can lean, nod, and squash, and it does not turn around. Spark, Hex, and Compass stay flat. Working pulls out a laptop. Thinking keeps the three orbiting orbs, in a few arrangements.</p>
+    <p>Each soft body is one painted surface. It can lean, nod, and squash, and it does not turn around. Spark, Hex, and Compass stay flat. Working pulls out a laptop. Thinking keeps the three orbiting orbs, in a few arrangements. Everything is canvas 2D, so it runs with no WebGL.</p>
   </header>
   <div id="error" role="alert"></div>
   <div class="layout">
@@ -190,7 +190,7 @@
     <h2>This shape in every colour <span id="color-caption"></span></h2>
     <div class="grid" id="color-grid"></div>
   </section>
-  <p class="legend">Round 2 draws Orb, Square, Leaf, Pebble, Bloom, and Gumdrop by raymarching one signed-distance surface each, so a sphere stays a sphere and there is no stack of discs to separate. Spark, Hex, and Compass are flat silhouettes with a soft gradient. Eyes are drawn afterwards as crisp shapes and are never squashed. The laptop is a separate simple prop, the way the chat vignette introduces one, without fingers or a progress ring.</p>
+  <p class="legend">Round 2.1 paints each soft body once, with a radial highlight and a shade that wraps the lower edge. A sphere stays a circle, a cuboid stays one rounded square, and nothing is built from stacked discs. Spark, Hex, and Compass stay flat. Eyes are drawn afterwards and are never squashed. The small grid holds still until you hover it. The laptop is a separate simple prop, without fingers or a progress ring.</p>
 </div>
 <script>
 (() => {
@@ -264,7 +264,11 @@
   let frozen = null;
   const actors = [];
   let feedback = loadStore();
-  let gl, program, uniforms, bufferCanvas, layer, layerCtx;
+  let reducedMotion = false;
+  let pageHidden = false;
+  let frameCount = 0;
+  let frameMs = 0;
+  let workMs = 0;
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -341,136 +345,6 @@
     return { x: w * 0.5 + uvx * h, y: h * 0.5 - uvy * h, unit: h / dz / CAM.spread };
   }
 
-  const VERT = `#version 300 es
-  void main() {
-    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
-    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
-  }`;
-
-  const FRAG = `#version 300 es
-  precision highp float;
-  uniform vec2 uRes;
-  uniform vec3 uCam;
-  uniform float uFocus, uZoom;
-  uniform int uShape;
-  uniform float uYaw, uPitch, uRoll, uLift;
-  uniform vec3 uSquash;
-  uniform vec3 uBase, uLight, uShade;
-  uniform float uBound;
-  out vec4 fragColor;
-
-  vec3 rotX(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z); }
-  vec3 rotY(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c*p.x + s*p.z, p.y, -s*p.x + c*p.z); }
-  vec3 rotZ(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c*p.x - s*p.y, s*p.x + c*p.y, p.z); }
-
-  float sdRoundBox(vec3 p, vec3 b, float r) {
-    vec3 q = abs(p) - b;
-    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
-  }
-  float sdEllipsoid(vec3 p, vec3 r) {
-    r = max(r, vec3(0.04));
-    float k0 = length(p / r);
-    float k1 = length(p / (r * r));
-    return k0 * (k0 - 1.0) / max(k1, 1e-4);
-  }
-  float smin(float a, float b, float k) {
-    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
-    return mix(b, a, h) - k * h * (1.0 - h);
-  }
-  float sdCappedCone(vec3 p, float h, float r1, float r2) {
-    vec2 q = vec2(length(p.xz), p.y);
-    vec2 k1 = vec2(r2, h);
-    vec2 k2 = vec2(r2 - r1, 2.0 * h);
-    vec2 ca = vec2(q.x - min(q.x, (q.y < 0.0) ? r1 : r2), abs(q.y) - h);
-    vec2 cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0.0, 1.0);
-    float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
-    return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
-  }
-
-  float body(vec3 p) {
-    if (uShape == 0) return length(p) - 0.78;
-    if (uShape == 1) return sdRoundBox(p, vec3(0.40, 0.38, 0.36), 0.24);
-    if (uShape == 2) return sdEllipsoid(p - vec3(0.0, -0.04, 0.0), vec3(0.58, 0.9, 0.54));
-    if (uShape == 3) {
-      float a = sdEllipsoid(p + vec3(0.02, 0.06, 0.0), vec3(0.86, 0.62, 0.6));
-      float b = sdEllipsoid(p - vec3(0.3, -0.02, 0.05), vec3(0.42, 0.36, 0.34));
-      return smin(a, b, 0.32);
-    }
-    if (uShape == 4) {
-      float d = length(p - vec3(0.0, -0.18, 0.0)) - 0.4;
-      d = smin(d, length(p - vec3(-0.5, 0.0, 0.0)) - 0.32, 0.16);
-      d = smin(d, length(p - vec3(0.52, -0.02, 0.02)) - 0.3, 0.16);
-      d = smin(d, length(p - vec3(-0.2, 0.34, 0.0)) - 0.28, 0.15);
-      d = smin(d, length(p - vec3(0.24, 0.32, 0.0)) - 0.26, 0.15);
-      d = smin(d, length(p - vec3(0.02, 0.08, 0.1)) - 0.28, 0.16);
-      return d;
-    }
-    return sdCappedCone(p - vec3(0.0, 0.05, 0.0), 0.7, 0.82, 0.14);
-  }
-
-  vec3 toObject(vec3 p) {
-    p.y -= uLift;
-    p = rotY(p, -uYaw);
-    p = rotX(p, -uPitch);
-    p = rotZ(p, -uRoll);
-    p.x /= uSquash.x; p.y /= uSquash.y; p.z /= uSquash.z;
-    return p;
-  }
-  float mapWorld(vec3 p) {
-    return body(toObject(p)) * min(uSquash.x, min(uSquash.y, uSquash.z));
-  }
-
-  void main() {
-    vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
-    vec3 ro = vec3(0.0, uCam.x + uFocus, uCam.y * uZoom);
-    vec3 rd = normalize(vec3(uv * uCam.z, -1.0));
-    vec3 center = vec3(0.0, uLift, 0.0);
-    vec3 oc = ro - center;
-    float rad = uBound;
-    float b = dot(oc, rd);
-    float c = dot(oc, oc) - rad * rad;
-    float h = b * b - c;
-    if (h < 0.0) { fragColor = vec4(0.0); return; }
-    h = sqrt(h);
-    float t = max(-b - h, 0.0);
-    float tFar = -b + h;
-    vec3 p = ro + rd * t;
-    bool hit = false;
-    for (int i = 0; i < 56; i++) {
-      float d = mapWorld(p);
-      if (d < 0.0016) { hit = true; break; }
-      t += max(d, 0.0012) * 0.82;
-      if (t > tFar + 0.02) break;
-      p = ro + rd * t;
-    }
-    if (!hit) { fragColor = vec4(0.0); return; }
-    vec2 e = vec2(0.0018, 0.0);
-    vec3 n = normalize(vec3(
-      mapWorld(p + e.xyy) - mapWorld(p - e.xyy),
-      mapWorld(p + e.yxy) - mapWorld(p - e.yxy),
-      mapWorld(p + e.yyx) - mapWorld(p - e.yyx)));
-    vec3 light = normalize(vec3(-0.38, 0.78, 0.5));
-    float wrap = clamp(dot(n, light) * 0.55 + 0.45, 0.0, 1.0);
-    vec3 col = mix(uShade, uLight, wrap);
-    col = mix(col, uBase, 0.45);
-    vec3 halfv = normalize(light + vec3(0.0, 0.15, 1.0));
-    float spec = pow(clamp(dot(n, halfv), 0.0, 1.0), 36.0);
-    col += spec * 0.38;
-    float rim = pow(1.0 - clamp(dot(n, vec3(0.0, 0.05, 1.0)), 0.0, 1.0), 1.6);
-    col = mix(col, uShade * 0.72, rim * 0.55);
-    float belly = smoothstep(0.15, -0.75, p.y - uLift);
-    col *= mix(1.0, 0.78, belly * 0.85);
-    if (uShape == 2) {
-      vec3 q = toObject(p);
-      float stem = smoothstep(0.7, -0.15, q.y);
-      float mid = smoothstep(0.028, 0.0, abs(q.x)) * stem;
-      float leaf = smoothstep(0.22, 0.02, abs(q.x)) * smoothstep(0.35, -0.45, q.y) * stem;
-      float vein = clamp(mid * 0.9 + leaf * 0.22, 0.0, 1.0) * clamp(n.z, 0.0, 1.0);
-      col = mix(col, uShade, vein * 0.5);
-    }
-    fragColor = vec4(col, 1.0);
-  }`;
-
   function showError(err) {
     const box = document.getElementById("error");
     box.style.display = "block";
@@ -478,61 +352,79 @@
     console.error(err);
   }
 
-  function initGL() {
-    bufferCanvas = document.createElement("canvas");
-    bufferCanvas.width = 1024;
-    bufferCanvas.height = 1024;
-    gl = bufferCanvas.getContext("webgl2", { alpha: true, antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
-    if (!gl) throw new Error("WebGL2 is not available.");
-    function shader(type, src) {
-      const sh = gl.createShader(type);
-      gl.shaderSource(sh, src);
-      gl.compileShader(sh);
-      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
-      return sh;
+  function traceSolid(ctx, shape, r) {
+    ctx.beginPath();
+    if (shape.shader === 0) {
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+    } else if (shape.shader === 1) {
+      const s = r * 1.62;
+      roundRect(ctx, -s / 2, -s / 2, s, s, r * 0.46);
+    } else if (shape.shader === 2) {
+      ctx.ellipse(0, r * 0.06, r * 0.78, r * 1.18, 0, 0, Math.PI * 2);
+    } else if (shape.shader === 3) {
+      ctx.ellipse(-r * 0.04, r * 0.06, r * 1.08, r * 0.78, -0.08, 0, Math.PI * 2);
+    } else if (shape.shader === 4) {
+      ctx.moveTo(-0.95 * r, 0.2 * r);
+      ctx.bezierCurveTo(-1.18 * r, -0.25 * r, -0.55 * r, -0.58 * r, -0.16 * r, -0.22 * r);
+      ctx.bezierCurveTo(-0.05 * r, -0.72 * r, 0.42 * r, -0.74 * r, 0.5 * r, -0.2 * r);
+      ctx.bezierCurveTo(0.98 * r, -0.42 * r, 1.16 * r, 0.05 * r, 0.88 * r, 0.32 * r);
+      ctx.quadraticCurveTo(0.35 * r, 0.58 * r, -0.05 * r, 0.48 * r);
+      ctx.quadraticCurveTo(-0.55 * r, 0.58 * r, -0.95 * r, 0.2 * r);
+      ctx.closePath();
+    } else {
+      ctx.moveTo(0, -r * 0.92);
+      ctx.bezierCurveTo(r * 0.42, -r * 0.92, r * 0.98, -r * 0.05, r * 0.98, r * 0.48);
+      ctx.quadraticCurveTo(r * 0.98, r * 0.98, 0, r * 0.98);
+      ctx.quadraticCurveTo(-r * 0.98, r * 0.98, -r * 0.98, r * 0.48);
+      ctx.bezierCurveTo(-r * 0.98, -r * 0.05, -r * 0.42, -r * 0.92, 0, -r * 0.92);
+      ctx.closePath();
     }
-    program = gl.createProgram();
-    gl.attachShader(program, shader(gl.VERTEX_SHADER, VERT));
-    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
-    gl.useProgram(program);
-    uniforms = {};
-    for (const name of ["uRes", "uCam", "uFocus", "uZoom", "uShape", "uYaw", "uPitch", "uRoll", "uLift", "uSquash", "uBase", "uLight", "uShade", "uBound"]) {
-      uniforms[name] = gl.getUniformLocation(program, name);
-    }
-    layer = document.createElement("canvas");
-    layerCtx = layer.getContext("2d", { alpha: true });
   }
 
-  function renderSolid(bw, bh, pose, shape, tones) {
-    if (bufferCanvas.width < bw || bufferCanvas.height < bh) {
-      bufferCanvas.width = Math.max(bufferCanvas.width, bw);
-      bufferCanvas.height = Math.max(bufferCanvas.height, bh);
+  function drawSolid(ctx, cx, cy, bodyPx, pose, shape, tones) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(pose.roll || 0);
+    ctx.scale(pose.sx, pose.sy);
+    traceSolid(ctx, shape, bodyPx);
+    ctx.clip();
+    const hx = bodyPx * (-0.32 - pose.yaw * 1.1);
+    const hy = bodyPx * (-0.4 - (pose.pitch - 0.16) * 0.45);
+    const g = ctx.createRadialGradient(hx, hy, bodyPx * 0.05, bodyPx * 0.08, bodyPx * 0.12, bodyPx * 1.25);
+    g.addColorStop(0, css(tones.light));
+    g.addColorStop(0.34, css(tones.base));
+    g.addColorStop(0.78, css(mix(tones.base, tones.shade, 0.55)));
+    g.addColorStop(1, css(tones.shade));
+    ctx.fillStyle = g;
+    ctx.fillRect(-bodyPx * 2, -bodyPx * 2, bodyPx * 4, bodyPx * 4);
+    const belly = ctx.createLinearGradient(0, -bodyPx * 0.2, 0, bodyPx * 1.15);
+    belly.addColorStop(0, "rgba(0,0,0,0)");
+    belly.addColorStop(1, "rgba(0,0,0,0.22)");
+    ctx.fillStyle = belly;
+    ctx.fillRect(-bodyPx * 2, -bodyPx * 2, bodyPx * 4, bodyPx * 4);
+    const spec = ctx.createRadialGradient(hx, hy, 0, hx, hy, bodyPx * 0.48);
+    spec.addColorStop(0, "rgba(255,255,255,0.62)");
+    spec.addColorStop(0.45, "rgba(255,255,255,0.16)");
+    spec.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = spec;
+    ctx.fillRect(-bodyPx * 2, -bodyPx * 2, bodyPx * 4, bodyPx * 4);
+    if (shape.shader === 2) {
+      ctx.strokeStyle = css(tones.shade, 0.4);
+      ctx.lineWidth = Math.max(1, bodyPx * 0.045);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, -bodyPx * 0.95);
+      ctx.quadraticCurveTo(bodyPx * 0.04, -bodyPx * 0.55, 0, -bodyPx * 0.28);
+      ctx.stroke();
     }
-    gl.viewport(0, 0, bw, bh);
-    gl.enable(gl.SCISSOR_TEST);
-    gl.scissor(0, 0, bw, bh);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.useProgram(program);
-    gl.uniform2f(uniforms.uRes, bw, bh);
-    gl.uniform3f(uniforms.uCam, CAM.y, CAM.z, CAM.spread);
-    gl.uniform1f(uniforms.uFocus, pose.focus || 0);
-    gl.uniform1f(uniforms.uZoom, pose.zoom || 1);
-    gl.uniform1i(uniforms.uShape, shape.shader);
-    gl.uniform1f(uniforms.uYaw, pose.yaw);
-    gl.uniform1f(uniforms.uPitch, pose.pitch);
-    gl.uniform1f(uniforms.uRoll, pose.roll);
-    gl.uniform1f(uniforms.uLift, pose.lift);
-    gl.uniform3f(uniforms.uSquash, pose.sx, pose.sy, pose.sz);
-    const b = tones.base, l = tones.light, s = tones.shade;
-    gl.uniform3f(uniforms.uBase, b[0] / 255, b[1] / 255, b[2] / 255);
-    gl.uniform3f(uniforms.uLight, l[0] / 255, l[1] / 255, l[2] / 255);
-    gl.uniform3f(uniforms.uShade, s[0] / 255, s[1] / 255, s[2] / 255);
-    gl.uniform1f(uniforms.uBound, (shape.radius + 0.45) * Math.max(pose.sx, pose.sy, pose.sz));
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.disable(gl.SCISSOR_TEST);
+    if (pose.glow > 0.02) {
+      const glow = ctx.createRadialGradient(0, bodyPx * 0.55, 2, 0, bodyPx * 0.45, bodyPx);
+      glow.addColorStop(0, `rgba(255,255,255,${0.45 * pose.glow})`);
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(-bodyPx * 2, -bodyPx * 2, bodyPx * 4, bodyPx * 4);
+    }
+    ctx.restore();
   }
 
   function roundRect(ctx, x, y, w, h, r) {
@@ -659,6 +551,14 @@
     ctx.stroke(path);
     ctx.fillStyle = g;
     ctx.fill(path);
+    if (pose.glow > 0.02) {
+      ctx.clip(path);
+      const glow = ctx.createRadialGradient(50, 70, 4, 50, 62, 48);
+      glow.addColorStop(0, `rgba(255,255,255,${0.4 * pose.glow})`);
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, 100, 100);
+    }
     ctx.restore();
   }
 
@@ -842,7 +742,7 @@
     if (canvas.closest("[hidden]")) return;
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (w < 2 || h < 2) return;
-    const dpr = actor.role === "hero" ? Math.min(2, window.devicePixelRatio || 1) : 1;
+    const dpr = actor.role === "hero" ? Math.min(1.5, window.devicePixelRatio || 1) : 1;
     const bw = Math.max(1, Math.round(w * dpr));
     const bh = Math.max(1, Math.round(h * dpr));
     if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
@@ -893,27 +793,8 @@
     ctx.save();
     ctx.translate(actor.ox || 0, actor.oy || 0);
     for (const item of placed) if (item.o.z < 0.02) paintSphere(ctx, item.p.x, item.p.y, Math.max(3, bodyPx * 0.2), tones.light);
-    if (layer.width !== bw || layer.height !== bh) { layer.width = bw; layer.height = bh; }
-    layerCtx.setTransform(1, 0, 0, 1, 0, 0);
-    layerCtx.clearRect(0, 0, bw, bh);
-    layerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (shape.solid) {
-      renderSolid(bw, bh, pose, shape, tones);
-      layerCtx.drawImage(bufferCanvas, 0, bufferCanvas.height - bh, bw, bh, 0, 0, w, h);
-    } else {
-      drawFlat(layerCtx, shape, center.x, center.y, bodyPx, pose, tones);
-    }
-    if (pose.glow > 0.02) {
-      layerCtx.globalCompositeOperation = "source-atop";
-      const gy = center.y + bodyPx * 0.28;
-      const g = layerCtx.createRadialGradient(center.x, gy, 2, center.x, gy, bodyPx * 0.85);
-      g.addColorStop(0, `rgba(255,255,255,${0.5 * pose.glow})`);
-      g.addColorStop(1, "rgba(255,255,255,0)");
-      layerCtx.fillStyle = g;
-      layerCtx.fillRect(0, 0, w, h);
-      layerCtx.globalCompositeOperation = "source-over";
-    }
-    ctx.drawImage(layer, 0, 0, w, h);
+    if (shape.solid) drawSolid(ctx, center.x, center.y, bodyPx, pose, shape, tones);
+    else drawFlat(ctx, shape, center.x, center.y, bodyPx, pose, tones);
 
     for (const item of placed) if (item.o.z >= 0.02) paintSphere(ctx, item.p.x, item.p.y, Math.max(3, bodyPx * 0.2), tones.light);
 
@@ -1012,6 +893,7 @@
     const note = document.getElementById("note");
     if (document.activeElement !== note) note.value = item && item.note || "";
     document.getElementById("hero").setAttribute("aria-label", document.getElementById("variant-name").textContent);
+    for (const actor of actors) actor.dirty = true;
     renderSaved();
   }
   function renderSaved() {
@@ -1071,6 +953,7 @@
       pressStart: -10, pressUntil: -10,
       loopPress: role === "press",
       lockThink: locks.lockThink, lockWork: locks.lockWork,
+      visible: true, hot: false, dirty: true,
     };
   }
   function currentLook(actor) {
@@ -1137,7 +1020,10 @@
       btn.title = `${shape.name} · ${shape.aka}`;
       btn.addEventListener("click", () => { selection.shape = shape.id; syncUI(); });
       shapes.append(btn);
-      actors.push(makeActor(canvas, "picker", { lockShape: shape.id, lockState: "idle" }));
+      const pickerActor = makeActor(canvas, "picker", { lockShape: shape.id, lockState: "idle" });
+      btn.addEventListener("pointerenter", () => { pickerActor.hot = true; });
+      btn.addEventListener("pointerleave", () => { pickerActor.hot = false; pickerActor.dirty = true; });
+      actors.push(pickerActor);
     });
     const colors = document.getElementById("color-picker");
     COLORS.forEach((color) => {
@@ -1218,7 +1104,10 @@
       }
       btn.addEventListener("click", () => { selection.shape = shape.id; syncUI(); });
       grid.append(btn);
-      actors.push(makeActor(canvas, "gallery", { lockShape: shape.id }));
+      const cell = makeActor(canvas, "gallery", { lockShape: shape.id });
+      btn.addEventListener("pointerenter", () => { cell.hot = true; });
+      btn.addEventListener("pointerleave", () => { cell.hot = false; cell.dirty = true; });
+      actors.push(cell);
     });
     const colorGrid = document.getElementById("color-grid");
     COLORS.forEach((color) => {
@@ -1235,7 +1124,10 @@
       btn.append(canvas, name, aka);
       btn.addEventListener("click", () => { selection.color = color.hex; syncUI(); });
       colorGrid.append(btn);
-      actors.push(makeActor(canvas, "gallery", { lockColor: color.hex }));
+      const swatch = makeActor(canvas, "gallery", { lockColor: color.hex });
+      btn.addEventListener("pointerenter", () => { swatch.hot = true; });
+      btn.addEventListener("pointerleave", () => { swatch.hot = false; swatch.dirty = true; });
+      actors.push(swatch);
     });
     document.querySelectorAll("[data-role='size']").forEach((canvas) => actors.push(makeActor(canvas, "size", {})));
     const hero = makeActor(document.getElementById("hero"), "hero", {});
@@ -1330,15 +1222,22 @@
 
   function boot() {
     applyQuery();
-    const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches && !new URLSearchParams(location.search).has("motion");
-    if (reduce) {
+    reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches && !new URLSearchParams(location.search).has("motion");
+    if (reducedMotion) {
       intensity = 0.15;
       document.getElementById("motion-note").hidden = false;
     }
     document.getElementById("motion").value = String(Math.round(intensity * 100));
     document.getElementById("motion-out").textContent = String(Math.round(intensity * 100));
-    initGL();
     build();
+    const watch = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const actor = actors.find((item) => item.canvas === entry.target);
+        if (actor) actor.visible = entry.isIntersecting;
+      }
+    }, { rootMargin: "120px" });
+    for (const actor of actors) watch.observe(actor.canvas);
+    pageHidden = document.hidden;
     document.getElementById("motion").addEventListener("input", (e) => {
       intensity = Number(e.target.value) / 100;
       document.getElementById("motion-out").textContent = e.target.value;
@@ -1374,13 +1273,21 @@
     });
     syncUI();
     document.documentElement.dataset.lab = "ready";
+    document.documentElement.dataset.renderer = "canvas2d";
     let last = performance.now();
+    const lively = (actor) => actor.role === "hero" || actor.role === "size" || actor.role === "press" || actor.role === "variant";
     const frame = (now) => {
       try {
+        if (pageHidden && frozen == null) return;
         const dt = clamp((now - last) / 1000, 0, 0.033);
         last = now;
-        if (frozen == null) simTime += dt * (0.35 + intensity * 1.05);
-        else simTime = frozen;
+        frameCount += 1;
+        frameMs += dt * 1000;
+        const drawStart = performance.now();
+        document.documentElement.dataset.frames = String(frameCount);
+        document.documentElement.dataset.frameMs = String(Math.round(frameMs / frameCount));
+        if (frozen == null && !reducedMotion) simTime += dt * (0.35 + intensity * 1.05);
+        else if (frozen != null) simTime = frozen;
         const hero = actors[0];
         if (hero.pointer && !hero.dragging) {
           const nx = clamp(hero.pointer.x / (hero.canvas.clientWidth * 0.34), -1, 1);
@@ -1401,13 +1308,26 @@
           hero.ox += hero.vx * dt;
           hero.oy += hero.vy * dt;
         }
-        for (const actor of actors) drawActor(actor);
+        for (const actor of actors) {
+          if (!actor.visible || actor.canvas.closest("[hidden]")) continue;
+          const moving = lively(actor) && !reducedMotion || actor.role === "hero";
+          if (moving || actor.hot || actor.dirty) {
+            drawActor(actor);
+            actor.dirty = false;
+          }
+        }
+        workMs += performance.now() - drawStart;
+        document.documentElement.dataset.workMs = String(Math.round(workMs / frameCount));
       } catch (err) {
         showError(err);
         return;
       }
       requestAnimationFrame(frame);
     };
+    document.addEventListener("visibilitychange", () => {
+      pageHidden = document.hidden;
+      if (!pageHidden) requestAnimationFrame(frame);
+    });
     requestAnimationFrame(frame);
   }
 

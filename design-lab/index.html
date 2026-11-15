@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Node Design Lab</title>
+<title>Node Design Lab · Round 2</title>
 <style>
   :root {
     --bg: #081113;
@@ -14,7 +14,7 @@
     --muted: #8c9b99;
     --accent: #d7b56f;
     --accent-ink: #1c1810;
-    --danger: #e15d4a;
+    --danger: #e07a6a;
     --ok: #7dcaa4;
     color-scheme: dark;
   }
@@ -23,7 +23,7 @@
   body {
     margin: 0;
     background:
-      radial-gradient(1200px 500px at 10% -10%, rgba(215, 181, 111, .08), transparent 50%),
+      radial-gradient(1100px 480px at 8% -10%, rgba(215, 181, 111, .07), transparent 50%),
       var(--bg);
     color: var(--ink);
     font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -32,173 +32,84 @@
   button { cursor: pointer; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 72px; }
-  header { display: flex; justify-content: space-between; gap: 28px; align-items: flex-end; }
-  .eyebrow {
-    margin: 0 0 6px;
-    font-size: 11px;
-    letter-spacing: .16em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-  h1 { margin: 0; font-size: 28px; font-weight: 620; letter-spacing: -.03em; }
-  header p { margin: 6px 0 0; max-width: 46rem; color: var(--muted); }
-  .layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1.45fr) minmax(300px, .82fr);
-    gap: 16px;
-    margin-top: 18px;
-    align-items: start;
-  }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 24px;
-  }
+  header { max-width: 46rem; }
+  .eyebrow { margin: 0 0 6px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  h1 { margin: 0; font-size: 28px; font-weight: 640; letter-spacing: -.03em; }
+  header p { margin: 8px 0 0; color: var(--muted); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .82fr); gap: 16px; margin-top: 18px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 24px; }
   .stage-card { padding: 12px 12px 16px; }
   canvas { display: block; }
   #hero {
     width: 100%;
-    height: 460px;
+    height: 480px;
     border-radius: 18px;
-    background:
-      radial-gradient(55% 48% at 50% 42%, #1a3a40 0%, #102428 58%, #0c1c20 100%);
-    cursor: grab;
+    background: radial-gradient(58% 50% at 50% 42%, #1a3a40 0%, #102428 62%, #0c1c20 100%);
     touch-action: none;
+    cursor: pointer;
   }
-  #hero.grabbing { cursor: grabbing; }
-  .stage-meta { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 12px 8px 0; }
+  .stage-meta { display: flex; justify-content: space-between; gap: 12px; padding: 12px 8px 0; }
   #variant-name { margin: 0; font-size: 18px; letter-spacing: -.02em; }
-  #variant-id { margin: 2px 0 0; color: var(--muted); font: 12px/1.4 ui-monospace, "SF Mono", monospace; }
-  .badges { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-  .pill {
-    border-radius: 999px;
-    padding: 3px 8px;
-    font-size: 11px;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-    background: var(--raised);
-    color: var(--muted);
-  }
-  .pill.gold { background: rgba(215, 181, 111, .16); color: var(--accent); }
-  .hint { margin: 8px 8px 0; color: var(--muted); font-size: 13px; }
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 8px 0; }
-  .actions button, .ghost {
-    background: var(--raised);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 6px 12px;
-    color: var(--ink);
-  }
-  .actions button:hover, .ghost:hover { border-color: var(--accent); }
-  .sizes { display: flex; gap: 16px; align-items: flex-end; padding: 14px 8px 0; }
-  .sizes p { margin: 0 8px 0 0; color: var(--muted); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; align-self: center; }
+  #variant-id, #idea { margin: 2px 0 0; color: var(--muted); }
+  #variant-id { font: 12px/1.4 ui-monospace, "SF Mono", monospace; }
+  #idea { font-size: 13px; }
+  .pill { border-radius: 999px; padding: 3px 8px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; background: var(--raised); color: var(--muted); }
+  .sizes, .strip { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 14px 8px 0; }
+  .sizes p, .strip-label { margin: 0; color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; align-self: center; }
+  .mini { text-align: center; background: transparent; border: 1px solid transparent; border-radius: 14px; padding: 4px 4px 6px; color: var(--muted); }
+  .mini b { display: block; color: var(--ink); font-size: 12px; font-weight: 620; }
+  .mini small { display: block; font-size: 10px; }
+  .mini .tag { color: var(--accent); letter-spacing: .08em; text-transform: uppercase; font-size: 9px; }
+  .mini[aria-pressed="true"] { background: var(--raised); color: var(--ink); box-shadow: inset 0 0 0 1.5px rgba(236, 233, 224, .85); }
   .size-demo { text-align: center; }
-  .size-demo canvas { margin: 0 auto; }
   .size-demo span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
   .controls { padding: 16px 16px 18px; display: flex; flex-direction: column; gap: 16px; }
   .kicker { margin: 0 0 8px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
   .shape-row, .eye-row { display: flex; flex-wrap: wrap; gap: 6px; }
   .shape-btn, .eye-btn {
-    width: 64px;
-    padding: 4px 2px 6px;
-    border-radius: 14px;
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--muted);
+    width: 68px; padding: 4px 2px 6px; border-radius: 14px; border: 1px solid transparent; background: transparent; color: var(--muted);
   }
-  .shape-btn canvas, .eye-btn canvas { width: 48px; height: 44px; margin: 0 auto; }
+  .shape-btn canvas, .eye-btn canvas { width: 52px; height: 48px; margin: 0 auto; }
   .shape-btn span, .eye-btn span { display: block; font-size: 10px; line-height: 1.2; }
-  .shape-btn .tag, .eye-btn .tag, .cell .tag {
-    color: var(--accent);
-    font-size: 9px;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-  }
+  .shape-btn .flat, .cell .flat { color: var(--muted); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
   .shape-btn[aria-pressed="true"], .eye-btn[aria-pressed="true"], .cell[aria-pressed="true"] {
-    background: var(--raised);
-    color: var(--ink);
-    box-shadow: inset 0 0 0 1.5px rgba(236, 233, 224, .8);
+    background: var(--raised); color: var(--ink); box-shadow: inset 0 0 0 1.5px rgba(236, 233, 224, .8);
   }
   .swatches { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px; }
-  .swatch {
-    width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0;
-    box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, .28);
-  }
+  .swatch { width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0; box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.28); }
   .swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ink), inset 0 0 0 1.5px rgba(0,0,0,.28); }
   .states { display: flex; flex-direction: column; gap: 4px; }
-  .state-btn {
-    text-align: left;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: 12px;
-    padding: 7px 10px;
-  }
-  .state-btn b { font-weight: 600; display: block; }
+  .state-btn { text-align: left; background: transparent; border: 1px solid transparent; border-radius: 12px; padding: 7px 10px; }
+  .state-btn b { display: block; font-weight: 620; }
   .state-btn small { color: var(--muted); }
   .state-btn[aria-pressed="true"] { background: var(--raised); border-color: rgba(215, 181, 111, .5); }
   .motion { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
   .motion input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
   .motion small, #motion-note { color: var(--muted); }
-  #motion-out { font-variant-numeric: tabular-nums; }
-  .feedback textarea {
-    width: 100%;
-    min-height: 72px;
-    resize: vertical;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    background: #0b1719;
-    padding: 8px 10px;
-  }
+  textarea { width: 100%; min-height: 72px; resize: vertical; border-radius: 12px; border: 1px solid var(--line); background: #0b1719; padding: 8px 10px; }
   .vote { display: flex; gap: 8px; margin: 8px 0; }
-  .vote button { border-radius: 999px; border: 1px solid var(--line); background: var(--raised); padding: 6px 14px; }
+  .vote button, .ghost { border-radius: 999px; border: 1px solid var(--line); background: var(--raised); padding: 6px 14px; }
   .vote button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
   .fb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .saved { list-style: none; margin: 10px 0 0; padding: 0; max-height: 180px; overflow: auto; }
-  .saved button {
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: 0;
-    border-top: 1px solid var(--line);
-    padding: 7px 2px;
-    color: var(--muted);
-  }
-  .saved button strong { color: var(--ink); font-weight: 600; }
+  .saved button { width: 100%; text-align: left; background: transparent; border: 0; border-top: 1px solid var(--line); padding: 7px 2px; color: var(--muted); }
+  .saved strong { color: var(--ink); font-weight: 620; }
   .saved .up { color: var(--ok); }
   .saved .down { color: var(--danger); }
   .empty { color: var(--muted); margin: 8px 0 0; }
   section.gallery { margin-top: 22px; }
-  section.gallery h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+  section.gallery h2 { font-size: 15px; font-weight: 620; margin: 0 0 10px; }
   section.gallery h2 span { color: var(--muted); font-weight: 500; }
   .grid { display: flex; flex-wrap: wrap; gap: 8px; }
-  .cell {
-    width: 104px;
-    padding: 6px 4px 8px;
-    border-radius: 16px;
-    border: 1px solid transparent;
-    background: var(--panel);
-    color: var(--muted);
-  }
-  .cell canvas { width: 96px; height: 84px; margin: 0 auto; }
-  .cell b { display: block; color: var(--ink); font-size: 12px; font-weight: 600; }
-  .cell small, .cell .tag { display: block; font-size: 10px; }
-  .legend {
-    margin-top: 28px;
-    color: var(--muted);
-    font-size: 13px;
-    max-width: 70rem;
-  }
-  #error {
-    display: none;
-    margin-top: 12px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: rgba(225, 93, 74, .12);
-    color: #ffb1a6;
-  }
+  .cell { width: 108px; padding: 6px 4px 8px; border-radius: 16px; border: 1px solid transparent; background: var(--panel); color: var(--muted); }
+  .cell canvas { width: 96px; height: 88px; margin: 0 auto; }
+  .cell b { display: block; color: var(--ink); font-size: 12px; font-weight: 620; }
+  .cell small { display: block; font-size: 10px; }
+  .legend { margin-top: 28px; color: var(--muted); font-size: 13px; max-width: 70rem; }
+  #error { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(225, 93, 74, .12); color: #ffb1a6; white-space: pre-wrap; }
+  [hidden] { display: none !important; }
   @media (max-width: 980px) {
     .layout { grid-template-columns: 1fr; }
-    header { flex-direction: column; align-items: flex-start; }
     #hero { height: 380px; }
   }
 </style>
@@ -206,11 +117,9 @@
 <body>
 <div class="wrap">
   <header>
-    <div>
-      <p class="eyebrow">Ensemble Node · design lab</p>
-      <h1>A softer node, with real depth</h1>
-      <p>Play with the faces on the left. Click, double-click, drag, and pet the big one. Thumbs and notes stay in this browser until you export them. This page does not change the app.</p>
-    </div>
+    <p class="eyebrow">Ensemble Node · design lab · round 2</p>
+    <h1>Solid forms, face toward you</h1>
+    <p>Each soft body is one continuous surface. It can lean, nod, and squash, and it does not turn around. Spark, Hex, and Compass stay flat. Working pulls out a laptop. Thinking keeps the three orbiting orbs, in a few arrangements.</p>
   </header>
   <div id="error" role="alert"></div>
   <div class="layout">
@@ -219,24 +128,20 @@
       <div class="stage-meta">
         <div>
           <h2 id="variant-name">Orb · Gold · Dots · Idle</h2>
-          <p id="variant-id">orb · #D7B56F · dot · idle</p>
+          <p id="variant-id">orb · #D7B56F · dot · idle · c1</p>
+          <p id="idea">Breathing, a crisp blink, and a small glance.</p>
         </div>
-        <div class="badges" id="badges"></div>
-      </div>
-      <p class="hint">Click to squish · double-click to spin · drag to throw · stroke slowly to pet</p>
-      <div class="actions">
-        <button type="button" id="act-squish">Squish</button>
-        <button type="button" id="act-spin">Spin</button>
-        <button type="button" id="act-pet">Pet</button>
-        <button type="button" id="act-poke">Poke</button>
-        <button type="button" id="act-reset">Reset pose</button>
+        <span class="pill" id="state-pill">Idle</span>
       </div>
       <div class="sizes">
         <p>Reads at</p>
-        <div class="size-demo"><canvas data-role="size" data-px="40" style="width:68px;height:68px"></canvas><span>40px</span></div>
-        <div class="size-demo"><canvas data-role="size" data-px="56" style="width:92px;height:92px"></canvas><span>56px</span></div>
-        <div class="size-demo"><canvas data-role="size" data-px="72" style="width:116px;height:116px"></canvas><span>72px</span></div>
+        <div class="size-demo"><canvas data-role="size" style="width:64px;height:64px"></canvas><span>40px body</span></div>
+        <div class="size-demo"><canvas data-role="size" style="width:88px;height:88px"></canvas><span>56px body</span></div>
+        <div class="size-demo"><canvas data-role="size" style="width:112px;height:112px"></canvas><span>72px body</span></div>
       </div>
+      <div id="think-strip" class="strip" hidden></div>
+      <div id="work-strip" class="strip" hidden></div>
+      <div id="press-strip" class="strip"></div>
     </div>
     <aside class="card controls">
       <div>
@@ -256,18 +161,18 @@
         <div class="states" id="state-picker" role="group" aria-label="State"></div>
       </div>
       <label class="motion">
-        <span>Motion <small>speed and intensity</small></span>
-        <output id="motion-out">72</output>
-        <input id="motion" type="range" min="0" max="100" value="72" aria-label="Motion speed and intensity">
+        <span>Motion <small>speed and amplitude</small></span>
+        <output id="motion-out">70</output>
+        <input id="motion" type="range" min="0" max="100" value="70" aria-label="Motion speed and amplitude">
       </label>
-      <p id="motion-note" hidden>Your system prefers reduced motion, so intensity starts quiet. Turn it up to study the movement.</p>
-      <div class="feedback">
+      <p id="motion-note" hidden>Your system prefers reduced motion, so this starts quiet.</p>
+      <div>
         <p class="kicker">Feedback for this variant</p>
         <div class="vote">
           <button type="button" id="thumb-up" aria-pressed="false">Thumbs up</button>
           <button type="button" id="thumb-down" aria-pressed="false">Thumbs down</button>
         </div>
-        <textarea id="note" maxlength="2000" placeholder="What works, what feels cheap, what to try next"></textarea>
+        <textarea id="note" maxlength="2000" placeholder="What reads at a glance, and what does not"></textarea>
         <div class="fb-actions">
           <button type="button" class="ghost" id="export">Export JSON</button>
           <button type="button" class="ghost" id="clear">Clear all</button>
@@ -285,16 +190,14 @@
     <h2>This shape in every colour <span id="color-caption"></span></h2>
     <div class="grid" id="color-grid"></div>
   </section>
-  <p class="legend">The body is the app’s silhouette, sampled from the same paths, softened, and swept into a cushion. It turns with a real rotation and perspective, so the highlight slides, the eyes parallax, and the floor shadow stays put. Original ids are orb, square, spark, hex, leaf, compass, pebble, bloom; eyes dot, line, wide; colours are the app palette. Gumdrop, Puff, Capsule, Happy, Star, and Soft are proposals.</p>
+  <p class="legend">Round 2 draws Orb, Square, Leaf, Pebble, Bloom, and Gumdrop by raymarching one signed-distance surface each, so a sphere stays a sphere and there is no stack of discs to separate. Spark, Hex, and Compass are flat silhouettes with a soft gradient. Eyes are drawn afterwards as crisp shapes and are never squashed. The laptop is a separate simple prop, the way the chat vignette introduces one, without fingers or a progress ring.</p>
 </div>
 <script>
 (() => {
   "use strict";
 
-  const STORE = "ensemble-node.design-lab.feedback.v1";
-  const FOCAL = 5.4;
-  const REST_PITCH = 0.26;
-  const LIGHT = norm3(-0.38, 0.74, 0.56);
+  const STORE = "ensemble-node.design-lab.feedback.v2";
+  const CAM = { y: 0.10, z: 2.42, spread: 1.16 };
 
   const COLORS = [
     { id: "gold", name: "Gold", alias: "mustard", hex: "#D7B56F" },
@@ -306,67 +209,82 @@
     { id: "teal", name: "Teal", alias: "teal", hex: "#5FB4A2" },
     { id: "pink", name: "Pink", alias: "pink", hex: "#E8A3B5" },
   ];
-
   const EYES = [
     { id: "dot", name: "Dots", aka: "two dots" },
-    { id: "line", name: "Sleepy", aka: "narrow" },
-    { id: "wide", name: "Wide", aka: "open" },
-    { id: "happy", name: "Happy", aka: "arcs", proposed: true },
-    { id: "star", name: "Star", aka: "spark", proposed: true },
-    { id: "soft", name: "Soft", aka: "almond", proposed: true },
+    { id: "happy", name: "Happy", aka: "arcs" },
+    { id: "sleepy", name: "Sleepy", aka: "narrow" },
   ];
-
   const STATES = [
-    { id: "idle", name: "Idle", blurb: "Breathing, blinks, and a glance" },
-    { id: "listening", name: "Listening", blurb: "Leans in and tracks you" },
-    { id: "thinking", name: "Thinking", blurb: "Looks up, thoughts orbit" },
-    { id: "working", name: "Working", blurb: "Effort bob and a progress ring" },
-    { id: "success", name: "Success", blurb: "Hop, smile, and sparkles" },
-    { id: "error", name: "Needs attention", blurb: "A shake and a mark" },
-    { id: "sleeping", name: "Sleeping", blurb: "Rolled over, soft Zs" },
+    { id: "idle", name: "Idle", blurb: "Breath, blink, and a glance" },
+    { id: "thinking", name: "Thinking", blurb: "Three orbs, a few orbits" },
+    { id: "working", name: "Working", blurb: "Pulls out a laptop" },
+    { id: "error", name: "Needs attention", blurb: "Concerned, one hand up" },
+    { id: "sleeping", name: "Sleeping", blurb: "Calm sleepy eyes and soft Zs" },
+  ];
+  const THINKS = [
+    { id: "t1", name: "T1 Orbit", aka: "full loop", blurb: "Three orbs on a level ring. The base Akash liked.", suggest: true },
+    { id: "t2", name: "T2 Wide", aka: "slow, larger", blurb: "The same ring, slower and further out." },
+    { id: "t3", name: "T3 Swing", aka: "partial arc", blurb: "They swing across the top and come back. Not a full loop." },
+    { id: "t4", name: "T4 Rise", aka: "vertical", blurb: "A vertical loop beside the head, like a thought climbing." },
+    { id: "t5", name: "T5 Tilt", aka: "tilted plane", blurb: "The ring is tipped, so the path reads as depth." },
+    { id: "t6", name: "T6 Parade", aka: "eyes travel", blurb: "Orbs do a full loop, and the eyes stroll across the front. Eyes stay round." },
+  ];
+  const WORKS = [
+    { id: "w1", name: "W1 Unfold", aka: "clamshell", blurb: "The lid opens in front. The node lifts and looks down.", suggest: true },
+    { id: "w2", name: "W2 Emerge", aka: "from the body", blurb: "A laptop grows out from the lower body. The body itself stays whole." },
+    { id: "w3", name: "W3 Peek", aka: "under the chin", blurb: "A smaller laptop rises to the chin. Screen light washes the face." },
+    { id: "w4", name: "W4 Vignette", aka: "in, hold, away", blurb: "The chat vignette’s timing: come in, work, and put it away." },
+  ];
+  const PRESSES = [
+    { id: "c1", name: "C1 Squash", aka: "settle", blurb: "A soft squash and a happy flash. The face does not turn." },
+    { id: "c2", name: "C2 Nod", aka: "lean", blurb: "A small lean back, then a nod and a tiny hop.", suggest: true },
   ];
 
-  // Face anchors are the app's FACES table, in the 100×100 SVG.
+  const FLAT = {
+    spark: "M50 4l11 24 25-6-14 22 20 18-26 3 2 26-18-18-18 18 2-26-26-3 20-18-14-22 25 6z",
+    hex: "M50 5l39 22v46L50 95 11 73V27z",
+    compass: "M50 4l14 32 32 14-32 14-14 32-14-32L4 50l32-14z",
+  };
+
   const SHAPES = [
-    { id: "orb", name: "Orb", aka: "round blob", path: "M50 6a44 44 0 1 1 0 88a44 44 0 1 1 0-88z", smooth: [0.08, 1], thick: 0.38, face: { x: 50, y: 48, gap: 11, scale: 1 }, personality: { weight: 1, bounce: 1.15, follow: 1, spin: 0.85, breathe: 1, twitch: 0.12, rate: 1.7, sway: 0.04 } },
-    { id: "square", name: "Square", aka: "rounded square", path: "M22 8h56a14 14 0 0 1 14 14v56a14 14 0 0 1-14 14H22A14 14 0 0 1 8 78V22A14 14 0 0 1 22 8z", smooth: [0.1, 1], thick: 0.32, face: { x: 50, y: 48, gap: 11, scale: 1 }, personality: { weight: 1.4, bounce: 0.62, follow: 0.7, spin: 0.42, breathe: 0.62, twitch: 0.03, rate: 1.3, sway: 0.02 } },
-    { id: "spark", name: "Spark", aka: "spiky star", path: "M50 4l11 24 25-6-14 22 20 18-26 3 2 26-18-18-18 18 2-26-26-3 20-18-14-22 25 6z", smooth: [0.34, 2], thick: 0.2, face: { x: 50, y: 50, gap: 9, scale: 0.85 }, personality: { weight: 0.68, bounce: 1.35, follow: 1.18, spin: 1.35, breathe: 0.8, twitch: 0.85, rate: 2.15, sway: 0.06 } },
-    { id: "hex", name: "Hex", aka: "hexagon", path: "M50 5l39 22v46L50 95 11 73V27z", smooth: [0.32, 1], thick: 0.28, face: { x: 50, y: 50, gap: 11, scale: 1 }, personality: { weight: 1.25, bounce: 0.7, follow: 0.78, spin: 0.5, breathe: 0.68, twitch: 0.06, rate: 1.4, sway: 0.03 } },
-    { id: "leaf", name: "Leaf", aka: "droplet", path: "M50 6c30 8 44 30 40 58-3 20-20 32-40 32S13 84 10 64C6 36 20 14 50 6z", smooth: [0.14, 1], thick: 0.26, face: { x: 50, y: 55, gap: 11, scale: 1 }, personality: { weight: 0.86, bounce: 1.05, follow: 1.08, spin: 0.7, breathe: 1.15, twitch: 0.18, rate: 1.5, sway: 0.16 } },
-    { id: "compass", name: "Compass", aka: "sparkle", path: "M50 4l14 32 32 14-32 14-14 32-14-32L4 50l32-14z", smooth: [0.36, 2], thick: 0.18, face: { x: 50, y: 50, gap: 8, scale: 0.66 }, personality: { weight: 0.76, bounce: 0.88, follow: 0.95, spin: 1.5, breathe: 0.55, twitch: 0.32, rate: 1.75, sway: 0.05, wander: 0.16 } },
-    { id: "pebble", name: "Pebble", aka: "bean", path: "M50 8C77 4 95 25 92 52C89 80 74 94 48 92C20 90 5 75 8 49C10 25 26 11 50 8Z", smooth: [0.16, 1], thick: 0.42, face: { x: 50, y: 49, gap: 11, scale: 1 }, personality: { weight: 1.7, bounce: 0.48, follow: 0.58, spin: 0.32, breathe: 0.9, twitch: 0.02, rate: 1.12, sway: 0.02 } },
-    { id: "bloom", name: "Bloom", aka: "flower", path: "M50 10C63-2 82 10 80 27C99 27 104 49 89 59C99 77 82 95 66 86C57 104 34 100 31 82C12 88-1 67 11 53C-3 38 11 18 28 23C29 8 40 2 50 10Z", smooth: [0.18, 1], thick: 0.24, face: { x: 50, y: 51, gap: 10, scale: 0.9 }, personality: { weight: 0.9, bounce: 1, follow: 1.04, spin: 0.82, breathe: 1.2, twitch: 0.28, rate: 1.42, sway: 0.11 } },
-    { id: "gumdrop", name: "Gumdrop", aka: "soft triangle", proposed: true, kind: "gumdrop", smooth: [0.2, 1], thick: 0.48, face: { x: 50, y: 46, gap: 10, scale: 0.95 }, personality: { weight: 1.05, bounce: 1.45, follow: 0.9, spin: 0.62, breathe: 0.95, twitch: 0.1, rate: 1.9, sway: 0.03 } },
-    { id: "puff", name: "Puff", aka: "little cloud", proposed: true, kind: "puff", smooth: [0.22, 1], thick: 0.5, face: { x: 50, y: 48, gap: 10, scale: 0.9 }, personality: { weight: 0.55, bounce: 1.25, follow: 1.12, spin: 0.48, breathe: 1.4, twitch: 0.16, rate: 1.22, sway: 0.1 } },
-    { id: "capsule", name: "Capsule", aka: "pill", proposed: true, kind: "capsule", smooth: [0.06, 1], thick: 0.34, face: { x: 50, y: 42, gap: 8, scale: 0.82 }, personality: { weight: 0.95, bounce: 1.12, follow: 1.12, spin: 0.72, breathe: 0.75, twitch: 0.08, rate: 1.6, sway: 0.05 } },
+    { id: "orb", name: "Orb", aka: "sphere", solid: true, shader: 0, radius: 0.78, face: { x: 0, y: 0.08, z: 0.62, gap: 0.2, scale: 1 } },
+    { id: "square", name: "Square", aka: "soft cuboid", solid: true, shader: 1, radius: 0.7, face: { x: 0, y: 0.06, z: 0.62, gap: 0.2, scale: 1 } },
+    { id: "spark", name: "Spark", aka: "spiky star", solid: false, face: { x: 50, y: 50, gap: 9, scale: 0.85 } },
+    { id: "hex", name: "Hex", aka: "hexagon", solid: false, face: { x: 50, y: 50, gap: 11, scale: 1 } },
+    { id: "leaf", name: "Leaf", aka: "egg", solid: true, shader: 2, radius: 0.8, face: { x: 0, y: 0.02, z: 0.58, gap: 0.18, scale: 0.96 } },
+    { id: "compass", name: "Compass", aka: "sparkle", solid: false, face: { x: 50, y: 50, gap: 8, scale: 0.66 } },
+    { id: "pebble", name: "Pebble", aka: "rounded stone", solid: true, shader: 3, radius: 0.78, face: { x: 0, y: 0.04, z: 0.55, gap: 0.18, scale: 0.96 } },
+  { id: "bloom", name: "Bloom", aka: "cloud", solid: true, shader: 4, radius: 1.02, face: { x: 0, y: 0.02, z: 0.5, gap: 0.18, scale: 0.82 } },
+  { id: "gumdrop", name: "Gumdrop", aka: "soft cone", solid: true, shader: 5, radius: 1.05, face: { x: 0, y: -0.12, z: 0.55, gap: 0.16, scale: 0.8 } },
   ];
 
-  const selection = { shape: "orb", color: "#D7B56F", eyes: "dot", state: "idle" };
-  let intensity = 0.72;
+  const selection = { shape: "orb", color: "#D7B56F", eyes: "dot", state: "idle", think: "t1", work: "w1", press: "c2" };
+  let intensity = 0.7;
   let simTime = 0;
+  let frozen = null;
   const actors = [];
-  const meshCache = new Map();
-  const toneCache = new Map();
   let feedback = loadStore();
+  let gl, program, uniforms, bufferCanvas, layer, layerCtx;
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
+  const smoothstep = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+  const backOut = (t) => {
+    t = clamp(t, 0, 1);
+    const c = 1.35;
+    return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2;
+  };
   function mix(rgb, target, amount) {
     return rgb.map((c, i) => Math.round(c + ((typeof target === "number" ? target : target[i]) - c) * amount));
   }
   function css(rgb, a) {
-    return a == null || a >= 1 ? `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` : `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
-  }
-  function norm3(x, y, z) {
-    const l = Math.hypot(x, y, z) || 1;
-    return { x: x / l, y: y / l, z: z / l };
+    return a == null ? `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` : `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
   }
   function hash(s) {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
     return (h >>> 0) / 4294967295;
   }
-
   function parseHex(color) {
     const match = /^#?([0-9a-f]{6})$/i.exec(String(color).trim());
     const value = match ? parseInt(match[1], 16) : 0xd7b56f;
@@ -380,496 +298,244 @@
     return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2];
   }
   function tonesOf(hex) {
-    const key = hex.toUpperCase();
-    if (toneCache.has(key)) return toneCache.get(key);
-    const base = parseHex(key);
-    const tones = {
+    const base = parseHex(hex);
+    return {
       base,
-      light: mix(base, 255, 0.5),
-      shade: mix(base, 0, 0.1),
-      edge: mix(base, 0, 0.3),
-      hot: mix(mix(base, 255, 0.5), 255, 0.62),
-      deep: mix(base, 0, 0.46),
+      light: mix(base, 255, 0.52),
+      shade: mix(base, 0, 0.2),
+      deep: mix(base, 0, 0.45),
+      hot: mix(mix(base, 255, 0.52), 255, 0.55),
       eyes: luminance(base) > 0.179 ? [20, 17, 12] : [251, 248, 241],
     };
-    toneCache.set(key, tones);
-    return tones;
+  }
+  const shapeOf = (id) => SHAPES.find((s) => s.id === id);
+  const colorOf = (hex) => COLORS.find((c) => c.hex.toUpperCase() === String(hex).toUpperCase()) || COLORS[0];
+  const eyeOf = (id) => EYES.find((e) => e.id === id);
+  const stateOf = (id) => STATES.find((s) => s.id === id);
+
+  function rotX(p, a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x, y: p.y * c - p.z * s, z: p.y * s + p.z * c };
+  }
+  function rotY(p, a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x * c + p.z * s, y: p.y, z: -p.x * s + p.z * c };
+  }
+  function rotZ(p, a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };
+  }
+  function xform(p, pose) {
+    let q = { x: p.x * pose.sx, y: p.y * pose.sy, z: p.z * pose.sz };
+    q = rotZ(q, pose.roll);
+    q = rotX(q, pose.pitch);
+    q = rotY(q, pose.yaw);
+    q.y += pose.lift;
+    return q;
+  }
+  function project(p, w, h, focus, zoom) {
+    const roY = CAM.y + (focus || 0);
+    const dz = CAM.z * (zoom || 1) - p.z;
+    const uvx = p.x / dz / CAM.spread;
+    const uvy = (p.y - roY) / dz / CAM.spread;
+    return { x: w * 0.5 + uvx * h, y: h * 0.5 - uvy * h, unit: h / dz / CAM.spread };
   }
 
-  function rotInto(x, y, z, roll, pitch, yaw, o) {
-    let c = Math.cos(roll), s = Math.sin(roll);
-    let x1 = x * c - y * s, y1 = x * s + y * c, z1 = z;
-    c = Math.cos(pitch); s = Math.sin(pitch);
-    const y2 = y1 * c - z1 * s, z2 = y1 * s + z1 * c;
-    c = Math.cos(yaw); s = Math.sin(yaw);
-    o.x = x1 * c + z2 * s;
-    o.y = y2;
-    o.z = -x1 * s + z2 * c;
+  const VERT = `#version 300 es
+  void main() {
+    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+  }`;
+
+  const FRAG = `#version 300 es
+  precision highp float;
+  uniform vec2 uRes;
+  uniform vec3 uCam;
+  uniform float uFocus, uZoom;
+  uniform int uShape;
+  uniform float uYaw, uPitch, uRoll, uLift;
+  uniform vec3 uSquash;
+  uniform vec3 uBase, uLight, uShade;
+  uniform float uBound;
+  out vec4 fragColor;
+
+  vec3 rotX(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(p.x, c*p.y - s*p.z, s*p.y + c*p.z); }
+  vec3 rotY(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c*p.x + s*p.z, p.y, -s*p.x + c*p.z); }
+  vec3 rotZ(vec3 p, float a) { float c = cos(a), s = sin(a); return vec3(c*p.x - s*p.y, s*p.x + c*p.y, p.z); }
+
+  float sdRoundBox(vec3 p, vec3 b, float r) {
+    vec3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
   }
-  function worldToObject(v, roll, pitch, yaw, o) {
-    let c = Math.cos(-yaw), s = Math.sin(-yaw);
-    const x1 = v.x * c + v.z * s, z1 = -v.x * s + v.z * c;
-    c = Math.cos(-pitch); s = Math.sin(-pitch);
-    const y2 = v.y * c - z1 * s, z2 = v.y * s + z1 * c;
-    c = Math.cos(-roll); s = Math.sin(-roll);
-    o.x = x1 * c - y2 * s;
-    o.y = x1 * s + y2 * c;
-    o.z = z2;
+  float sdEllipsoid(vec3 p, vec3 r) {
+    r = max(r, vec3(0.04));
+    float k0 = length(p / r);
+    float k1 = length(p / (r * r));
+    return k0 * (k0 - 1.0) / max(k1, 1e-4);
+  }
+  float smin(float a, float b, float k) {
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    return mix(b, a, h) - k * h * (1.0 - h);
+  }
+  float sdCappedCone(vec3 p, float h, float r1, float r2) {
+    vec2 q = vec2(length(p.xz), p.y);
+    vec2 k1 = vec2(r2, h);
+    vec2 k2 = vec2(r2 - r1, 2.0 * h);
+    vec2 ca = vec2(q.x - min(q.x, (q.y < 0.0) ? r1 : r2), abs(q.y) - h);
+    vec2 cb = q - k1 + k2 * clamp(dot(k1 - q, k2) / dot(k2, k2), 0.0, 1.0);
+    float s = (cb.x < 0.0 && ca.y < 0.0) ? -1.0 : 1.0;
+    return s * sqrt(min(dot(ca, ca), dot(cb, cb)));
   }
 
-  const CMD = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, A: 7, Z: 0 };
-  function tokenize(d) {
-    return d.match(/[a-zA-Z]|[-+]?(?:\d*\.\d+|\d+)(?:e[-+]?\d+)?/gi) || [];
-  }
-  function angleBetween(ux, uy, vx, vy) {
-    const dot = ux * vx + uy * vy;
-    const len = Math.hypot(ux, uy) * Math.hypot(vx, vy) || 1;
-    let a = Math.acos(clamp(dot / len, -1, 1));
-    if (ux * vy - uy * vx < 0) a = -a;
-    return a;
-  }
-  function sampleArc(x1, y1, rx, ry, phiDeg, fa, fs, x2, y2, out) {
-    if (!rx || !ry) { out.push({ x: x2, y: y2 }); return; }
-    const phi = phiDeg * Math.PI / 180;
-    const cos = Math.cos(phi), sin = Math.sin(phi);
-    rx = Math.abs(rx); ry = Math.abs(ry);
-    const dx = (x1 - x2) / 2, dy = (y1 - y2) / 2;
-    const x1p = cos * dx + sin * dy, y1p = -sin * dx + cos * dy;
-    let rx2 = rx * rx, ry2 = ry * ry;
-    const lam = (x1p * x1p) / rx2 + (y1p * y1p) / ry2;
-    if (lam > 1) { const s = Math.sqrt(lam); rx *= s; ry *= s; rx2 = rx * rx; ry2 = ry * ry; }
-    const sign = fa === fs ? -1 : 1;
-    const num = rx2 * ry2 - rx2 * y1p * y1p - ry2 * x1p * x1p;
-    const den = rx2 * y1p * y1p + ry2 * x1p * x1p || 1;
-    const coef = sign * Math.sqrt(Math.max(0, num / den));
-    const cxp = coef * (rx * y1p / ry);
-    const cyp = coef * (-ry * x1p / rx);
-    const cx = cos * cxp - sin * cyp + (x1 + x2) / 2;
-    const cy = sin * cxp + cos * cyp + (y1 + y2) / 2;
-    const theta1 = angleBetween(1, 0, (x1p - cxp) / rx, (y1p - cyp) / ry);
-    let dtheta = angleBetween((x1p - cxp) / rx, (y1p - cyp) / ry, (-x1p - cxp) / rx, (-y1p - cyp) / ry);
-    if (!fs && dtheta > 0) dtheta -= Math.PI * 2;
-    if (fs && dtheta < 0) dtheta += Math.PI * 2;
-    const steps = Math.max(4, Math.ceil(Math.abs(dtheta) / 0.18));
-    for (let i = 1; i <= steps; i++) {
-      const th = theta1 + dtheta * (i / steps);
-      const ct = Math.cos(th), st = Math.sin(th);
-      out.push({
-        x: cx + rx * ct * cos - ry * st * sin,
-        y: cy + rx * ct * sin + ry * st * cos,
-      });
+  float body(vec3 p) {
+    if (uShape == 0) return length(p) - 0.78;
+    if (uShape == 1) return sdRoundBox(p, vec3(0.40, 0.38, 0.36), 0.24);
+    if (uShape == 2) return sdEllipsoid(p - vec3(0.0, -0.04, 0.0), vec3(0.58, 0.9, 0.54));
+    if (uShape == 3) {
+      float a = sdEllipsoid(p + vec3(0.02, 0.06, 0.0), vec3(0.86, 0.62, 0.6));
+      float b = sdEllipsoid(p - vec3(0.3, -0.02, 0.05), vec3(0.42, 0.36, 0.34));
+      return smin(a, b, 0.32);
     }
-  }
-  function sampleCubic(p0, p1, p2, p3, out) {
-    const steps = 8;
-    for (let i = 1; i <= steps; i++) {
-      const t = i / steps, u = 1 - t;
-      out.push({
-        x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
-        y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
-      });
+    if (uShape == 4) {
+      float d = length(p - vec3(0.0, -0.18, 0.0)) - 0.4;
+      d = smin(d, length(p - vec3(-0.5, 0.0, 0.0)) - 0.32, 0.16);
+      d = smin(d, length(p - vec3(0.52, -0.02, 0.02)) - 0.3, 0.16);
+      d = smin(d, length(p - vec3(-0.2, 0.34, 0.0)) - 0.28, 0.15);
+      d = smin(d, length(p - vec3(0.24, 0.32, 0.0)) - 0.26, 0.15);
+      d = smin(d, length(p - vec3(0.02, 0.08, 0.1)) - 0.28, 0.16);
+      return d;
     }
-  }
-  function samplePath(d) {
-    const tokens = tokenize(d);
-    let i = 0, cmd = "M";
-    let x = 0, y = 0, sx = 0, sy = 0, pcx = 0, pcy = 0, prev = "";
-    const out = [];
-    const put = (nx, ny) => { x = nx; y = ny; out.push({ x, y }); };
-    while (i < tokens.length) {
-      if (/[a-zA-Z]/.test(tokens[i])) cmd = tokens[i++];
-      const rel = cmd === cmd.toLowerCase();
-      const op = cmd.toUpperCase();
-      const n = CMD[op];
-      if (n == null) throw new Error("Bad path command " + cmd);
-      if (n === 0) { put(sx, sy); prev = op; continue; }
-      const a = [];
-      for (let k = 0; k < n; k++) a.push(Number(tokens[i++]));
-      if (op === "M") {
-        x = rel ? x + a[0] : a[0]; y = rel ? y + a[1] : a[1];
-        sx = x; sy = y; out.push({ x, y }); cmd = rel ? "l" : "L"; prev = "M"; continue;
-      }
-      if (op === "L") { put(rel ? x + a[0] : a[0], rel ? y + a[1] : a[1]); }
-      else if (op === "H") put(rel ? x + a[0] : a[0], y);
-      else if (op === "V") put(x, rel ? y + a[0] : a[0]);
-      else if (op === "C" || op === "S") {
-        let c1x, c1y, c2x, c2y, ex, ey;
-        if (op === "S") {
-          const smooth = prev === "C" || prev === "S";
-          c1x = smooth ? 2 * x - pcx : x;
-          c1y = smooth ? 2 * y - pcy : y;
-          c2x = rel ? x + a[0] : a[0]; c2y = rel ? y + a[1] : a[1];
-          ex = rel ? x + a[2] : a[2]; ey = rel ? y + a[3] : a[3];
-        } else {
-          c1x = rel ? x + a[0] : a[0]; c1y = rel ? y + a[1] : a[1];
-          c2x = rel ? x + a[2] : a[2]; c2y = rel ? y + a[3] : a[3];
-          ex = rel ? x + a[4] : a[4]; ey = rel ? y + a[5] : a[5];
-        }
-        sampleCubic({ x, y }, { x: c1x, y: c1y }, { x: c2x, y: c2y }, { x: ex, y: ey }, out);
-        pcx = c2x; pcy = c2y; x = ex; y = ey;
-      } else if (op === "A") {
-        const ex = rel ? x + a[5] : a[5], ey = rel ? y + a[6] : a[6];
-        sampleArc(x, y, a[0], a[1], a[2], a[3], a[4], ex, ey, out);
-        x = ex; y = ey;
-      }
-      prev = op;
-    }
-    if (out.length > 2) {
-      const a0 = out[0], b = out[out.length - 1];
-      if (Math.hypot(a0.x - b.x, a0.y - b.y) < 0.05) out.pop();
-    }
-    return out;
-  }
-  function resample(pts, n) {
-    const p = pts.slice();
-    if (p.length > 2 && Math.hypot(p[0].x - p[p.length - 1].x, p[0].y - p[p.length - 1].y) < 0.04) p.pop();
-    const seg = [];
-    let total = 0;
-    for (let i = 0; i < p.length; i++) {
-      const q = p[(i + 1) % p.length];
-      const len = Math.hypot(q.x - p[i].x, q.y - p[i].y) || 0.0001;
-      seg.push(len); total += len;
-    }
-    const out = [];
-    const step = total / n;
-    let acc = 0, si = 0;
-    for (let k = 0; k < n; k++) {
-      const target = k * step;
-      while (si < seg.length - 1 && acc + seg[si] < target) { acc += seg[si]; si++; }
-      const t = seg[si] ? (target - acc) / seg[si] : 0;
-      const a = p[si], b = p[(si + 1) % p.length];
-      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
-    }
-    return out;
-  }
-  function smoothClosed(pts, amount, times) {
-    let cur = pts;
-    for (let k = 0; k < times; k++) {
-      cur = cur.map((p, i) => {
-        const a = cur[(i + cur.length - 1) % cur.length];
-        const b = cur[(i + 1) % cur.length];
-        return {
-          x: p.x * (1 - amount) + (a.x + b.x) * 0.5 * amount,
-          y: p.y * (1 - amount) + (a.y + b.y) * 0.5 * amount,
-        };
-      });
-    }
-    return cur;
-  }
-  function toLocal(pts) {
-    return pts.map((p) => ({ x: (p.x - 50) / 48, y: (50 - p.y) / 48 }));
-  }
-  function roundedPoly(corners, radius, n) {
-    const pts = [];
-    const m = corners.length;
-    for (let i = 0; i < m; i++) {
-      const prev = corners[(i + m - 1) % m];
-      const cur = corners[i];
-      const next = corners[(i + 1) % m];
-      const l1 = Math.hypot(cur.x - prev.x, cur.y - prev.y) || 1;
-      const l2 = Math.hypot(next.x - cur.x, next.y - cur.y) || 1;
-      const v1x = (cur.x - prev.x) / l1, v1y = (cur.y - prev.y) / l1;
-      const v2x = (next.x - cur.x) / l2, v2y = (next.y - cur.y) / l2;
-      const rad = Math.min(radius, l1 * 0.45, l2 * 0.45);
-      const p1 = { x: cur.x - v1x * rad, y: cur.y - v1y * rad };
-      const p2 = { x: cur.x + v2x * rad, y: cur.y + v2y * rad };
-      const segs = Math.max(4, Math.round(n / m));
-      for (let s = 0; s < segs; s++) {
-        const t = s / segs, u = 1 - t;
-        pts.push({
-          x: u * u * p1.x + 2 * u * t * cur.x + t * t * p2.x,
-          y: u * u * p1.y + 2 * u * t * cur.y + t * t * p2.y,
-        });
-      }
-    }
-    return resample(pts, n);
-  }
-  function proceduralOutline(kind, n) {
-    if (kind === "gumdrop") {
-      return roundedPoly([{ x: 0, y: 0.96 }, { x: 0.9, y: -0.7 }, { x: -0.9, y: -0.7 }], 0.52, n);
-    }
-    if (kind === "puff") {
-      const pts = [];
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2;
-        const r = 0.74 + 0.2 * Math.cos(3 * (a - Math.PI / 2));
-        pts.push({ x: Math.cos(a) * r, y: Math.sin(a) * r * 0.92 });
-      }
-      return pts;
-    }
-    const r = 0.56, h = 0.38, pts = [], cap = Math.floor(n / 2);
-    for (let i = 0; i < cap; i++) {
-      const a = Math.PI - (i / cap) * Math.PI;
-      pts.push({ x: Math.cos(a) * r, y: h + Math.sin(a) * r });
-    }
-    for (let i = 0; i < cap; i++) {
-      const a = -(i / cap) * Math.PI;
-      pts.push({ x: Math.cos(a) * r, y: -h + Math.sin(a) * r });
-    }
-    return resample(pts, n);
-  }
-  function outlineOf(shape, n) {
-    let pts;
-    if (shape.kind) pts = proceduralOutline(shape.kind, n);
-    else pts = toLocal(resample(samplePath(shape.path), n));
-    const [amount, times] = shape.smooth;
-    return smoothClosed(pts, amount, times);
-  }
-  function buildMesh(shape, quality) {
-    const segs = quality === "high" ? 72 : quality === "mid" ? 44 : 30;
-    const outline = outlineOf(shape, segs);
-    const thick = shape.thick;
-    const specs = quality === "low"
-      ? [{ role: "back", s: 0.92, z: -thick * 0.48 }, { role: "equator", s: 1, z: 0 }, { role: "front", s: 0.94, z: thick * 0.5 }]
-      : [
-          { role: "back", s: 0.9, z: -thick * 0.52 },
-          { role: "backBevel", s: 0.98, z: -thick * 0.18 },
-          { role: "equator", s: 1, z: 0 },
-          { role: "bevel", s: 0.985, z: thick * 0.22 },
-          { role: "front", s: 0.94, z: thick * 0.52 },
-        ];
-    return {
-      rings: specs.map((spec) => ({
-        role: spec.role,
-        z: spec.z,
-        pts: outline.map((p) => ({ x: p.x * spec.s, y: p.y * spec.s })),
-        view: outline.map(() => ({ sx: 0, sy: 0, z: 0, p: 1 })),
-      })),
-      face: {
-        x: (shape.face.x - 50) / 48,
-        y: (50 - shape.face.y) / 48,
-        gap: shape.face.gap / 48,
-        scale: shape.face.scale,
-      },
-    };
-  }
-  function meshFor(id, quality) {
-    const key = id + ":" + quality;
-    if (!meshCache.has(key)) meshForBuild(id, quality, key);
-    return meshCache.get(key);
-  }
-  function meshForBuild(id, quality, key) {
-    const shape = SHAPES.find((s) => s.id === id);
-    meshCache.set(key, buildMesh(shape, quality));
+    return sdCappedCone(p - vec3(0.0, 0.05, 0.0), 0.7, 0.82, 0.14);
   }
 
-  function spring(s, target, dt, stiff, damp) {
-    s.v += ((target - s.x) * stiff - s.v * damp) * dt;
-    s.x += s.v * dt;
+  vec3 toObject(vec3 p) {
+    p.y -= uLift;
+    p = rotY(p, -uYaw);
+    p = rotX(p, -uPitch);
+    p = rotZ(p, -uRoll);
+    p.x /= uSquash.x; p.y /= uSquash.y; p.z /= uSquash.z;
+    return p;
   }
-  function sp(x) { return { x, v: 0 }; }
-
-  function makeActor(canvas, role, locks) {
-    const shape = locks.shape || selection.shape;
-    return {
-      canvas, role, locks,
-      phase: hash((locks.shape || role) + (locks.color || "") + (locks.eyes || "") + role) * 8,
-      yaw: sp(0), pitch: sp(0), roll: sp(0),
-      z: sp(0), sx: sp(1), sy: sp(1), sz: sp(1),
-      px: 0, py: 0, vx: 0, vy: 0,
-      spin: 0, spinVel: 0, giggle: 0, dust: 0,
-      lookX: sp(0), lookY: sp(0), hover: sp(0), pet: sp(0), petForce: 0,
-      shadowX: 0, shadowY: 0,
-      dragging: false, thrown: false, engaged: false,
-      pointer: null, hitR: 40, unit: 40, centerY: 0,
-      lastClick: 0,
-    };
+  float mapWorld(vec3 p) {
+    return body(toObject(p)) * min(uSquash.x, min(uSquash.y, uSquash.z));
   }
 
-  function personalityOf(id) {
-    return SHAPES.find((s) => s.id === id).personality;
-  }
-  function shapeOf(id) { return SHAPES.find((s) => s.id === id); }
-  function colorOf(hex) { return COLORS.find((c) => c.hex.toUpperCase() === hex.toUpperCase()) || COLORS[0]; }
-  function eyeOf(id) { return EYES.find((e) => e.id === id); }
-  function stateOf(id) { return STATES.find((s) => s.id === id); }
-
-  function currentOf(actor) {
-    return {
-      shape: actor.locks.shape || selection.shape,
-      color: actor.locks.color || selection.color,
-      eyes: actor.locks.eyes || selection.eyes,
-      state: selection.state,
-    };
-  }
-
-  function blinkScale(time, phase, state) {
-    if (state === "sleeping") return 1;
-    const period = state === "listening" ? 6.4 : 4.1;
-    const x = ((time + phase) % period) / period;
-    let scale = 1;
-    const pulse = (u) => (u < 0.5 ? 1 - u * 2 : (u - 0.5) * 2);
-    if (x > 0.9) scale = pulse((x - 0.9) / 0.1);
-    if (state === "idle") {
-      const w = ((time + phase * 1.7) % 11) / 11;
-      if (w > 0.9 && w < 0.96) return { both: 1, left: pulse((w - 0.9) / 0.06), right: 1 };
+  void main() {
+    vec2 uv = (gl_FragCoord.xy - 0.5 * uRes) / uRes.y;
+    vec3 ro = vec3(0.0, uCam.x + uFocus, uCam.y * uZoom);
+    vec3 rd = normalize(vec3(uv * uCam.z, -1.0));
+    vec3 center = vec3(0.0, uLift, 0.0);
+    vec3 oc = ro - center;
+    float rad = uBound;
+    float b = dot(oc, rd);
+    float c = dot(oc, oc) - rad * rad;
+    float h = b * b - c;
+    if (h < 0.0) { fragColor = vec4(0.0); return; }
+    h = sqrt(h);
+    float t = max(-b - h, 0.0);
+    float tFar = -b + h;
+    vec3 p = ro + rd * t;
+    bool hit = false;
+    for (int i = 0; i < 56; i++) {
+      float d = mapWorld(p);
+      if (d < 0.0016) { hit = true; break; }
+      t += max(d, 0.0012) * 0.82;
+      if (t > tFar + 0.02) break;
+      p = ro + rd * t;
     }
-    return { both: scale, left: 1, right: 1 };
-  }
-
-  function poseMods(state, time, phase, person, amp) {
-    const m = { yaw: 0, pitch: 0, roll: 0, z: 0, eye: 1, lookX: 0, lookY: 0, follow: 1, hop: 0, bob: 0 };
-    const sway = Math.sin(time * person.rate * 0.85 + phase) * person.sway * amp;
-    m.roll += sway;
-    m.yaw += Math.sin(time * 9.5 + phase) * 0.045 * person.twitch * amp;
-    m.yaw += Math.sin(time * 0.45 + phase) * (person.wander || 0) * amp;
-    if (state === "idle") {
-      const g = ((time + phase) % 6.8);
-      if (g < 1.05) {
-        const dir = Math.sin(phase * 4) > 0 ? 1 : -1;
-        m.yaw += Math.sin((g / 1.05) * Math.PI) * 0.3 * dir * amp;
-        m.lookX += dir * Math.sin((g / 1.05) * Math.PI) * 0.45 * amp;
-      }
-    } else if (state === "listening") {
-      m.pitch = -0.14;
-      m.z = 0.16;
-      m.eye = 1.12;
-      m.follow = 1.45;
-    } else if (state === "thinking") {
-      m.pitch = -0.36;
-      m.yaw += Math.sin(time * 0.75 + phase) * 0.26 * amp;
-      m.lookY = -0.7;
-      m.eye = 0.84;
-      m.follow = 0.28;
-    } else if (state === "working") {
-      m.pitch = 0.16;
-      m.z = 0.05;
-      m.lookY = 0.62;
-      m.eye = 0.74;
-      m.bob = Math.sin(time * 14) * amp;
-      m.follow = 0.45;
-    } else if (state === "success") {
-      m.pitch = -0.08;
-      m.eye = 1.04;
-      const bounce = Math.pow(Math.abs(Math.sin(time * 2.5 + phase)), 0.55);
-      m.hop = bounce * person.bounce * amp;
-    } else if (state === "error") {
-      const burst = Math.pow(Math.max(0, Math.sin(time * 1.25 + phase)), 2);
-      m.yaw += Math.sin(time * 36) * burst * 0.2 * amp;
-      m.eye = 1.08;
-      m.follow = 0.7;
-    } else if (state === "sleeping") {
-      m.roll += -0.72;
-      m.pitch = 0.06;
-      m.eye = 0.12;
-      m.follow = 0.08;
-      m.sink = 0.04;
+    if (!hit) { fragColor = vec4(0.0); return; }
+    vec2 e = vec2(0.0018, 0.0);
+    vec3 n = normalize(vec3(
+      mapWorld(p + e.xyy) - mapWorld(p - e.xyy),
+      mapWorld(p + e.yxy) - mapWorld(p - e.yxy),
+      mapWorld(p + e.yyx) - mapWorld(p - e.yyx)));
+    vec3 light = normalize(vec3(-0.38, 0.78, 0.5));
+    float wrap = clamp(dot(n, light) * 0.55 + 0.45, 0.0, 1.0);
+    vec3 col = mix(uShade, uLight, wrap);
+    col = mix(col, uBase, 0.45);
+    vec3 halfv = normalize(light + vec3(0.0, 0.15, 1.0));
+    float spec = pow(clamp(dot(n, halfv), 0.0, 1.0), 36.0);
+    col += spec * 0.38;
+    float rim = pow(1.0 - clamp(dot(n, vec3(0.0, 0.05, 1.0)), 0.0, 1.0), 1.6);
+    col = mix(col, uShade * 0.72, rim * 0.55);
+    float belly = smoothstep(0.15, -0.75, p.y - uLift);
+    col *= mix(1.0, 0.78, belly * 0.85);
+    if (uShape == 2) {
+      vec3 q = toObject(p);
+      float stem = smoothstep(0.7, -0.15, q.y);
+      float mid = smoothstep(0.028, 0.0, abs(q.x)) * stem;
+      float leaf = smoothstep(0.22, 0.02, abs(q.x)) * smoothstep(0.35, -0.45, q.y) * stem;
+      float vein = clamp(mid * 0.9 + leaf * 0.22, 0.0, 1.0) * clamp(n.z, 0.0, 1.0);
+      col = mix(col, uShade, vein * 0.5);
     }
-    return m;
+    fragColor = vec4(col, 1.0);
+  }`;
+
+  function showError(err) {
+    const box = document.getElementById("error");
+    box.style.display = "block";
+    box.textContent = String(err && err.stack || err);
+    console.error(err);
   }
 
-  const tmp = { x: 0, y: 0, z: 0 };
-  const tmpL = { x: 0, y: 0, z: 0 };
-  function project(x, y, z, pose, o) {
-    rotInto(x * pose.sx, y * pose.sy, z * pose.sz, pose.roll, pose.pitch, pose.yaw, tmp);
-    tmp.z += pose.lift;
-    const p = FOCAL / (FOCAL - tmp.z);
-    o.sx = pose.cx + tmp.x * pose.unit * p;
-    o.sy = pose.cy - tmp.y * pose.unit * p;
-    o.z = tmp.z;
-    o.p = p;
-  }
-
-  function fillRing(ctx, ring) {
-    const v = ring.view;
-    ctx.beginPath();
-    ctx.moveTo(v[0].sx, v[0].sy);
-    for (let i = 1; i < v.length; i++) ctx.lineTo(v[i].sx, v[i].sy);
-    ctx.closePath();
-  }
-
-  function shadeStops(tones, lit) {
-    const dark = mix(tones.edge, tones.deep, 1 - lit);
-    return [
-      mix(tones.hot, dark, 1 - lit),
-      mix(tones.light, dark, (1 - lit) * 0.85),
-      mix(tones.base, dark, (1 - lit) * 0.7),
-      mix(tones.shade, tones.deep, (1 - lit) * 0.55),
-      mix(tones.edge, tones.deep, (1 - lit) * 0.35),
-    ];
-  }
-
-  function drawBody(ctx, mesh, pose, tones) {
-    worldToObject(LIGHT, pose.roll, pose.pitch, pose.yaw, tmpL);
-    const faceN = { x: 0, y: 0, z: 0 };
-    rotInto(0, 0, 1, pose.roll, pose.pitch, pose.yaw, faceN);
-    const lit = clamp(tmpL.z * 0.8 + 0.28, 0.22, 1);
-    const order = mesh.rings.map((ring, index) => {
-      let z = 0;
-      for (let i = 0; i < ring.pts.length; i++) {
-        project(ring.pts[i].x, ring.pts[i].y, ring.z, pose, ring.view[i]);
-        z += ring.view[i].z;
-      }
-      return { ring, z: z / ring.pts.length, index };
-    }).sort((a, b) => a.z - b.z);
-
-    const front = mesh.rings.find((r) => r.role === "front");
-    let frontBox = null;
-    for (const item of order) {
-      const ring = item.ring;
-      let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
-      for (const p of ring.view) {
-        minX = Math.min(minX, p.sx); maxX = Math.max(maxX, p.sx);
-        minY = Math.min(minY, p.sy); maxY = Math.max(maxY, p.sy);
-      }
-      if (ring.role === "front") frontBox = { minX, maxX, minY, maxY };
-      fillRing(ctx, ring);
-      const facing = ring.role === "front" ? faceN.z : ring.role === "back" ? -faceN.z : 0;
-      if (facing > 0.12) {
-        const spot = { sx: 0, sy: 0, z: 0, p: 1 };
-        const depth = ring.role === "back" ? 0.55 : 1;
-        project(tmpL.x * 0.38 * depth, tmpL.y * 0.38 * depth, ring.z, pose, spot);
-        const radius = Math.max(8, (maxX - minX) * 0.78);
-        const stops = shadeStops(tones, lit * clamp(facing, 0.3, 1) * (ring.role === "back" ? 0.78 : 1));
-        const g = ctx.createRadialGradient(spot.sx, spot.sy, Math.max(1, radius * 0.04), spot.sx, spot.sy, radius);
-        g.addColorStop(0, css(stops[0]));
-        g.addColorStop(0.2, css(stops[1]));
-        g.addColorStop(0.5, css(stops[2]));
-        g.addColorStop(0.82, css(stops[3]));
-        g.addColorStop(1, css(stops[4]));
-        ctx.fillStyle = g;
-      } else {
-        const roleDim = ring.role === "back" ? 0.7 : ring.role === "backBevel" ? 0.82 : ring.role === "bevel" ? 0.96 : 0.9;
-        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-        const dx = LIGHT.x, dy = -LIGHT.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const rx = Math.max(2, (maxX - minX) / 2), ry = Math.max(2, (maxY - minY) / 2);
-        const g = ctx.createLinearGradient(cx - dx / len * rx, cy - dy / len * ry, cx + dx / len * rx, cy + dy / len * ry);
-        g.addColorStop(0, css(mix(tones.deep, tones.edge, roleDim)));
-        g.addColorStop(0.5, css(mix(tones.base, tones.shade, 0.45)));
-        g.addColorStop(1, css(mix(tones.shade, tones.light, roleDim)));
-        ctx.fillStyle = g;
-      }
-      ctx.fill();
+  function initGL() {
+    bufferCanvas = document.createElement("canvas");
+    bufferCanvas.width = 1024;
+    bufferCanvas.height = 1024;
+    gl = bufferCanvas.getContext("webgl2", { alpha: true, antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: true });
+    if (!gl) throw new Error("WebGL2 is not available.");
+    function shader(type, src) {
+      const sh = gl.createShader(type);
+      gl.shaderSource(sh, src);
+      gl.compileShader(sh);
+      if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+      return sh;
     }
-
-    if (faceN.z > 0.2 && front && frontBox) {
-      fillRing(ctx, front);
-      ctx.save();
-      ctx.clip();
-      const { minX, maxX, minY, maxY } = frontBox;
-      const ao = ctx.createLinearGradient(0, minY, 0, maxY);
-      ao.addColorStop(0.42, "rgba(0,0,0,0)");
-      ao.addColorStop(1, `rgba(0,0,0,${0.22 * (1 - Math.min(1, Math.max(0, pose.lift)))})`);
-      ctx.fillStyle = ao;
-      ctx.fillRect(minX - 4, minY, maxX - minX + 8, maxY - minY + 4);
-      const spot = { sx: 0, sy: 0 };
-      project(tmpL.x * 0.22, tmpL.y * 0.3 + 0.08, front.z, pose, spot);
-      const rad = Math.max(6, (maxX - minX) * 0.32);
-      const spec = ctx.createRadialGradient(spot.sx, spot.sy, 0, spot.sx, spot.sy, rad);
-      const gloss = 0.5 * lit * clamp(faceN.z, 0, 1);
-      spec.addColorStop(0, `rgba(255,255,255,${gloss})`);
-      spec.addColorStop(0.45, `rgba(255,255,255,${gloss * 0.28})`);
-      spec.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = spec;
-      ctx.fillRect(minX - 8, minY - 8, maxX - minX + 16, maxY - minY + 16);
-      ctx.restore();
+    program = gl.createProgram();
+    gl.attachShader(program, shader(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(program, shader(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    gl.useProgram(program);
+    uniforms = {};
+    for (const name of ["uRes", "uCam", "uFocus", "uZoom", "uShape", "uYaw", "uPitch", "uRoll", "uLift", "uSquash", "uBase", "uLight", "uShade", "uBound"]) {
+      uniforms[name] = gl.getUniformLocation(program, name);
     }
-    return { faceN, lit, frontZ: front ? front.z : 0.2 };
+    layer = document.createElement("canvas");
+    layerCtx = layer.getContext("2d", { alpha: true });
   }
 
-  function roundEye(ctx, w, h, r) {
-    const x = -w / 2, y = -h / 2;
+  function renderSolid(bw, bh, pose, shape, tones) {
+    if (bufferCanvas.width < bw || bufferCanvas.height < bh) {
+      bufferCanvas.width = Math.max(bufferCanvas.width, bw);
+      bufferCanvas.height = Math.max(bufferCanvas.height, bh);
+    }
+    gl.viewport(0, 0, bw, bh);
+    gl.enable(gl.SCISSOR_TEST);
+    gl.scissor(0, 0, bw, bh);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.useProgram(program);
+    gl.uniform2f(uniforms.uRes, bw, bh);
+    gl.uniform3f(uniforms.uCam, CAM.y, CAM.z, CAM.spread);
+    gl.uniform1f(uniforms.uFocus, pose.focus || 0);
+    gl.uniform1f(uniforms.uZoom, pose.zoom || 1);
+    gl.uniform1i(uniforms.uShape, shape.shader);
+    gl.uniform1f(uniforms.uYaw, pose.yaw);
+    gl.uniform1f(uniforms.uPitch, pose.pitch);
+    gl.uniform1f(uniforms.uRoll, pose.roll);
+    gl.uniform1f(uniforms.uLift, pose.lift);
+    gl.uniform3f(uniforms.uSquash, pose.sx, pose.sy, pose.sz);
+    const b = tones.base, l = tones.light, s = tones.shade;
+    gl.uniform3f(uniforms.uBase, b[0] / 255, b[1] / 255, b[2] / 255);
+    gl.uniform3f(uniforms.uLight, l[0] / 255, l[1] / 255, l[2] / 255);
+    gl.uniform3f(uniforms.uShade, s[0] / 255, s[1] / 255, s[2] / 255);
+    gl.uniform1f(uniforms.uBound, (shape.radius + 0.45) * Math.max(pose.sx, pose.sy, pose.sz));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.disable(gl.SCISSOR_TEST);
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
     const rad = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
     ctx.moveTo(x + rad, y);
@@ -879,469 +545,422 @@
     ctx.arcTo(x, y, x + w, y, rad);
     ctx.closePath();
   }
-  function starEye(ctx, r) {
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const a = -Math.PI / 2 + i * Math.PI / 4;
-      const rad = i % 2 ? r * 0.42 : r;
-      const x = Math.cos(a) * rad, y = Math.sin(a) * rad;
-      if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
-    }
-    ctx.closePath();
-  }
-  function drawEyes(ctx, mesh, pose, tones, look, info, eyes) {
-    if (info.faceN.z < 0.08) return;
-    const face = mesh.face;
-    const alpha = clamp((info.faceN.z - 0.08) / 0.3, 0, 1);
-    const squeeze = clamp(info.faceN.z, 0.42, 1);
-    const baseR = (5.5 / 48) * face.scale * pose.unit;
-    const open = pose.eyeOpen;
-    const spots = [-1, 1];
-    spots.forEach((side, index) => {
-      const at = { sx: 0, sy: 0, p: 1 };
-      project(face.x + side * face.gap, face.y, info.frontZ + 0.045, pose, at);
-      const persp = at.p;
-      const shiftX = look.x * baseR * 0.28 * persp;
-      const shiftY = look.y * baseR * 0.28 * persp;
-      const lid = index === 0 ? open.left : open.right;
-      ctx.save();
-      ctx.translate(at.sx + shiftX, at.sy + shiftY);
-      ctx.globalAlpha = alpha;
-      ctx.scale(squeeze, Math.max(0.07, open.both * lid));
-      const r = baseR * persp;
-      if (eyes === "line") {
-        const w = r * 2.5, h = Math.max(2, r * 0.72);
-        const g = ctx.createLinearGradient(0, -h, 0, h);
-        g.addColorStop(0, css(mix(tones.eyes, [255, 255, 255], 0.35)));
-        g.addColorStop(1, css(tones.eyes));
-        ctx.fillStyle = g;
-        roundEye(ctx, w, h, h / 2);
-        ctx.fill();
-      } else if (eyes === "happy") {
-        ctx.beginPath();
-        ctx.moveTo(-r, r * 0.2);
-        ctx.quadraticCurveTo(0, -r * 0.95, r, r * 0.2);
-        ctx.strokeStyle = css(tones.eyes);
-        ctx.lineWidth = Math.max(1.4, r * 0.42);
-        ctx.lineCap = "round";
-        ctx.stroke();
-      } else if (eyes === "star") {
-        const g = ctx.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
-        g.addColorStop(0, css(mix(tones.eyes, [255, 255, 255], 0.55)));
-        g.addColorStop(1, css(tones.eyes));
-        ctx.fillStyle = g;
-        starEye(ctx, r);
-        ctx.fill();
-        catchlight(ctx, r * 0.7, look);
-      } else {
-        const wide = eyes === "wide";
-        const soft = eyes === "soft";
-        const rx = wide ? r * 1.05 : soft ? r * 1.25 : r;
-        const ry = wide ? r * 1.38 : soft ? r * 0.78 : r;
-        const g = ctx.createRadialGradient(-rx * 0.38, -ry * 0.42, rx * 0.08, rx * 0.1, ry * 0.15, Math.max(rx, ry) * 1.15);
-        g.addColorStop(0, css(mix(tones.eyes, [255, 255, 255], 0.58)));
-        g.addColorStop(0.45, css(tones.eyes));
-        g.addColorStop(1, css(mix(tones.eyes, [0, 0, 0], 0.42)));
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fill();
-        if (wide || soft) {
-          ctx.fillStyle = "rgba(0,0,0,.38)";
-          ctx.beginPath();
-          ctx.ellipse(look.x * rx * 0.32, look.y * ry * 0.32, rx * 0.36, ry * 0.4, 0, 0, Math.PI * 2);
-          ctx.fill();
-        }
-        catchlight(ctx, Math.min(rx, ry), look);
-      }
-      ctx.restore();
-    });
-
-    if (pose.mouth > 0.02 && info.faceN.z > 0.25) {
-      const y = face.y - face.gap * 0.95;
-      const a = { sx: 0, sy: 0 }, b = { sx: 0, sy: 0 }, c = { sx: 0, sy: 0 };
-      const w = face.gap * 0.85;
-      project(face.x - w, y, info.frontZ + 0.04, pose, a);
-      project(face.x, y - 0.12 * face.scale, info.frontZ + 0.05, pose, b);
-      project(face.x + w, y, info.frontZ + 0.04, pose, c);
-      ctx.save();
-      ctx.globalAlpha = alpha * pose.mouth;
-      ctx.beginPath();
-      ctx.moveTo(a.sx, a.sy);
-      ctx.quadraticCurveTo(b.sx, b.sy, c.sx, c.sy);
-      ctx.strokeStyle = css(tones.eyes);
-      ctx.lineWidth = Math.max(1.5, baseR * 0.34);
-      ctx.lineCap = "round";
-      ctx.stroke();
-      ctx.restore();
-    }
-    if (pose.brows > 0.02 && info.faceN.z > 0.3) {
-      ctx.save();
-      ctx.globalAlpha = alpha * pose.brows;
-      ctx.strokeStyle = css(tones.eyes);
-      ctx.lineWidth = Math.max(1.3, baseR * 0.28);
-      ctx.lineCap = "round";
-      [-1, 1].forEach((side) => {
-        const a = { sx: 0, sy: 0 }, b = { sx: 0, sy: 0 };
-        const y = face.y + 0.16 * face.scale;
-        project(face.x + side * face.gap - side * 0.06, y + 0.02, info.frontZ + 0.05, pose, a);
-        project(face.x + side * face.gap + side * 0.08, y + 0.07, info.frontZ + 0.05, pose, b);
-        ctx.beginPath();
-        ctx.moveTo(a.sx, a.sy);
-        ctx.lineTo(b.sx, b.sy);
-        ctx.stroke();
-      });
-      ctx.restore();
-    }
-    if (pose.blush > 0.02 && info.faceN.z > 0.3) {
-      ctx.save();
-      ctx.globalAlpha = 0.28 * pose.blush * alpha;
-      ctx.fillStyle = "rgb(176, 72, 86)";
-      [-1, 1].forEach((side) => {
-        const at = { sx: 0, sy: 0, p: 1 };
-        project(face.x + side * face.gap * 1.35, face.y - 0.1, info.frontZ + 0.03, pose, at);
-        ctx.beginPath();
-        ctx.ellipse(at.sx, at.sy, baseR * 0.7 * at.p, baseR * 0.38 * at.p, 0, 0, Math.PI * 2);
-        ctx.fill();
-      });
-      ctx.restore();
-    }
-  }
-  function catchlight(ctx, r, look) {
-    ctx.fillStyle = "rgba(255,255,255,.92)";
-    ctx.beginPath();
-    ctx.arc(-r * 0.32 + look.x * r * 0.18, -r * 0.36 + look.y * r * 0.14, Math.max(1, r * 0.2), 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "rgba(255,255,255,.55)";
-    ctx.beginPath();
-    ctx.arc(r * 0.28 + look.x * r * 0.1, r * 0.22, Math.max(0.6, r * 0.09), 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawShadow(ctx, actor, pose, height) {
-    const rx = pose.unit * (0.72 + height * 0.28) * pose.sx;
-    const ry = pose.unit * (0.2 + height * 0.08);
-    const alpha = clamp(0.4 - height * 0.14, 0.07, 0.45);
-    const x = pose.cx + actor.shadowX + pose.unit * 0.06;
-    const y = pose.floor + actor.shadowY;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, Math.max(2, rx), Math.max(1.5, ry), 0, 0, Math.PI * 2);
-    const g = ctx.createRadialGradient(0, 0, rx * 0.15, 0, 0, Math.max(rx, ry));
-    g.addColorStop(0, `rgba(0,0,0,${alpha})`);
-    g.addColorStop(1, "rgba(0,0,0,0)");
+  function paintSphere(ctx, x, y, r, rgb) {
+    if (r < 0.7) return;
+    const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.38, r * 0.08, x, y, r);
+    g.addColorStop(0, css(mix(rgb, [255, 255, 255], 0.72)));
+    g.addColorStop(0.42, css(rgb));
+    g.addColorStop(1, css(mix(rgb, [0, 0, 0], 0.38)));
     ctx.fillStyle = g;
-    ctx.fill();
-    ctx.restore();
-    if (actor.dust > 0.03 && actor.role === "hero") {
-      const spread = (1 - actor.dust) * pose.unit * 0.35;
-      ctx.fillStyle = `rgba(0,0,0,${0.16 * actor.dust})`;
-      ctx.beginPath();
-      ctx.ellipse(x - spread, y, 7 + spread * 0.2, 3, 0, 0, Math.PI * 2);
-      ctx.ellipse(x + spread, y, 7 + spread * 0.2, 3, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  function drawBillboard(ctx, pose, x, y, z, draw) {
-    const at = { sx: 0, sy: 0, p: 1, z: 0 };
-    project(x, y, z, pose, at);
-    ctx.save();
-    ctx.translate(at.sx, at.sy);
-    ctx.scale(at.p, at.p);
-    draw(at);
-    ctx.restore();
-    return at;
-  }
-
-  function drawProps(ctx, pose, tones, which) {
-    const state = pose.state;
-    const t = pose.time;
-    if (state === "thinking") {
-      for (let i = 0; i < 3; i++) {
-        const a = t * 1.35 + i * 2.09;
-        const z = Math.sin(a) * 0.42;
-        if ((which === "back" && z > -0.02) || (which === "front" && z <= -0.02)) continue;
-        const size = Math.max(2.4, (0.07 + i * 0.02) * pose.unit);
-        drawBillboard(ctx, pose, 0.72 + Math.cos(a) * 0.2, 0.95 + Math.sin(a) * 0.34, z, () => {
-          const r = size;
-          const g = ctx.createRadialGradient(-r * 0.3, -r * 0.3, 0, 0, 0, r);
-          g.addColorStop(0, css(tones.hot));
-          g.addColorStop(1, css(tones.base));
-          ctx.fillStyle = g;
-          ctx.beginPath();
-          ctx.arc(0, 0, r, 0, Math.PI * 2);
-          ctx.fill();
-        });
-      }
-    }
-    if (state === "sleeping" && which === "front") {
-      for (let i = 0; i < 3; i++) {
-        const u = ((t * 0.18 + i * 0.33) % 1);
-        const alpha = Math.sin(u * Math.PI);
-        drawBillboard(ctx, pose, 0.62 + i * 0.14, 0.55 + u * 0.85, 0.25 + u * 0.2, (at) => {
-          ctx.globalAlpha = alpha * 0.9;
-          ctx.fillStyle = css(tones.light);
-          ctx.font = `700 ${Math.max(8, pose.unit * (0.14 + i * 0.04))}px ui-rounded, ui-sans-serif, system-ui`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText("z", 0, 0);
-          void at;
-        });
-      }
-    }
-    if (state === "success" && which === "front") {
-      for (let i = 0; i < 5; i++) {
-        const u = ((t * 0.42 + pose.phase * 0.2 + i * 0.18) % 1);
-        const a = i * 1.25 + pose.phase;
-        const z = Math.sin(a) * 0.25;
-        drawBillboard(ctx, pose, Math.cos(a) * (0.55 + u * 0.55), Math.sin(a) * (0.5 + u * 0.4) + 0.1, z, () => {
-          ctx.globalAlpha = Math.sin(u * Math.PI) * 0.9;
-          ctx.fillStyle = css(tones.hot);
-          starEye(ctx, pose.unit * 0.07 * (1 - u * 0.3));
-          ctx.fill();
-        });
-      }
-    }
-    if (state === "error" && which === "front") {
-      const bob = Math.sin(t * 4) * 0.03;
-      drawBillboard(ctx, pose, 0.72, 0.78 + bob, 0.35, () => {
-        const r = Math.max(5, pose.unit * 0.13);
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fillStyle = "#e15d4a";
-        ctx.fill();
-        ctx.lineWidth = Math.max(1, r * 0.16);
-        ctx.strokeStyle = "rgba(255,255,255,.9)";
-        ctx.stroke();
-        ctx.fillStyle = "white";
-        ctx.font = `700 ${r * 1.15}px ui-sans-serif, system-ui`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("!", 0, r * 0.06);
-      });
-    }
-  }
-
-  function drawStatusArc(ctx, pose, radius, a0, a1, style, width) {
-    ctx.save();
-    ctx.translate(pose.cx, pose.cy);
-    const sx = Math.max(0.36, Math.abs(Math.cos(Math.max(-1.2, Math.min(1.2, pose.yaw)))));
-    const sy = Math.max(0.6, Math.cos(Math.max(-0.9, Math.min(0.9, pose.pitch - REST_PITCH)))) * 0.94;
-    ctx.transform(sx, 0, 0, sy, 0, 0);
     ctx.beginPath();
-    ctx.arc(0, 0, radius * pose.unit, a0, a1);
-    ctx.strokeStyle = style;
-    ctx.lineWidth = width / ((sx + sy) * 0.5);
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  function drawEyes(ctx, x, y, gap, r, style, shiftX, shiftY, rgb, alpha) {
+    if (alpha < 0.02 || r < 0.4) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const lx = x - gap + shiftX, rx = x + gap + shiftX, ey = y + shiftY;
+    if (style === "happy") {
+      ctx.strokeStyle = css(rgb);
+      ctx.lineWidth = Math.max(1.25, r * 0.5);
+      ctx.lineCap = "round";
+      for (const px of [lx, rx]) {
+        ctx.beginPath();
+        ctx.moveTo(px - r * 0.95, ey + r * 0.15);
+        ctx.quadraticCurveTo(px, ey - r * 0.95, px + r * 0.95, ey + r * 0.15);
+        ctx.stroke();
+      }
+    } else if (style === "sleepy") {
+      const w = r * 2.35, h = Math.max(1.4, r * 0.62);
+      ctx.fillStyle = css(rgb);
+      for (const px of [lx, rx]) {
+        roundRect(ctx, px - w / 2, ey - h / 2, w, h, h / 2);
+        ctx.fill();
+      }
+    } else {
+      for (const px of [lx, rx]) {
+        ctx.fillStyle = css(rgb);
+        ctx.beginPath();
+        ctx.arc(px, ey, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,.92)";
+        ctx.beginPath();
+        ctx.arc(px - r * 0.32, ey - r * 0.34, Math.max(0.6, r * 0.22), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+  function drawFrown(ctx, x, y, w, rgb) {
+    ctx.save();
+    ctx.strokeStyle = css(rgb);
+    ctx.lineWidth = Math.max(1.2, w * 0.14);
     ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(x - w, y + w * 0.35);
+    ctx.quadraticCurveTo(x, y - w * 0.45, x + w, y + w * 0.35);
     ctx.stroke();
     ctx.restore();
   }
+  function drawHand(ctx, x, y, s, angle, rgb) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.fillStyle = css(rgb);
+    ctx.beginPath();
+    ctx.arc(0, s * 0.05, s * 0.62, 0, Math.PI * 2);
+    ctx.arc(-s * 0.58, -s * 0.28, s * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+    roundRect(ctx, -s * 0.2, s * 0.28, s * 0.4, s * 0.55, s * 0.16);
+    ctx.fill();
+    ctx.restore();
+  }
+  function drawLaptop(ctx, cx, baseY, bodyPx, open, present, peek, tones) {
+    if (present < 0.02) return;
+    const small = bodyPx < 34;
+    const w = bodyPx * (peek ? 0.78 : 1.05);
+    const lidH = Math.max(small ? 5 : 8, bodyPx * (peek ? 0.5 : 0.58) * Math.max(open, 0.08));
+    const baseH = Math.max(small ? 2.5 : 4, bodyPx * 0.11);
+    ctx.save();
+    ctx.translate(cx, baseY);
+    ctx.scale(present, present);
+    ctx.fillStyle = css(tones.shade);
+    roundRect(ctx, -w * 0.62, -baseH * 0.2, w * 1.24, baseH, baseH * 0.45);
+    ctx.fill();
+    const top = -baseH * 0.2 - lidH;
+    const bezel = small ? 1.25 : Math.max(3, bodyPx * 0.06);
+    ctx.fillStyle = css(tones.deep);
+    roundRect(ctx, -w / 2, top, w, lidH, small ? 2 : 5);
+    ctx.fill();
+    if (lidH > bezel * 2.2) {
+      const pulse = 0.75 + 0.25 * Math.sin(simTime * 3.2);
+      ctx.fillStyle = css(mix(tones.hot, [255, 255, 255], 0.35), 0.55 + pulse * 0.4);
+      roundRect(ctx, -w / 2 + bezel, top + bezel, w - bezel * 2, lidH - bezel * 1.6, small ? 1.5 : 3);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawFlat(ctx, shape, cx, cy, bodyPx, pose, tones) {
+    const path = new Path2D(FLAT[shape.id]);
+    const s = (bodyPx * 2.05) / 92;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(pose.roll);
+    ctx.scale(s * pose.sx, s * pose.sy);
+    ctx.translate(-50, -50);
+    const g = ctx.createRadialGradient(32, 26, 6, 50, 52, 62);
+    g.addColorStop(0, css(tones.light));
+    g.addColorStop(0.42, css(tones.base));
+    g.addColorStop(1, css(tones.shade));
+    ctx.lineJoin = "round";
+    ctx.lineWidth = shape.id === "spark" ? 7 : 12;
+    ctx.strokeStyle = css(tones.deep);
+    ctx.stroke(path);
+    ctx.fillStyle = g;
+    ctx.fill(path);
+    ctx.restore();
+  }
 
-  function drawActor(actor, time) {
+  function orbPoint(mode, index, time, radius) {
+    const base = index * 2.0944;
+    if (mode === "t3") {
+      const swing = Math.sin(time * 1.15) * 0.95;
+      const a = swing + (index - 1) * 0.42;
+      return { x: Math.sin(a) * radius * 0.95, y: 0.55 + Math.cos(a) * 0.28, z: 0.35 + Math.cos(a) * 0.15 };
+    }
+    if (mode === "t4") {
+      const a = time * 1.15 + base;
+      return { x: radius * 0.95, y: Math.sin(a) * radius * 0.72, z: Math.cos(a) * 0.48 };
+    }
+    const speed = mode === "t2" ? 0.55 : 1.05;
+    const rad = mode === "t2" ? radius + 0.34 : radius;
+    const a = time * speed + base;
+    const x = Math.cos(a) * rad * (mode === "t2" ? 1 : 0.9);
+    const z = Math.sin(a) * (mode === "t5" ? 0.38 : 0.55);
+    const y = (mode === "t5" ? 0.22 : 0.34) + (mode === "t5" ? Math.sin(a) * 0.42 : Math.max(0, -Math.sin(a)) * 0.48);
+    return { x, y, z };
+  }
+
+  function workPose(id, time) {
+    const out = { present: 0, open: 0, lift: 0, pitch: 0, glow: 0, bob: 0, squash: 0, peek: id === "w3" };
+    if (id === "w4") {
+      const t = time % 5.2;
+      const inn = t < 0.35 ? smoothstep(t / 0.35) : 1;
+      const lap = t < 0.2 ? 0 : t < 0.55 ? backOut((t - 0.2) / 0.35) : t < 4.35 ? 1 : t < 4.7 ? 1 - smoothstep((t - 4.35) / 0.35) : 0;
+      const back = t < 4.5 ? 1 : t < 4.95 ? 1 - smoothstep((t - 4.5) / 0.45) : 0;
+      const k = inn * back;
+      out.present = clamp(lap, 0, 1) * (back > 0 ? 1 : 0);
+      out.open = out.present;
+      out.lift = k * 0.04;
+      out.pitch = k * 0.24;
+      out.squash = k;
+      out.glow = (t > 0.45 && t < 4.4) ? 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(time * 3.4)) : out.present * 0.4;
+      out.bob = (t > 0.6 && t < 4.3) ? Math.sin(time * 6.2) * 0.012 : 0;
+      return out;
+    }
+    const dur = id === "w2" ? 4.2 : 3.8;
+    const u = (time % dur) / dur;
+    let k;
+    if (u < 0.16) k = id === "w1" ? backOut(u / 0.16) : smoothstep(u / 0.16);
+    else if (u < 0.78) k = 1;
+    else k = 1 - smoothstep((u - 0.78) / 0.22);
+    k = clamp(k, 0, 1);
+    if (id === "w2") {
+      out.present = k;
+      out.open = clamp(k * 1.15, 0, 1);
+      out.lift = k * 0.03;
+      out.pitch = k * 0.18;
+    } else if (id === "w3") {
+      out.present = k;
+      out.open = clamp(0.35 + k * 0.65, 0, 1);
+      out.lift = k * 0.02;
+      out.pitch = k * 0.3;
+      out.glow = k;
+    } else {
+      out.present = clamp(k * 1.05, 0, 1);
+      out.open = k;
+      out.lift = k * 0.04;
+      out.pitch = k * 0.24;
+    }
+    out.squash = k;
+    if (!out.glow) out.glow = (u > 0.16 && u < 0.78) ? 0.5 + 0.5 * (0.5 + 0.5 * Math.sin(time * 3.2)) : k * 0.35;
+    out.bob = (u > 0.2 && u < 0.78) ? Math.sin(time * 6) * 0.01 : 0;
+    return out;
+  }
+
+  function pressAmount(actor) {
+    if (actor.loopPress) {
+      const u = (simTime + actor.phase) % 2.5;
+      return u < 0.85 ? u / 0.85 : -1;
+    }
+    if (actor.pressUntil > simTime) return clamp((simTime - actor.pressStart) / 0.78, 0, 1);
+    return -1;
+  }
+
+  function computePose(actor, look) {
+    const shape = shapeOf(look.shape);
+    const amp = 0.22 + intensity * 0.78;
+    const person = shape.id === "pebble" ? 0.7 : shape.id === "spark" ? 1.15 : 1;
+    const breathe = Math.sin(simTime * 1.5 * person + actor.phase) * 0.028 * amp;
+    const pose = {
+      yaw: 0, pitch: shape.solid ? 0.16 : 0, roll: 0,
+      sx: 1 - breathe * 0.45, sy: 1 + breathe, sz: 1 - breathe * 0.35,
+      lift: (shape.solid ? breathe * 0.4 : 0),
+      focus: 0,
+      zoom: 1,
+      eye: look.eyes,
+      shiftX: 0, shiftY: 0,
+      glow: 0, frown: 0, hand: 0, wave: 0, zs: 0,
+      orbs: [],
+      laptop: null,
+    };
+    if (actor.lookX) {
+      pose.yaw += clamp(actor.lookX.x, -1, 1) * 0.18 * amp;
+      pose.pitch += clamp(actor.lookY.x, -1, 1) * 0.12 * amp;
+      pose.shiftX += actor.lookX.x * 0.35;
+      pose.shiftY += actor.lookY.x * 0.28;
+    }
+    if (!shape.solid) pose.pitch = 0;
+    const glance = ((simTime + actor.phase) % 6.4);
+    if (look.state === "idle" && glance < 0.9) {
+      const dir = Math.sin(actor.phase * 4) >= 0 ? 1 : -1;
+      const g = Math.sin((glance / 0.9) * Math.PI) * amp;
+      pose.yaw += dir * 0.16 * g * (shape.solid ? 1 : 0);
+      pose.roll += dir * 0.05 * g;
+      pose.shiftX += dir * 0.45 * g;
+    }
+    const blinkAt = (simTime + actor.phase * 1.7) % (look.state === "sleeping" ? 9 : 4.2);
+    if (blinkAt > 3.85 && look.state !== "sleeping" && look.eyes !== "sleepy") pose.eye = "sleepy";
+
+    if (look.state === "thinking") {
+      const radius = shape.radius ? shape.radius + 0.42 : 1.15;
+      for (let i = 0; i < 3; i++) pose.orbs.push(orbPoint(look.think, i, simTime + actor.phase, radius));
+      pose.zoom = 1.16;
+      if (look.think === "t6") {
+        const a = simTime * 0.85 + actor.phase;
+        pose.shiftX += Math.sin(a) * 0.7;
+        pose.shiftY += Math.cos(a) * 0.28;
+      }
+      pose.pitch += shape.solid ? -0.06 : 0;
+      pose.shiftY -= 0.2;
+    } else if (look.state === "working") {
+      const work = workPose(look.work, simTime + actor.phase * 0.2);
+      pose.lift += work.lift + work.bob;
+      if (shape.solid) pose.pitch += work.pitch;
+      pose.sy *= 1 - 0.08 * work.squash;
+      pose.sx *= 1 + 0.05 * work.squash;
+      pose.sz *= 1 + 0.04 * work.squash;
+      pose.shiftY += 0.22 * work.squash;
+      pose.glow = work.glow * (look.work === "w3" ? 1 : 0.7);
+      pose.focus = -0.02 * work.present;
+      pose.zoom = 1 + work.present * 0.46;
+      pose.laptop = work;
+    } else if (look.state === "error") {
+      pose.eye = "dot";
+      pose.shiftY -= 0.35;
+      pose.shiftX *= 0.4;
+      pose.frown = 1;
+      pose.hand = 1;
+      pose.wave = Math.sin(simTime * 2.6 + actor.phase) * 0.35;
+      pose.yaw += Math.sin(simTime * 1.4) * 0.04 * amp;
+    } else if (look.state === "sleeping") {
+      pose.eye = "sleepy";
+      pose.yaw *= 0.15;
+      pose.shiftX *= 0.2;
+      pose.shiftY *= 0.2;
+      pose.roll += shape.solid ? -0.08 : -0.05;
+      pose.zs = 1;
+      pose.sy += Math.sin(simTime * 0.8 + actor.phase) * 0.02 * amp;
+    }
+
+    const press = pressAmount(actor);
+    const which = actor.lockPress || selection.press;
+    if (press >= 0 && look.state !== "sleeping") {
+      const env = Math.sin(clamp(press, 0, 1) * Math.PI);
+      if (which === "c1") {
+        pose.sy *= 1 - 0.14 * env;
+        pose.sx *= 1 + 0.1 * env;
+        pose.sz *= 1 + 0.08 * env;
+        pose.lift += env * 0.05;
+      } else {
+        const nod = press < 0.42 ? -Math.sin(press / 0.42 * Math.PI) : Math.sin((press - 0.42) / 0.58 * Math.PI);
+        if (shape.solid) pose.pitch += nod * 0.22;
+        else pose.roll += nod * 0.08;
+        pose.lift += Math.sin(press * Math.PI) * 0.07;
+      }
+      if (look.state !== "error") pose.eye = "happy";
+    }
+    pose.yaw = clamp(pose.yaw, -0.24, 0.24);
+    if (shape.solid) pose.pitch = clamp(pose.pitch, -0.12, 0.48);
+    pose.roll = clamp(pose.roll, -0.16, 0.16);
+    return pose;
+  }
+
+  function drawActor(actor) {
     const canvas = actor.canvas;
-    const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
-    if (cssW < 2 || cssH < 2) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+    if (canvas.closest("[hidden]")) return;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w < 2 || h < 2) return;
+    const dpr = actor.role === "hero" ? Math.min(2, window.devicePixelRatio || 1) : 1;
+    const bw = Math.max(1, Math.round(w * dpr));
+    const bh = Math.max(1, Math.round(h * dpr));
     if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+    const look = {
+      shape: actor.lockShape || selection.shape,
+      color: actor.lockColor || selection.color,
+      eyes: actor.lockEyes || selection.eyes,
+      state: actor.lockState || selection.state,
+      think: actor.lockThink || selection.think,
+      work: actor.lockWork || selection.work,
+    };
+    const shape = shapeOf(look.shape);
+    const tones = tonesOf(look.color);
+    const pose = computePose(actor, look);
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, cssW, cssH);
-
-    const look = currentOf(actor);
-    const shape = shapeOf(look.shape);
-    const person = shape.personality;
-    const quality = actor.role === "hero" ? "high" : actor.role === "gallery" || actor.role === "size" ? "mid" : "low";
-    const mesh = meshFor(look.shape, quality);
-    const tones = tonesOf(look.color);
-    const amp = 0.12 + intensity * 0.88;
-    const rate = 0.28 + intensity * 1.02;
-    const localTime = time * rate;
-    const mods = poseMods(look.state, localTime, actor.phase, person, amp);
-    if (actor.engaged && actor.role === "hero") mods.yaw *= 0.12;
-
-    const feel = 0.45 + intensity * 0.55;
-    const breathe = Math.sin(localTime * person.rate + actor.phase) * 0.04 * person.breathe * amp;
-    const workSquash = look.state === "working" ? Math.sin(localTime * 14) * 0.035 * amp : 0;
-    const hopSquash = mods.hop * 0.07;
-
-    const pose = {
-      sx: actor.sx.x * (1 - breathe * 0.65 + workSquash * 0.4 + hopSquash),
-      sy: actor.sy.x * (1 + breathe - workSquash - hopSquash * 1.4),
-      sz: actor.sz.x * (1 - breathe * 0.45 + workSquash * 0.25 + hopSquash),
-      roll: actor.roll.x + mods.roll + Math.sin(localTime * 23) * 0.12 * actor.giggle * feel,
-      pitch: REST_PITCH + actor.pitch.x + mods.pitch,
-      yaw: actor.yaw.x + actor.spin + mods.yaw,
-      lift: actor.z.x + mods.z + mods.hop * 0.18,
-      unit: Math.min(cssW, cssH) * (actor.role === "hero" ? 0.3 : 0.31),
-      cx: cssW / 2 + (actor.role === "hero" ? actor.px : 0),
-      cy: cssH * (actor.role === "hero" ? 0.46 : 0.48) + (actor.role === "hero" ? actor.py : 0),
-      floor: 0,
-      time: localTime,
-      phase: actor.phase,
-      state: look.state,
-      eyeOpen: blinkScale(localTime, actor.phase, look.state),
-      mouth: look.state === "success" ? 1 : actor.pet.x * 0.85,
-      brows: look.state === "error" ? 1 : 0,
-      blush: Math.max(look.state === "success" ? 0.65 : 0, actor.pet.x),
-    };
-    pose.cy += mods.bob * pose.unit * 0.045 - mods.hop * pose.unit * 0.2 + (mods.sink || 0) * pose.unit;
-    pose.floor = pose.cy + pose.unit * 0.92;
-    if (typeof pose.eyeOpen === "number") pose.eyeOpen = { both: pose.eyeOpen, left: 1, right: 1 };
-    pose.eyeOpen.both *= mods.eye;
-    if (actor.pet.x > 0.05) pose.eyeOpen.both *= lerp(1, 0.34, actor.pet.x);
-
-    actor.unit = pose.unit;
-    actor.hitR = pose.unit * 1.05;
-    actor.centerY = cssH * 0.46;
+    ctx.clearRect(0, 0, w, h);
+    const focus = pose.focus || 0;
+    const zoom = pose.zoom || 1;
+    const center = project(xform({ x: 0, y: 0, z: 0 }, pose), w, h, focus, zoom);
+    const unit = h / (CAM.z * zoom) / CAM.spread;
+    const bodyPx = (shape.radius || 0.78) * unit;
 
     if (actor.role === "hero") {
-      ctx.save();
       ctx.fillStyle = "rgba(255,255,255,.035)";
       ctx.beginPath();
-      ctx.ellipse(cssW / 2, pose.floor + 6, pose.unit * 1.35, pose.unit * 0.38, 0, 0, Math.PI * 2);
+      ctx.ellipse(w / 2, h * 0.78, bodyPx * 1.35, bodyPx * 0.38, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.restore();
     }
+    const ground = project({ x: 0, y: -bodyPx / unit, z: 0 }, w, h, 0, zoom);
+    const liftPx = pose.lift * unit;
+    ctx.save();
+    ctx.translate(w / 2, ground.y + bodyPx * 0.08);
+    ctx.scale(bodyPx * (0.92 + Math.abs(pose.yaw) * 0.2) * pose.sx, bodyPx * 0.24);
+    const sg = ctx.createRadialGradient(0, 0, 0.2, 0, 0, 1);
+    const sh = clamp(0.38 - pose.lift * 0.45, 0.12, 0.42);
+    sg.addColorStop(0, `rgba(0,0,0,${sh})`);
+    sg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.arc(0, 0, 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    void liftPx;
 
-    const height = Math.max(0, actor.z.x) + mods.hop * 0.6 + Math.max(0, -actor.py) / (pose.unit * 3);
-    drawShadow(ctx, actor, pose, height);
+    const placed = pose.orbs.map((o) => ({ o, p: project(o, w, h, focus, zoom), r: Math.max(1.6, 0.1 * unit) }));
 
-    if (look.state === "listening") {
-      const pulse = 1 + Math.sin(localTime * 2.4) * 0.03 * amp;
-      drawStatusArc(ctx, pose, 1.18 * pulse, 0, Math.PI * 2, css(tones.light, 0.55), Math.max(1.6, pose.unit * 0.028));
-    }
-    if (look.state === "error") {
-      const pulse = 0.55 + 0.45 * Math.sin(localTime * 5);
-      drawStatusArc(ctx, pose, 1.16, 0, Math.PI * 2, `rgba(225,93,74,${0.28 + pulse * 0.35})`, Math.max(1.6, pose.unit * 0.026));
-    }
-    if (look.state === "working") {
-      const prog = (localTime * 0.22 + actor.phase * 0.05) % 1;
-      const w = Math.max(2.4, pose.unit * 0.05);
-      drawStatusArc(ctx, pose, 1.18, 0, Math.PI * 2, "rgba(0,0,0,.28)", w);
-      drawStatusArc(ctx, pose, 1.18, -Math.PI / 2, -Math.PI / 2 + Math.max(0.04, prog) * Math.PI * 2, css(mix(tones.hot, [255, 255, 255], 0.25)), w);
-    }
-
-    drawProps(ctx, pose, tones, "back");
-    const info = drawBody(ctx, mesh, pose, tones);
-    const lookVec = {
-      x: clamp(actor.lookX.x + mods.lookX, -1, 1),
-      y: clamp(actor.lookY.x + mods.lookY, -1, 1),
-    };
-    drawEyes(ctx, mesh, pose, tones, lookVec, info, look.eyes);
-    drawProps(ctx, pose, tones, "front");
-  }
-
-  function updateHero(actor, dt) {
-    const look = currentOf(actor);
-    const person = personalityOf(look.shape);
-    const feel = 0.45 + intensity * 0.55;
-    const follow = person.follow * (0.55 + intensity * 0.6);
-    let targetYaw = 0, targetPitch = 0, targetRoll = 0;
-    if (actor.pointer && !actor.dragging && look.state !== "sleeping") {
-      const nx = clamp(actor.pointer.x / (actor.hitR * 1.7), -1, 1);
-      const ny = clamp(actor.pointer.y / (actor.hitR * 1.7), -1, 1);
-      const gain = poseMods(look.state, 0, 0, person, 1).follow;
-      targetYaw = nx * 0.62 * follow * gain;
-      targetPitch = ny * 0.46 * follow * gain;
-      spring(actor.lookX, nx, dt, 90, 16);
-      spring(actor.lookY, ny, dt, 90, 16);
-    } else if (!actor.dragging) {
-      spring(actor.lookX, 0, dt, 40, 12);
-      spring(actor.lookY, 0, dt, 40, 12);
-    }
-    if (actor.dragging) {
-      targetYaw = clamp(actor.vx / 1600, -0.7, 0.7);
-      targetRoll = clamp(-actor.vx / 2000, -0.45, 0.45);
-      targetPitch = clamp(actor.vy / 1800, -0.4, 0.4);
-      actor.zTarget = 0.62;
+    ctx.save();
+    ctx.translate(actor.ox || 0, actor.oy || 0);
+    for (const item of placed) if (item.o.z < 0.02) paintSphere(ctx, item.p.x, item.p.y, Math.max(3, bodyPx * 0.2), tones.light);
+    if (layer.width !== bw || layer.height !== bh) { layer.width = bw; layer.height = bh; }
+    layerCtx.setTransform(1, 0, 0, 1, 0, 0);
+    layerCtx.clearRect(0, 0, bw, bh);
+    layerCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (shape.solid) {
+      renderSolid(bw, bh, pose, shape, tones);
+      layerCtx.drawImage(bufferCanvas, 0, bufferCanvas.height - bh, bw, bh, 0, 0, w, h);
     } else {
-      const stateZ = look.state === "listening" ? 0.12 : look.state === "working" ? 0.04 : 0;
-      actor.zTarget = stateZ + actor.hover.x * 0.12;
+      drawFlat(layerCtx, shape, center.x, center.y, bodyPx, pose, tones);
     }
-    const yawStiff = actor.dragging ? 140 : 55 / person.weight;
-    spring(actor.yaw, targetYaw, dt, yawStiff, actor.dragging ? 14 : 11);
-    spring(actor.pitch, targetPitch, dt, actor.dragging ? 120 : 60 / person.weight, 12);
-    if (!actor.dragging) spring(actor.roll, targetRoll + actor.pet.x * Math.sin(simTime * 5.5) * 0.1, dt, 36, 8);
-    spring(actor.z, actor.zTarget || 0, dt, 70, 12);
-    spring(actor.sx, 1, dt, 240, 12);
-    spring(actor.sy, 1, dt, 240, 12);
-    spring(actor.sz, 1, dt, 240, 12);
-    spring(actor.hover, actor.hovering ? 1 : 0, dt, 80, 14);
-    spring(actor.pet, actor.petting || actor.petForce > 0.08 ? 1 : 0, dt, 50, 10);
-    actor.petForce *= Math.exp(-0.85 * dt);
-
-    actor.spin += actor.spinVel * dt;
-    actor.spinVel *= Math.exp(-2.35 * dt);
-    if (Math.abs(actor.spinVel) < 0.25) {
-      const goal = Math.round(actor.spin / (Math.PI * 2)) * Math.PI * 2;
-      actor.spin += (goal - actor.spin) * (1 - Math.exp(-3.2 * dt));
+    if (pose.glow > 0.02) {
+      layerCtx.globalCompositeOperation = "source-atop";
+      const gy = center.y + bodyPx * 0.28;
+      const g = layerCtx.createRadialGradient(center.x, gy, 2, center.x, gy, bodyPx * 0.85);
+      g.addColorStop(0, `rgba(255,255,255,${0.5 * pose.glow})`);
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      layerCtx.fillStyle = g;
+      layerCtx.fillRect(0, 0, w, h);
+      layerCtx.globalCompositeOperation = "source-over";
     }
-    actor.giggle *= Math.exp(-1.7 * dt);
-    actor.dust *= Math.exp(-2.6 * dt);
+    ctx.drawImage(layer, 0, 0, w, h);
 
-    if (!actor.dragging) {
-      const stiff = 78 / person.weight;
-      actor.vx += (-actor.px * stiff - actor.vx * 10.5) * dt;
-      actor.vy += (-actor.py * stiff - actor.vy * 10.5) * dt;
-      actor.px += actor.vx * dt;
-      actor.py += actor.vy * dt;
-      if (actor.thrown) {
-        const dist = Math.hypot(actor.px, actor.py);
-        const spd = Math.hypot(actor.vx, actor.vy);
-        if (dist < 20 && spd > 220) {
-          impulse(actor, clamp(spd / 1500, 0.3, 1.2) * (0.45 + person.weight * 0.28) * feel);
-          actor.vx *= 0.28;
-          actor.vy *= 0.28;
-          actor.thrown = false;
-          actor.dust = 1;
-        } else if (dist < 8 && spd < 60) actor.thrown = false;
+    for (const item of placed) if (item.o.z >= 0.02) paintSphere(ctx, item.p.x, item.p.y, Math.max(3, bodyPx * 0.2), tones.light);
+
+    let eyeX, eyeY, gap, eyeR;
+    if (shape.solid) {
+      const anchor = xform({ x: shape.face.x, y: shape.face.y, z: shape.face.z }, pose);
+      const at = project(anchor, w, h, focus, zoom);
+      eyeX = at.x; eyeY = at.y;
+      gap = shape.face.gap * unit;
+      eyeR = Math.min(w, h) * 0.052 * shape.face.scale;
+    } else {
+      const s = (bodyPx * 2.05) / 92;
+      const c = Math.cos(pose.roll), sn = Math.sin(pose.roll);
+      const lx = (shape.face.x - 50) * s * pose.sx;
+      const ly = (shape.face.y - 50) * s * pose.sy;
+      eyeX = center.x + c * lx - sn * ly;
+      eyeY = center.y + sn * lx + c * ly;
+      gap = shape.face.gap * s;
+      eyeR = 5.5 * shape.face.scale * s;
+    }
+    if (pose.laptop) {
+      const lap = pose.laptop;
+      const baseY = center.y + bodyPx * (lap.peek ? 1.0 : 1.12);
+      drawLaptop(ctx, center.x, baseY, bodyPx, lap.open, lap.present, lap.peek, tones);
+    }
+    if (pose.hand > 0) {
+      const hx = eyeX + gap + eyeR * 3.4;
+      const hy = eyeY - eyeR * 3.1;
+      drawHand(ctx, hx, hy, Math.max(5.5, eyeR * 1.7), -0.6 + pose.wave, tones.base);
+    }
+    drawEyes(ctx, eyeX, eyeY, gap, eyeR, pose.eye, pose.shiftX * eyeR, pose.shiftY * eyeR, tones.eyes, 1);
+    if (pose.frown) drawFrown(ctx, eyeX, eyeY + eyeR * 2.15, eyeR * 1.15, tones.eyes);
+    if (pose.zs) {
+      ctx.fillStyle = css(tones.light);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i < 2; i++) {
+        const u = (simTime * 0.22 + actor.phase + i * 0.5) % 1;
+        ctx.globalAlpha = Math.sin(u * Math.PI) * 0.9;
+        ctx.font = `700 ${Math.max(8, bodyPx * 0.28)}px ui-sans-serif, system-ui`;
+        ctx.fillText("z", eyeX + gap + eyeR * 2.1, eyeY - eyeR * (0.4 + u * 3.2));
       }
+      ctx.globalAlpha = 1;
     }
-    const lag = 1 - Math.exp(-8 * dt);
-    actor.shadowX += (actor.px - actor.shadowX) * lag;
-    actor.shadowY += (actor.py * 0.18 - actor.shadowY) * lag;
-    actor.unitHold = actor.unit;
+    ctx.restore();
   }
 
-  function impulse(actor, amount) {
-    actor.sy.v -= 8.5 * amount;
-    actor.sx.v += 5.5 * amount;
-    actor.sz.v += 5 * amount;
-    actor.z.v += 1.8 * amount;
-  }
-  function squish(actor) {
-    const person = personalityOf(currentOf(actor).shape);
-    const feel = 0.5 + intensity * 0.6;
-    impulse(actor, 0.85 * feel * (0.75 + person.bounce * 0.25));
-    actor.vy -= 210 * feel * person.bounce;
-    actor.giggle = Math.max(actor.giggle, 0.45);
-  }
-  function spin(actor) {
-    const person = personalityOf(currentOf(actor).shape);
-    actor.spinVel = 10 * (0.65 + person.spin * 0.45);
-    actor.giggle = 1;
-    impulse(actor, 0.55);
-    actor.vy -= 180 * (0.5 + intensity * 0.5);
-    actor.z.v += 1.5;
-  }
-  function poke(actor, nx, ny) {
-    actor.yaw.v += -nx * 7;
-    actor.pitch.v += ny * 5;
-    impulse(actor, 0.7);
-    actor.giggle = Math.max(actor.giggle, 0.7);
-  }
-
-  function variantKey(sel) {
-    return [sel.shape, sel.color.toUpperCase(), sel.eyes, sel.state].join("|");
-  }
-  function describe(sel) {
-    const shape = shapeOf(sel.shape), color = colorOf(sel.color), eyes = eyeOf(sel.eyes), state = stateOf(sel.state);
-    return { shape, color, eyes, state };
-  }
   function loadStore() {
     try {
       const raw = JSON.parse(localStorage.getItem(STORE) || "{}");
@@ -1351,43 +970,40 @@
   function saveStore() {
     try { localStorage.setItem(STORE, JSON.stringify(feedback)); } catch { /* private mode */ }
   }
-  function ensureItem() {
-    const key = variantKey(selection);
-    if (!feedback.items[key]) {
-      const d = describe(selection);
-      feedback.items[key] = {
-        key,
-        shape: d.shape.id, shapeName: d.shape.name, akaShape: d.shape.aka, proposedShape: !!d.shape.proposed,
-        color: d.color.hex, colorName: d.color.name, colorAlias: d.color.alias,
-        eyes: d.eyes.id, eyesName: d.eyes.name, akaEyes: d.eyes.aka, proposedEyes: !!d.eyes.proposed,
-        state: d.state.id, stateName: d.state.name,
-        vote: null, note: "", updatedAt: new Date().toISOString(),
-      };
-    }
-    return feedback.items[key];
+  function variantKey(sel) {
+    const parts = [sel.shape, sel.color.toUpperCase(), sel.eyes, sel.state];
+    if (sel.state === "thinking") parts.push(sel.think);
+    if (sel.state === "working") parts.push(sel.work);
+    parts.push(sel.press);
+    return parts.join("|");
   }
-
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function describeIdea(sel) {
+    if (sel.state === "thinking") return THINKS.find((t) => t.id === sel.think).blurb;
+    if (sel.state === "working") return WORKS.find((t) => t.id === sel.work).blurb;
+    if (sel.state === "idle") return PRESSES.find((t) => t.id === sel.press).blurb + " Click the node to play it.";
+    return stateOf(sel.state).blurb;
+  }
   function syncUI() {
-    const d = describe(selection);
-    document.getElementById("variant-name").textContent = `${d.shape.name} · ${d.color.name} · ${d.eyes.name} · ${d.state.name}`;
-    document.getElementById("variant-id").textContent = `${d.shape.id} · ${d.color.hex} · ${d.eyes.id} · ${d.state.id}  ·  ${d.shape.aka}, ${d.color.alias}`;
-    const badges = document.getElementById("badges");
-    badges.replaceChildren();
-    const statePill = document.createElement("span");
-    statePill.className = "pill";
-    statePill.textContent = d.state.name;
-    badges.append(statePill);
-    if (d.shape.proposed || d.eyes.proposed) {
-      const proposed = document.createElement("span");
-      proposed.className = "pill gold";
-      proposed.textContent = "Proposed";
-      badges.append(proposed);
-    }
-    document.getElementById("grid-caption").textContent = "· " + d.state.name;
-    document.getElementById("color-caption").textContent = "· " + d.shape.name;
+    const shape = shapeOf(selection.shape);
+    const color = colorOf(selection.color);
+    const eyes = eyeOf(selection.eyes);
+    const state = stateOf(selection.state);
+    const extra = selection.state === "thinking" ? " · " + THINKS.find((t) => t.id === selection.think).name : selection.state === "working" ? " · " + WORKS.find((t) => t.id === selection.work).name : "";
+    document.getElementById("variant-name").textContent = `${shape.name} · ${color.name} · ${eyes.name} · ${state.name}${extra}`;
+    document.getElementById("variant-id").textContent = variantKey(selection);
+    document.getElementById("idea").textContent = describeIdea(selection);
+    document.getElementById("state-pill").textContent = state.name;
+    document.getElementById("grid-caption").textContent = "· " + state.name + (extra ? " " + extra.replace(" · ", "· ") : "");
+    document.getElementById("color-caption").textContent = "· " + shape.name;
+    document.getElementById("think-strip").hidden = selection.state !== "thinking";
+    document.getElementById("work-strip").hidden = selection.state !== "working";
     document.querySelectorAll("[data-pick]").forEach((btn) => {
       const kind = btn.dataset.pick;
-      const on = selection[kind] === btn.dataset.value || (kind === "color" && selection.color.toUpperCase() === btn.dataset.value.toUpperCase());
+      const value = btn.dataset.value;
+      const on = kind === "color" ? selection.color.toUpperCase() === value.toUpperCase() : selection[kind] === value;
       btn.setAttribute("aria-pressed", on ? "true" : "false");
     });
     const item = feedback.items[variantKey(selection)];
@@ -1395,9 +1011,8 @@
     document.getElementById("thumb-down").setAttribute("aria-pressed", item && item.vote === "down" ? "true" : "false");
     const note = document.getElementById("note");
     if (document.activeElement !== note) note.value = item && item.note || "";
+    document.getElementById("hero").setAttribute("aria-label", document.getElementById("variant-name").textContent);
     renderSaved();
-    const hero = document.getElementById("hero");
-    hero.setAttribute("aria-label", document.getElementById("variant-name").textContent);
   }
   function renderSaved() {
     const list = document.getElementById("saved");
@@ -1411,50 +1026,118 @@
       const btn = document.createElement("button");
       btn.type = "button";
       const mark = item.vote === "up" ? "↑" : item.vote === "down" ? "↓" : "·";
-      btn.innerHTML = `<strong class="${item.vote || ""}">${mark} ${item.shapeName} · ${item.colorName} · ${item.eyesName} · ${item.stateName}</strong><br>${item.note ? escapeHtml(item.note) : ""}`;
+      btn.innerHTML = `<strong class="${item.vote || ""}">${mark} ${escapeHtml(item.label || item.key)}</strong><br>${item.note ? escapeHtml(item.note) : ""}`;
       btn.addEventListener("click", () => {
         selection.shape = item.shape;
         selection.color = item.color;
         selection.eyes = item.eyes;
         selection.state = item.state;
+        if (item.think) selection.think = item.think;
+        if (item.work) selection.work = item.work;
+        if (item.press) selection.press = item.press;
         syncUI();
       });
       li.append(btn);
       list.append(li);
     });
   }
-  function escapeHtml(s) {
-    return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  function ensureItem() {
+    const key = variantKey(selection);
+    if (!feedback.items[key]) {
+      feedback.items[key] = {
+        key,
+        label: document.getElementById("variant-name").textContent,
+        shape: selection.shape,
+        color: selection.color,
+        eyes: selection.eyes,
+        state: selection.state,
+        think: selection.think,
+        work: selection.work,
+        press: selection.press,
+        vote: null,
+        note: "",
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return feedback.items[key];
   }
 
-  function buttonCanvas(label, sub, proposed) {
+  function makeActor(canvas, role, locks) {
+    return {
+      canvas, role, ...locks,
+      phase: hash(role + (locks.lockShape || "") + (locks.lockThink || "") + (locks.lockWork || "") + (locks.lockPress || "")) * 6,
+      ox: 0, oy: 0, vx: 0, vy: 0,
+      lookX: { x: 0, v: 0 }, lookY: { x: 0, v: 0 },
+      pressStart: -10, pressUntil: -10,
+      loopPress: role === "press",
+      lockThink: locks.lockThink, lockWork: locks.lockWork,
+    };
+  }
+  function currentLook(actor) {
+    return {
+      shape: actor.lockShape || selection.shape,
+      color: actor.lockColor || selection.color,
+      eyes: actor.lockEyes || selection.eyes,
+      state: actor.lockState || selection.state,
+      think: actor.lockThink || selection.think,
+      work: actor.lockWork || selection.work,
+    };
+  }
+
+  function addMini(parent, label, aka, suggest, locks, role) {
     const btn = document.createElement("button");
     btn.type = "button";
+    btn.className = "mini";
     const canvas = document.createElement("canvas");
-    const name = document.createElement("span");
+    canvas.style.width = role === "press" ? "120px" : "104px";
+    canvas.style.height = role === "press" ? "108px" : "92px";
+    const name = document.createElement("b");
     name.textContent = label;
-    btn.append(canvas, name);
-    if (proposed) {
+    const sub = document.createElement("small");
+    sub.textContent = aka;
+    btn.append(canvas, name, sub);
+    if (suggest) {
       const tag = document.createElement("span");
       tag.className = "tag";
-      tag.textContent = "New";
+      tag.textContent = "Suggested";
       btn.append(tag);
     }
-    if (sub) btn.title = sub;
-    return { btn, canvas };
+    parent.append(btn);
+    const actor = makeActor(canvas, role, locks);
+    if (locks.pick) {
+      btn.dataset.pick = locks.pick;
+      btn.dataset.value = locks.value;
+      btn.addEventListener("click", () => {
+        selection[locks.pick] = locks.value;
+        syncUI();
+      });
+    }
+    actors.push(actor);
+    return actor;
   }
 
-  function buildControls() {
+  function build() {
     const shapes = document.getElementById("shape-picker");
     SHAPES.forEach((shape) => {
-      const { btn, canvas } = buttonCanvas(shape.name, `${shape.name} · ${shape.aka}`, shape.proposed);
+      const btn = document.createElement("button");
+      btn.type = "button";
       btn.className = "shape-btn";
       btn.dataset.pick = "shape";
       btn.dataset.value = shape.id;
-      btn.setAttribute("aria-label", shape.name + (shape.proposed ? ", proposed" : ""));
+      const canvas = document.createElement("canvas");
+      const name = document.createElement("span");
+      name.textContent = shape.name;
+      btn.append(canvas, name);
+      if (!shape.solid) {
+        const tag = document.createElement("span");
+        tag.className = "flat";
+        tag.textContent = "Flat";
+        btn.append(tag);
+      }
+      btn.title = `${shape.name} · ${shape.aka}`;
       btn.addEventListener("click", () => { selection.shape = shape.id; syncUI(); });
       shapes.append(btn);
-      actors.push(makeActor(canvas, "picker", { shape: shape.id }));
+      actors.push(makeActor(canvas, "picker", { lockShape: shape.id, lockState: "idle" }));
     });
     const colors = document.getElementById("color-picker");
     COLORS.forEach((color) => {
@@ -1471,14 +1154,19 @@
     });
     const eyes = document.getElementById("eye-picker");
     EYES.forEach((eye) => {
-      const { btn, canvas } = buttonCanvas(eye.name, `${eye.name} · ${eye.aka}`, eye.proposed);
+      const btn = document.createElement("button");
+      btn.type = "button";
       btn.className = "eye-btn";
       btn.dataset.pick = "eyes";
       btn.dataset.value = eye.id;
-      btn.setAttribute("aria-label", `${eye.name} eyes${eye.proposed ? ", proposed" : ""}`);
+      const canvas = document.createElement("canvas");
+      const name = document.createElement("span");
+      name.textContent = eye.name;
+      btn.title = `${eye.name} · ${eye.aka}`;
+      btn.append(canvas, name);
       btn.addEventListener("click", () => { selection.eyes = eye.id; syncUI(); });
       eyes.append(btn);
-      actors.push(makeActor(canvas, "picker", { eyes: eye.id }));
+      actors.push(makeActor(canvas, "picker", { lockEyes: eye.id, lockState: "idle" }));
     });
     const states = document.getElementById("state-picker");
     STATES.forEach((state) => {
@@ -1491,6 +1179,24 @@
       btn.addEventListener("click", () => { selection.state = state.id; syncUI(); });
       states.append(btn);
     });
+    const think = document.getElementById("think-strip");
+    const thinkLabel = document.createElement("p");
+    thinkLabel.className = "strip-label";
+    thinkLabel.textContent = "Thinking";
+    think.append(thinkLabel);
+    THINKS.forEach((row) => addMini(think, row.name, row.aka, row.suggest, { lockState: "thinking", lockThink: row.id, pick: "think", value: row.id }, "variant"));
+    const work = document.getElementById("work-strip");
+    const workLabel = document.createElement("p");
+    workLabel.className = "strip-label";
+    workLabel.textContent = "Working";
+    work.append(workLabel);
+    WORKS.forEach((row) => addMini(work, row.name, row.aka, row.suggest, { lockState: "working", lockWork: row.id, pick: "work", value: row.id }, "variant"));
+    const press = document.getElementById("press-strip");
+    const pressLabel = document.createElement("p");
+    pressLabel.className = "strip-label";
+    pressLabel.textContent = "Press";
+    press.append(pressLabel);
+    PRESSES.forEach((row) => addMini(press, row.name, row.aka, row.suggest, { lockState: "idle", lockPress: row.id, pick: "press", value: row.id }, "press"));
     const grid = document.getElementById("shape-grid");
     SHAPES.forEach((shape) => {
       const btn = document.createElement("button");
@@ -1504,23 +1210,15 @@
       const aka = document.createElement("small");
       aka.textContent = shape.aka;
       btn.append(canvas, name, aka);
-      if (shape.proposed) {
+      if (!shape.solid) {
         const tag = document.createElement("span");
-        tag.className = "tag";
-        tag.textContent = "Proposed";
+        tag.className = "flat";
+        tag.textContent = "Flat";
         btn.append(tag);
       }
       btn.addEventListener("click", () => { selection.shape = shape.id; syncUI(); });
       grid.append(btn);
-      const actor = makeActor(canvas, "gallery", { shape: shape.id });
-      actors.push(actor);
-      btn.addEventListener("pointerenter", () => { actor.hovering = true; });
-      btn.addEventListener("pointerleave", () => { actor.hovering = false; actor.pointer = null; });
-      btn.addEventListener("pointermove", (e) => {
-        const r = canvas.getBoundingClientRect();
-        actor.pointer = { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 };
-        actor.engaged = true;
-      });
+      actors.push(makeActor(canvas, "gallery", { lockShape: shape.id }));
     });
     const colorGrid = document.getElementById("color-grid");
     COLORS.forEach((color) => {
@@ -1537,192 +1235,132 @@
       btn.append(canvas, name, aka);
       btn.addEventListener("click", () => { selection.color = color.hex; syncUI(); });
       colorGrid.append(btn);
-      actors.push(makeActor(canvas, "gallery", { color: color.hex }));
+      actors.push(makeActor(canvas, "gallery", { lockColor: color.hex }));
     });
-    document.querySelectorAll("[data-role='size']").forEach((canvas) => {
-      actors.push(makeActor(canvas, "size", {}));
-    });
+    document.querySelectorAll("[data-role='size']").forEach((canvas) => actors.push(makeActor(canvas, "size", {})));
+    const hero = makeActor(document.getElementById("hero"), "hero", {});
+    actors.unshift(hero);
+    bindHero(hero);
   }
 
+  function spring(s, target, dt, k, d) {
+    s.v += ((target - s.x) * k - s.v * d) * dt;
+    s.x += s.v * dt;
+  }
   function bindHero(actor) {
     const canvas = actor.canvas;
-    const ptr = { down: false, mode: "none", path: 0, maxSpeed: 0, hit: false };
+    const ptr = { down: false, mode: "none", x: 0, y: 0, lx: 0, ly: 0 };
     const local = (e) => {
       const r = canvas.getBoundingClientRect();
-      return { x: e.clientX - r.left - canvas.clientWidth / 2, y: e.clientY - r.top - canvas.clientHeight * 0.46 };
+      return { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 };
     };
-    canvas.addEventListener("pointerenter", () => { actor.engaged = true; });
-    canvas.addEventListener("pointerleave", (e) => {
-      if (ptr.down) return;
-      actor.engaged = false;
-      actor.pointer = null;
-      actor.hovering = false;
-    });
     canvas.addEventListener("pointermove", (e) => {
       const p = local(e);
-      const now = performance.now();
-      const dt = Math.max(0.008, (now - (ptr.lastT || now)) / 1000);
-      const step = Math.hypot(p.x - (ptr.lastX ?? p.x), p.y - (ptr.lastY ?? p.y));
-      const speed = step / dt;
-      ptr.maxSpeed = Math.max(ptr.maxSpeed || 0, speed);
-      if (ptr.down) ptr.path += step;
-      ptr.lastX = p.x; ptr.lastY = p.y; ptr.lastT = now;
       actor.pointer = p;
-      actor.engaged = true;
-      actor.hovering = Math.hypot(p.x, p.y) < actor.hitR * 1.25;
       if (!ptr.down) return;
-      const from = Math.hypot(p.x - ptr.startX, p.y - ptr.startY);
-      if (ptr.mode === "down" && ptr.hit && from > 14) {
-        ptr.mode = ptr.path > 36 && ptr.maxSpeed < 900 && (now - ptr.startT) > 160 ? "pet" : "drag";
-      }
-      if (ptr.mode === "pet" && speed > 1700) ptr.mode = "drag";
-      actor.petting = ptr.mode === "pet";
+      const step = Math.hypot(p.x - ptr.lx, p.y - ptr.ly);
+      if (ptr.mode === "down" && Math.hypot(p.x - ptr.x, p.y - ptr.y) > 10) ptr.mode = "drag";
       if (ptr.mode === "drag") {
-        if (!actor.dragging) {
-          actor.dragging = true;
-          canvas.classList.add("grabbing");
-          ptr.grabX = p.x - actor.px;
-          ptr.grabY = p.y - actor.py;
-        }
-        const nx = p.x - ptr.grabX, ny = p.y - ptr.grabY;
-        actor.vx = (nx - actor.px) / dt;
-        actor.vy = (ny - actor.py) / dt;
-        actor.vx = clamp(actor.vx, -2600, 2600);
-        actor.vy = clamp(actor.vy, -2600, 2600);
-        actor.px = nx;
-        actor.py = ny;
+        actor.dragging = true;
+        actor.ox = clamp(p.x - ptr.grabX, -canvas.clientWidth * 0.28, canvas.clientWidth * 0.28);
+        actor.oy = clamp(p.y - ptr.grabY, -canvas.clientHeight * 0.22, canvas.clientHeight * 0.22);
+        const dt = Math.max(0.016, (performance.now() - ptr.lt) / 1000);
+        actor.vx = (p.x - ptr.lx) / dt;
+        actor.vy = (p.y - ptr.ly) / dt;
       }
+      ptr.lx = p.x; ptr.ly = p.y; ptr.lt = performance.now();
+      void step;
     });
     canvas.addEventListener("pointerdown", (e) => {
-      try { canvas.setPointerCapture(e.pointerId); } catch { /* already released */ }
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* already gone */ }
       const p = local(e);
-      ptr.down = true;
-      ptr.mode = "down";
-      ptr.path = 0;
-      ptr.maxSpeed = 0;
-      ptr.startX = ptr.lastX = p.x;
-      ptr.startY = ptr.lastY = p.y;
-      ptr.startT = ptr.lastT = performance.now();
-      ptr.hit = Math.hypot(p.x, p.y) < actor.hitR * 1.15;
-      actor.pointer = p;
+      ptr.down = true; ptr.mode = "down"; ptr.x = ptr.lx = p.x; ptr.y = ptr.ly = p.y; ptr.lt = performance.now();
+      ptr.grabX = p.x - actor.ox; ptr.grabY = p.y - actor.oy;
     });
-    const finish = () => {
+    const up = () => {
       if (!ptr.down) return;
-      if (ptr.mode === "drag") {
-        actor.dragging = false;
-        actor.thrown = true;
-        canvas.classList.remove("grabbing");
-      } else if (ptr.mode === "pet") {
-        actor.petting = false;
-      } else if (ptr.hit && ptr.path < 12) {
-        const now = performance.now();
-        if (now - actor.lastClick < 280) {
-          spin(actor);
-          actor.lastClick = 0;
-        } else {
-          const p = actor.pointer || { x: 0, y: 0 };
-          const nx = p.x / actor.hitR, ny = p.y / actor.hitR;
-          if (Math.hypot(nx, ny) > 0.34) poke(actor, nx, ny);
-          else squish(actor);
-          actor.lastClick = now;
-        }
-      }
-      actor.petting = false;
-      ptr.down = false;
-      ptr.mode = "none";
+      if (ptr.mode === "drag") actor.thrown = true;
+      else startPress(actor);
+      actor.dragging = false;
+      ptr.down = false; ptr.mode = "none";
     };
-    canvas.addEventListener("pointerup", finish);
-    canvas.addEventListener("pointercancel", finish);
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", up);
+    canvas.addEventListener("pointerleave", () => { if (!ptr.down) actor.pointer = null; });
+  }
+  function startPress(actor) {
+    actor.pressStart = simTime;
+    actor.pressUntil = simTime + 0.78;
   }
 
   function exportFeedback() {
     const items = Object.values(feedback.items).filter((item) => item.vote || item.note);
-    const payload = {
-      lab: "ensemble-node-design-lab",
-      version: 1,
-      exportedAt: new Date().toISOString(),
-      items,
-    };
+    const payload = { lab: "ensemble-node-design-lab", round: 2, exportedAt: new Date().toISOString(), items };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "node-design-lab-feedback.json";
+    a.download = "node-design-lab-feedback-v2.json";
     document.body.append(a);
     a.click();
     a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setTimeout(() => URL.revokeObjectURL(url), 800);
   }
 
   function applyQuery() {
     const q = new URLSearchParams(location.search);
-    const shape = q.get("shape");
-    const eyes = q.get("eyes");
-    const state = q.get("state");
+    const take = (key, list, field) => {
+      const value = q.get(key);
+      if (value && list.some((row) => row.id === value)) selection[field] = value;
+    };
+    take("shape", SHAPES, "shape");
+    take("eyes", EYES, "eyes");
+    take("state", STATES, "state");
+    take("think", THINKS, "think");
+    take("work", WORKS, "work");
+    take("press", PRESSES, "press");
     const color = q.get("color");
-    const motion = q.get("motion");
-    if (SHAPES.some((s) => s.id === shape)) selection.shape = shape;
-    if (EYES.some((e) => e.id === eyes)) selection.eyes = eyes;
-    if (STATES.some((s) => s.id === state)) selection.state = state;
     if (color) {
-      const byId = COLORS.find((c) => c.id === color.toLowerCase());
-      const byHex = COLORS.find((c) => c.hex.toUpperCase() === color.toUpperCase());
-      if (byId) selection.color = byId.hex;
-      else if (byHex) selection.color = byHex.hex;
+      const found = COLORS.find((c) => c.id === color.toLowerCase() || c.hex.toUpperCase() === color.toUpperCase());
+      if (found) selection.color = found.hex;
     }
-    if (motion != null && motion !== "" && !Number.isNaN(Number(motion))) intensity = clamp(Number(motion) / 100, 0, 1);
-  }
-
-  function showError(err) {
-    const box = document.getElementById("error");
-    box.style.display = "block";
-    box.textContent = String(err && err.stack || err);
-    console.error(err);
+    if (q.has("motion")) intensity = clamp(Number(q.get("motion")) / 100, 0, 1);
+    if (q.has("freeze")) frozen = Number(q.get("freeze"));
   }
 
   function boot() {
     applyQuery();
     const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches && !new URLSearchParams(location.search).has("motion");
     if (reduce) {
-      intensity = 0.12;
+      intensity = 0.15;
       document.getElementById("motion-note").hidden = false;
     }
     document.getElementById("motion").value = String(Math.round(intensity * 100));
     document.getElementById("motion-out").textContent = String(Math.round(intensity * 100));
-    SHAPES.forEach((shape) => { if (!Number.isFinite(outlineOf(shape, 24)[0].x)) throw new Error("Bad outline " + shape.id); });
-    buildControls();
-    const hero = makeActor(document.getElementById("hero"), "hero", {});
-    actors.unshift(hero);
-    bindHero(hero);
+    initGL();
+    build();
     document.getElementById("motion").addEventListener("input", (e) => {
       intensity = Number(e.target.value) / 100;
       document.getElementById("motion-out").textContent = e.target.value;
     });
-    document.getElementById("act-squish").addEventListener("click", () => squish(hero));
-    document.getElementById("act-spin").addEventListener("click", () => spin(hero));
-    document.getElementById("act-pet").addEventListener("click", () => { hero.petForce = 1.4; });
-    document.getElementById("act-poke").addEventListener("click", () => poke(hero, 0.8, -0.2));
-    document.getElementById("act-reset").addEventListener("click", () => {
-      hero.px = hero.py = hero.vx = hero.vy = hero.spin = hero.spinVel = 0;
-      hero.dragging = false; hero.thrown = false; hero.giggle = 0;
-      ["yaw", "pitch", "roll", "z"].forEach((k) => { hero[k].x = 0; hero[k].v = 0; });
-      ["sx", "sy", "sz"].forEach((k) => { hero[k].x = 1; hero[k].v = 0; });
-    });
     document.getElementById("thumb-up").addEventListener("click", () => {
       const item = ensureItem();
       item.vote = item.vote === "up" ? null : "up";
+      item.label = document.getElementById("variant-name").textContent;
       item.updatedAt = new Date().toISOString();
       saveStore(); syncUI();
     });
     document.getElementById("thumb-down").addEventListener("click", () => {
       const item = ensureItem();
       item.vote = item.vote === "down" ? null : "down";
+      item.label = document.getElementById("variant-name").textContent;
       item.updatedAt = new Date().toISOString();
       saveStore(); syncUI();
     });
     document.getElementById("note").addEventListener("input", (e) => {
       const item = ensureItem();
       item.note = e.target.value.slice(0, 2000);
+      item.label = document.getElementById("variant-name").textContent;
       item.updatedAt = new Date().toISOString();
       saveStore();
       renderSaved();
@@ -1734,36 +1372,36 @@
       saveStore();
       syncUI();
     });
-    // Gallery colour cells and shape cells share aria via data-pick.
-    document.querySelectorAll(".cell, .shape-btn, .eye-btn, .state-btn, .swatch").forEach((btn) => btn.setAttribute("aria-pressed", "false"));
     syncUI();
     document.documentElement.dataset.lab = "ready";
-
     let last = performance.now();
     const frame = (now) => {
       try {
         const dt = clamp((now - last) / 1000, 0, 0.033);
         last = now;
-        simTime += dt;
-        const heroActor = actors[0];
-        updateHero(heroActor, dt);
-        for (let i = 1; i < actors.length; i++) {
-          const actor = actors[i];
-          if (actor.pointer) {
-            const nx = clamp(actor.pointer.x / 50, -1, 1);
-            const ny = clamp(actor.pointer.y / 50, -1, 1);
-            spring(actor.lookX, nx, dt, 70, 14);
-            spring(actor.lookY, ny, dt, 70, 14);
-            spring(actor.yaw, nx * 0.4, dt, 50, 12);
-            spring(actor.pitch, ny * 0.3, dt, 50, 12);
-          } else {
-            spring(actor.lookX, 0, dt, 30, 10);
-            spring(actor.lookY, 0, dt, 30, 10);
-            spring(actor.yaw, 0, dt, 30, 10);
-            spring(actor.pitch, 0, dt, 30, 10);
-          }
+        if (frozen == null) simTime += dt * (0.35 + intensity * 1.05);
+        else simTime = frozen;
+        const hero = actors[0];
+        if (hero.pointer && !hero.dragging) {
+          const nx = clamp(hero.pointer.x / (hero.canvas.clientWidth * 0.34), -1, 1);
+          const ny = clamp(hero.pointer.y / (hero.canvas.clientHeight * 0.34), -1, 1);
+          spring(hero.lookX, nx, dt, 50, 12);
+          spring(hero.lookY, ny, dt, 50, 12);
+        } else if (hero.dragging) {
+          hero.lookX.x = clamp(hero.ox / 220, -1, 1);
+          hero.lookY.x = clamp(hero.oy / 220, -1, 1);
+        } else {
+          spring(hero.lookX, 0, dt, 30, 10);
+          spring(hero.lookY, 0, dt, 30, 10);
         }
-        for (const actor of actors) drawActor(actor, simTime);
+        if (!hero.dragging) {
+          const dragK = 64, dragD = 11;
+          hero.vx += (-hero.ox * dragK - hero.vx * dragD) * dt;
+          hero.vy += (-hero.oy * dragK - hero.vy * dragD) * dt;
+          hero.ox += hero.vx * dt;
+          hero.oy += hero.vy * dt;
+        }
+        for (const actor of actors) drawActor(actor);
       } catch (err) {
         showError(err);
         return;

@@ -33,8 +33,7 @@ export function NodeCompanion({ node, avatar, size = 40, thinking = false, profi
   const greeted = useRef(false);
   const clicks = useRef(0);
   const reaction = useRef<gsap.core.Timeline | null>(null);
-  const idle = useRef<gsap.core.Timeline[]>([]);
-  const gazeTo = useRef<{ x: ReturnType<typeof gsap.quickTo>; y: ReturnType<typeof gsap.quickTo> } | null>(null);
+  const [gaze, setGaze] = useState({ x: 0, y: 0 });
   const [entry, setEntry] = useState<"hello" | "wake" | null>(visit ? null : "hello");
   const paused = node?.status === "paused";
   const still = paused || thinking && !workingMotion;
@@ -50,37 +49,21 @@ export function NodeCompanion({ node, avatar, size = 40, thinking = false, profi
     if (!button) return;
     if (!motion || still) { reaction.current?.kill(); delete button.dataset.expression; return; }
     if (!visible) return;
-    const eyes = button.querySelector(".node-eyes");
     if ((visit || profile) && entry && !greeted.current) {
       greeted.current = true;
       reaction.current = nodeExpression(button, entry);
     }
-    const single = gsap.timeline({ paused: true }).to(eyes, { scaleY: .08, duration: .09 }).to(eyes, { scaleY: 1, duration: .17 });
-    const double = gsap.timeline({ paused: true, repeat: 1, repeatDelay: .12 }).to(eyes, { scaleY: .08, duration: .09 }).to(eyes, { scaleY: 1, duration: .17 });
-    const wink = gsap.timeline({ paused: true }).to(button.querySelector(".node-eye-left"), { scaleY: .08, duration: .1 }).to(button.querySelector(".node-eye-left"), { scaleY: 1, duration: .2 });
-    idle.current = [single, double, wink];
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => { timer = setTimeout(() => {
-      if (!reaction.current?.isActive()) [single, double, wink][Math.floor(Math.random() * 3)]!.restart();
-      schedule();
-    }, 7500 + Math.random() * 7500); };
-    if ((visit || profile) && !thinking) schedule();
-    if (profile) {
-      const gaze = button.querySelector(".node-gaze");
-      gazeTo.current = { x: gsap.quickTo(gaze, "x", { duration: .3, ease: "power2.out" }), y: gsap.quickTo(gaze, "y", { duration: .3, ease: "power2.out" }) };
-    }
-    return () => { clearTimeout(timer); reaction.current?.kill(); delete button.dataset.expression; gazeTo.current = null; idle.current = []; };
+    return () => { reaction.current?.kill(); delete button.dataset.expression; };
   }, { scope: ref, dependencies: [visible, motion, still, entry, profile, visit, thinking, look?.shape, look?.eyes], revertOnUpdate: true });
 
   const react = contextSafe(() => {
     if (motion && !still && !document.hidden && ref.current) {
       reaction.current?.kill();
-      for (const timeline of idle.current) timeline.pause(0);
       reaction.current = nodeExpression(ref.current, CLICK_EXPRESSIONS[clicks.current++ % CLICK_EXPRESSIONS.length]!);
     }
     onActivate?.();
   });
-  const gaze = (x: number, y: number) => { gazeTo.current?.x(x); gazeTo.current?.y(y); };
+  const lookAt = (x: number, y: number) => setGaze({ x, y });
   return (
     <button ref={ref} type="button" className={`node-companion ${profile ? "node-companion-profile" : visit ? "node-companion-header" : "node-companion-message"} ${compact ? "node-companion-compact" : ""} relative inline-flex shrink-0 items-center justify-center rounded-full`}
       aria-label={onActivate ? `${node?.name ?? "Node"}'s settings` : `Say hello to ${node?.name ?? "your node"}`}
@@ -89,11 +72,11 @@ export function NodeCompanion({ node, avatar, size = 40, thinking = false, profi
       onPointerMove={event => {
         if (!profile || event.pointerType !== "mouse" || !visible) return;
         const box = event.currentTarget.getBoundingClientRect();
-        gaze(((event.clientX - box.left) / box.width - .5) * 5, ((event.clientY - box.top) / box.height - .5) * 4);
+        lookAt(((event.clientX - box.left) / box.width - .5) * 2, ((event.clientY - box.top) / box.height - .5) * 2);
       }}
-      onPointerLeave={() => gaze(0, 0)} onBlur={() => gaze(0, 0)}
+      onPointerLeave={() => lookAt(0, 0)} onBlur={() => lookAt(0, 0)}
       style={{ minWidth: compact ? size : Math.max(44, size), minHeight: compact ? size : Math.max(44, size) }}>
-      <NodeAvatar node={node} avatar={avatar} size={size} thinking={visible && !still && thinking} workZone={compact ? "chat" : undefined} dim={paused} />
+      <NodeAvatar node={node} avatar={avatar} size={size} thinking={visible && !still && thinking} workZone={compact ? "chat" : undefined} dim={paused} gaze={profile ? gaze : undefined} />
     </button>
   );
 }

@@ -2,8 +2,11 @@ import type { EntityRef } from "./entity-text";
 import type { FileQuote } from "./original-files";
 /** What Ensemble's `/api/node/*` routes send (Ensemble docs/35). */
 
-export type AvatarShape = "orb" | "square" | "spark" | "hex" | "leaf" | "compass" | "pebble" | "bloom";
-export type Avatar = { shape: AvatarShape; color: string; eyes: "dot" | "line" | "wide" };
+/** Kept shapes, plus puff and capsule so a node saved before they were removed still type-checks. */
+export type AvatarShape = "orb" | "square" | "spark" | "hex" | "leaf" | "compass" | "pebble" | "bloom" | "gumdrop" | "puff" | "capsule";
+/** Dots, happy, and sleepy are the set in the picker. line, wide, star, and soft are older saves. */
+export type AvatarEyes = "dot" | "happy" | "sleepy" | "line" | "wide" | "star" | "soft";
+export type Avatar = { shape: AvatarShape; color: string; eyes: AvatarEyes };
 
 /** `parentNodeId`: a temporary helper's node (it works in a read-only task room and reports to that node). */
 export type NodePublic = { id: string; ownerId: string; slug: string; name: string; role: string; avatar: Avatar; status: "active" | "paused"; parentNodeId?: string | null };

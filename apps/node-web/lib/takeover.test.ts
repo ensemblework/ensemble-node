@@ -228,7 +228,9 @@ test("a held finger is let go before the view ends, and input keeps being tried 
     order.length = 0;
     failures = 20;
     again.send([{ t: "mouse", type: "down", x: 0.1, y: 0.1 }]);
-    for (let turn = 0; turn < 200 && !order.length; turn += 1) {
+    // Sealing the message is real async work. Ticks before that timer is armed must not use up the wait.
+    const deadline = Date.now() + 5_000;
+    while (order.length === 0 && Date.now() < deadline) {
       await new Promise((resolve) => setImmediate(resolve));
       mock.timers.tick(8_000);
     }

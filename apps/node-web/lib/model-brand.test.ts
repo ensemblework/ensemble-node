@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { createElement, Fragment } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AVATAR_MORPHS, AVATAR_PATHS, AVATAR_SHAPES, avatarTones, NodeAvatar } from "../components/node-avatar";
+import { AVATAR_SHAPES, avatarTones, NodeAvatar } from "../components/node-avatar";
 import { ModelLogo } from "../components/model-logo";
 import { MODEL_BRANDS, modelBrand } from "./model-brand";
 import manifest from "../public/providers/manifest.json";
@@ -36,33 +36,25 @@ test("nodes keep their saved signature face independently of their model or prov
   const render = (node: { avatar: typeof avatar; model?: string | null; provider?: string | null }) =>
     renderToStaticMarkup(createElement(NodeAvatar, { node }));
   const signature = render({ avatar });
-  assert.match(signature, /<svg[^>]+data-node-avatar/);
-  assert.match(signature, /d="M50 5l39 22v46L50 95 11 73V27z"/);
-  assert.match(signature, /stop-color="#B39DDB"/);
-  assert.equal([...signature.matchAll(/<ellipse /g)].length, 2);
+  assert.match(signature, /data-node-avatar/);
+  assert.match(signature, /data-node-shape="hex"/);
+  assert.match(signature, /data-node-eyes="dot"/, "wide eyes from an older save draw as dots");
+  assert.match(signature, /<canvas/);
   assert.doesNotMatch(signature, /data-model-brand|providers\//);
   assert.equal(render({ avatar, model: "gpt-5-mini", provider: "ensemble" }), signature);
   assert.equal(render({ avatar, model: "claude-sonnet-4-6", provider: "anthropic" }), signature);
   assert.equal(render({ avatar, model: null, provider: null }), signature);
 });
 
-test("signature shape and eyes remain editable without sharing SVG gradients", () => {
+test("each kept shape is offered once, and older eyes still render", () => {
   const faces = AVATAR_SHAPES.map((shape, index) => createElement(NodeAvatar, {
-    key: shape, avatar: { shape, color: "#7FB3D5", eyes: (["dot", "line", "wide"] as const)[index % 3]! },
+    key: shape, avatar: { shape, color: "#7FB3D5", eyes: (["dot", "happy", "sleepy", "line", "wide"] as const)[index % 5]! },
   }));
   const markup = renderToStaticMarkup(createElement(Fragment, null, ...faces));
-  const gradients = [...markup.matchAll(/<radialGradient id="([^"]+)"/g)].map(match => match[1]);
-  assert.equal(new Set(gradients).size, faces.length);
-  assert.equal(new Set([...markup.matchAll(/<path\b(?=[^>]*class="node-silhouette")[^>]*\bd="([^"]+)"/g)].map(match => match[1])).size, faces.length);
-  for (const id of gradients) assert.ok(markup.includes(`fill="url(#${id})"`));
-  for (const [at, element] of ["circle", "rect", "ellipse"].entries()) assert.equal([...markup.matchAll(new RegExp(`<${element} `, "g"))].length, AVATAR_SHAPES.filter((_, index) => index % 3 === at).length * 2);
-});
-
-test("each outline can morph and return without changing its SVG command structure", () => {
-  for (const shape of AVATAR_SHAPES) {
-    assert.deepEqual(AVATAR_PATHS[shape].match(/[a-z]/gi), AVATAR_MORPHS[shape].match(/[a-z]/gi), shape);
-    assert.equal(AVATAR_PATHS[shape].match(/-?\d+(?:\.\d+)?/g)?.length, AVATAR_MORPHS[shape].match(/-?\d+(?:\.\d+)?/g)?.length, shape);
-  }
+  assert.equal([...markup.matchAll(/data-node-avatar/g)].length, AVATAR_SHAPES.length);
+  assert.equal(new Set([...markup.matchAll(/data-node-shape="([^"]+)"/g)].map(match => match[1])).size, AVATAR_SHAPES.length);
+  assert.ok(markup.includes('data-node-shape="gumdrop"'));
+  assert.ok(markup.includes('data-node-eyes="sleepy"'), "line eyes draw sleepy");
 });
 
 test("an unspecified node keeps the original default face and status styling", () => {
@@ -70,8 +62,9 @@ test("an unspecified node keeps the original default face and status styling", (
   assert.match(markup, /aria-label="Scout"/);
   assert.match(markup, /node-thinking/);
   assert.match(markup, /opacity-50 grayscale/);
-  assert.match(markup, /stop-color="#D7B56F"/);
-  assert.equal([...markup.matchAll(/<circle /g)].length, 2);
+  assert.match(markup, /data-node-shape="orb"/);
+  assert.match(markup, /data-node-state="thinking"/);
+  assert.match(markup, /aria-label="Scout"/);
   assert.doesNotMatch(markup, /data-model-brand|providers\//);
 });
 
@@ -79,27 +72,4 @@ test("a face is shaded in its own hue, opaque, with a darker edge and eyes that 
   const gold = avatarTones("#D7B56F");
   assert.deepEqual([gold.light, gold.shade, gold.edge, gold.eyes], ["#EBDAB7", "#C2A364", "#977F4E", "#14110C"]);
   assert.equal(avatarTones("#2B3A67").eyes, "#FBF8F1", "light eyes on a dark colour");
-  const markup = renderToStaticMarkup(createElement(NodeAvatar, { avatar: { shape: "orb", color: "#F2CC8F", eyes: "dot" } }));
-  assert.doesNotMatch(markup, /stop-opacity|#ffffff/i, "no see-through white highlight");
-  assert.match(markup, /stroke="#A98F64"/);
-  assert.match(markup, /class="node-eyes" fill="#14110C"/);
-});
-
-test("eyes sit inside every shape, the narrow spark and compass included", () => {
-  // The largest distance from the centre each shape's body keeps all around (inner ring, inner square), less its edge.
-  const inside: Record<string, (x: number, y: number) => boolean> = {
-    spark: (x, y) => Math.hypot(x - 50, y - 50) <= 18,
-    compass: (x, y) => Math.abs(y - 50) <= 13 && Math.abs(x - 50) <= 26 - Math.abs(y - 50),
-  };
-  for (const shape of ["spark", "compass"] as const) {
-    for (const eyes of ["dot", "line", "wide"] as const) {
-      const markup = renderToStaticMarkup(createElement(NodeAvatar, { avatar: { shape, color: "#B39DDB", eyes } }));
-      const points: Array<[number, number]> = [];
-      for (const [, cx, cy, r] of markup.matchAll(/<circle\b[^>]*cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"/g)) points.push([+cx! - +r!, +cy!], [+cx! + +r!, +cy!], [+cx!, +cy! - +r!], [+cx!, +cy! + +r!]);
-      for (const [, cx, cy, rx, ry] of markup.matchAll(/<ellipse\b[^>]*cx="([\d.]+)" cy="([\d.]+)" rx="([\d.]+)" ry="([\d.]+)"/g)) points.push([+cx! - +rx!, +cy!], [+cx! + +rx!, +cy!], [+cx!, +cy! - +ry!], [+cx!, +cy! + +ry!]);
-      for (const [, x, y, w, h] of markup.matchAll(/<rect\b[^>]*x="([\d.]+)" y="([\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)) points.push([+x!, +y!], [+x! + +w!, +y!], [+x!, +y! + +h!], [+x! + +w!, +y! + +h!]);
-      assert.equal(points.length, 8, `${shape} ${eyes}`);
-      for (const [x, y] of points) assert.ok(inside[shape]!(x, y), `${shape} ${eyes} eye point ${x},${y}`);
-    }
-  }
 });

@@ -19,7 +19,7 @@ export type DraftNode = {
   createdId?: string;
 };
 
-const SHAPES: Avatar["shape"][] = ["orb", "square", "spark", "hex", "leaf", "compass", "pebble", "bloom"];
+const SHAPES: Avatar["shape"][] = ["orb", "square", "spark", "hex", "leaf", "compass", "pebble", "bloom", "gumdrop"];
 const COLORS = ["#D7B56F", "#7FB3D5", "#E07A5F", "#81B29A", "#B39DDB", "#F2CC8F", "#5FB4A2", "#E8A3B5"];
 
 const norm = (name: string) => name.trim().toLowerCase();
@@ -85,7 +85,7 @@ let counter = 0;
 const nextKey = () => `draft-${Date.now().toString(36)}-${(counter += 1)}`;
 
 /** A look for a node made from scratch, different for each `index`. */
-export const blankAvatar = (index: number): Avatar => ({ shape: SHAPES[index % SHAPES.length]!, color: COLORS[index % COLORS.length]!, eyes: (["dot", "line", "wide"] as const)[Math.floor(index / SHAPES.length) % 3]! });
+export const blankAvatar = (index: number): Avatar => ({ shape: SHAPES[index % SHAPES.length]!, color: COLORS[index % COLORS.length]!, eyes: (["dot", "happy", "sleepy"] as const)[Math.floor(index / SHAPES.length) % 3]! });
 
 /**
  * A new node row, from a node template (its name, handle, role, look and instructions) or blank (its

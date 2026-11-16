@@ -1,0 +1,1366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Node Design Lab · Round 2</title>
+<style>
+  :root {
+    --bg: #081113;
+    --panel: #0d1b1e;
+    --raised: #14272b;
+    --line: #243e43;
+    --ink: #ece9e0;
+    --muted: #8c9b99;
+    --accent: #d7b56f;
+    --accent-ink: #1c1810;
+    --danger: #e07a6a;
+    --ok: #7dcaa4;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-font-smoothing: antialiased; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 480px at 8% -10%, rgba(215, 181, 111, .07), transparent 50%),
+      var(--bg);
+    color: var(--ink);
+    font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 22px 72px; }
+  header { max-width: 46rem; }
+  .eyebrow { margin: 0 0 6px; font-size: 11px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  h1 { margin: 0; font-size: 28px; font-weight: 640; letter-spacing: -.03em; }
+  header p { margin: 8px 0 0; color: var(--muted); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .82fr); gap: 16px; margin-top: 18px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 24px; }
+  .stage-card { padding: 12px 12px 16px; }
+  canvas { display: block; }
+  #hero {
+    width: 100%;
+    height: 480px;
+    border-radius: 18px;
+    background: radial-gradient(58% 50% at 50% 42%, #1a3a40 0%, #102428 62%, #0c1c20 100%);
+    touch-action: none;
+    cursor: pointer;
+  }
+  .stage-meta { display: flex; justify-content: space-between; gap: 12px; padding: 12px 8px 0; }
+  #variant-name { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+  #variant-id, #idea { margin: 2px 0 0; color: var(--muted); }
+  #variant-id { font: 12px/1.4 ui-monospace, "SF Mono", monospace; }
+  #idea { font-size: 13px; }
+  .pill { border-radius: 999px; padding: 3px 8px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; background: var(--raised); color: var(--muted); }
+  .sizes, .strip { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 14px 8px 0; }
+  .sizes p, .strip-label { margin: 0; color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; align-self: center; }
+  .mini { text-align: center; background: transparent; border: 1px solid transparent; border-radius: 14px; padding: 4px 4px 6px; color: var(--muted); }
+  .mini b { display: block; color: var(--ink); font-size: 12px; font-weight: 620; }
+  .mini small { display: block; font-size: 10px; }
+  .mini .tag { color: var(--accent); letter-spacing: .08em; text-transform: uppercase; font-size: 9px; }
+  .mini[aria-pressed="true"] { background: var(--raised); color: var(--ink); box-shadow: inset 0 0 0 1.5px rgba(236, 233, 224, .85); }
+  .size-demo { text-align: center; }
+  .size-demo span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .controls { padding: 16px 16px 18px; display: flex; flex-direction: column; gap: 16px; }
+  .kicker { margin: 0 0 8px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .shape-row, .eye-row { display: flex; flex-wrap: wrap; gap: 6px; }
+  .shape-btn, .eye-btn {
+    width: 68px; padding: 4px 2px 6px; border-radius: 14px; border: 1px solid transparent; background: transparent; color: var(--muted);
+  }
+  .shape-btn canvas, .eye-btn canvas { width: 52px; height: 48px; margin: 0 auto; }
+  .shape-btn span, .eye-btn span { display: block; font-size: 10px; line-height: 1.2; }
+  .shape-btn .flat, .cell .flat { color: var(--muted); font-size: 9px; letter-spacing: .06em; text-transform: uppercase; }
+  .shape-btn[aria-pressed="true"], .eye-btn[aria-pressed="true"], .cell[aria-pressed="true"] {
+    background: var(--raised); color: var(--ink); box-shadow: inset 0 0 0 1.5px rgba(236, 233, 224, .8);
+  }
+  .swatches { display: flex; flex-wrap: wrap; gap: 10px; padding: 2px; }
+  .swatch { width: 28px; height: 28px; border-radius: 50%; border: 0; padding: 0; box-shadow: inset 0 0 0 1.5px rgba(0,0,0,.28); }
+  .swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--ink), inset 0 0 0 1.5px rgba(0,0,0,.28); }
+  .states { display: flex; flex-direction: column; gap: 4px; }
+  .state-btn { text-align: left; background: transparent; border: 1px solid transparent; border-radius: 12px; padding: 7px 10px; }
+  .state-btn b { display: block; font-weight: 620; }
+  .state-btn small { color: var(--muted); }
+  .state-btn[aria-pressed="true"] { background: var(--raised); border-color: rgba(215, 181, 111, .5); }
+  .motion { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+  .motion input { grid-column: 1 / -1; width: 100%; accent-color: var(--accent); }
+  .motion small, #motion-note { color: var(--muted); }
+  textarea { width: 100%; min-height: 72px; resize: vertical; border-radius: 12px; border: 1px solid var(--line); background: #0b1719; padding: 8px 10px; }
+  .vote { display: flex; gap: 8px; margin: 8px 0; }
+  .vote button, .ghost { border-radius: 999px; border: 1px solid var(--line); background: var(--raised); padding: 6px 14px; }
+  .vote button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .fb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .saved { list-style: none; margin: 10px 0 0; padding: 0; max-height: 180px; overflow: auto; }
+  .saved button { width: 100%; text-align: left; background: transparent; border: 0; border-top: 1px solid var(--line); padding: 7px 2px; color: var(--muted); }
+  .saved strong { color: var(--ink); font-weight: 620; }
+  .saved .up { color: var(--ok); }
+  .saved .down { color: var(--danger); }
+  .empty { color: var(--muted); margin: 8px 0 0; }
+  section.gallery { margin-top: 22px; }
+  section.gallery h2 { font-size: 15px; font-weight: 620; margin: 0 0 10px; }
+  section.gallery h2 span { color: var(--muted); font-weight: 500; }
+  .grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .cell { width: 108px; padding: 6px 4px 8px; border-radius: 16px; border: 1px solid transparent; background: var(--panel); color: var(--muted); }
+  .cell canvas { width: 96px; height: 88px; margin: 0 auto; }
+  .cell b { display: block; color: var(--ink); font-size: 12px; font-weight: 620; }
+  .cell small { display: block; font-size: 10px; }
+  .legend { margin-top: 28px; color: var(--muted); font-size: 13px; max-width: 70rem; }
+  #error { display: none; margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(225, 93, 74, .12); color: #ffb1a6; white-space: pre-wrap; }
+  [hidden] { display: none !important; }
+  @media (max-width: 980px) {
+    .layout { grid-template-columns: 1fr; }
+    #hero { height: 380px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Ensemble Node · design lab · round 2</p>
+    <h1>Solid forms, face toward you</h1>
+    <p>Each soft body is one painted surface. It can lean, nod, and squash, and it does not turn around. Spark, Hex, and Compass stay flat. Working pulls out a laptop. Thinking keeps the three orbiting orbs, in a few arrangements. Everything is canvas 2D, so it runs with no WebGL.</p>
+  </header>
+  <div id="error" role="alert"></div>
+  <div class="layout">
+    <div class="card stage-card">
+      <canvas id="hero" aria-label="Large preview node"></canvas>
+      <div class="stage-meta">
+        <div>
+          <h2 id="variant-name">Orb · Gold · Dots · Idle</h2>
+          <p id="variant-id">orb · #D7B56F · dot · idle · c1</p>
+          <p id="idea">Breathing, a crisp blink, and a small glance.</p>
+        </div>
+        <span class="pill" id="state-pill">Idle</span>
+      </div>
+      <div class="sizes">
+        <p>Reads at</p>
+        <div class="size-demo"><canvas data-role="size" style="width:64px;height:64px"></canvas><span>40px body</span></div>
+        <div class="size-demo"><canvas data-role="size" style="width:88px;height:88px"></canvas><span>56px body</span></div>
+        <div class="size-demo"><canvas data-role="size" style="width:112px;height:112px"></canvas><span>72px body</span></div>
+      </div>
+      <div id="think-strip" class="strip" hidden></div>
+      <div id="work-strip" class="strip" hidden></div>
+      <div id="press-strip" class="strip"></div>
+    </div>
+    <aside class="card controls">
+      <div>
+        <p class="kicker">Shape</p>
+        <div class="shape-row" id="shape-picker" role="group" aria-label="Shape"></div>
+      </div>
+      <div>
+        <p class="kicker">Colour</p>
+        <div class="swatches" id="color-picker" role="group" aria-label="Colour"></div>
+      </div>
+      <div>
+        <p class="kicker">Eyes</p>
+        <div class="eye-row" id="eye-picker" role="group" aria-label="Eyes"></div>
+      </div>
+      <div>
+        <p class="kicker">State</p>
+        <div class="states" id="state-picker" role="group" aria-label="State"></div>
+      </div>
+      <label class="motion">
+        <span>Motion <small>speed and amplitude</small></span>
+        <output id="motion-out">70</output>
+        <input id="motion" type="range" min="0" max="100" value="70" aria-label="Motion speed and amplitude">
+      </label>
+      <p id="motion-note" hidden>Your system prefers reduced motion, so this starts quiet.</p>
+      <div>
+        <p class="kicker">Feedback for this variant</p>
+        <div class="vote">
+          <button type="button" id="thumb-up" aria-pressed="false">Thumbs up</button>
+          <button type="button" id="thumb-down" aria-pressed="false">Thumbs down</button>
+        </div>
+        <textarea id="note" maxlength="2000" placeholder="What reads at a glance, and what does not"></textarea>
+        <div class="fb-actions">
+          <button type="button" class="ghost" id="export">Export JSON</button>
+          <button type="button" class="ghost" id="clear">Clear all</button>
+        </div>
+        <p class="empty" id="empty-note">No notes yet. A thumb and a sentence are enough.</p>
+        <ul class="saved" id="saved"></ul>
+      </div>
+    </aside>
+  </div>
+  <section class="gallery">
+    <h2>All shapes <span id="grid-caption">· Idle</span></h2>
+    <div class="grid" id="shape-grid"></div>
+  </section>
+  <section class="gallery">
+    <h2>This shape in every colour <span id="color-caption"></span></h2>
+    <div class="grid" id="color-grid"></div>
+  </section>
+  <p class="legend">Round 2.1 paints each soft body once, with a radial highlight and a shade that wraps the lower edge. A sphere stays a circle, a cuboid stays one rounded square, and nothing is built from stacked discs. Spark, Hex, and Compass stay flat. Eyes are drawn afterwards and are never squashed. The small grid holds still until you hover it. The laptop is a separate simple prop, without fingers or a progress ring.</p>
+</div>
+<script>
+(() => {
+  "use strict";
+
+  const STORE = "ensemble-node.design-lab.feedback.v2";
+  const CAM = { y: 0.10, z: 2.42, spread: 1.16 };
+
+  const COLORS = [
+    { id: "gold", name: "Gold", alias: "mustard", hex: "#D7B56F" },
+    { id: "blue", name: "Blue", alias: "sky", hex: "#7FB3D5" },
+    { id: "coral", name: "Coral", alias: "coral", hex: "#E07A5F" },
+    { id: "sage", name: "Sage", alias: "sage", hex: "#81B29A" },
+    { id: "lavender", name: "Lavender", alias: "lavender", hex: "#B39DDB" },
+    { id: "sand", name: "Sand", alias: "sand", hex: "#F2CC8F" },
+    { id: "teal", name: "Teal", alias: "teal", hex: "#5FB4A2" },
+    { id: "pink", name: "Pink", alias: "pink", hex: "#E8A3B5" },
+  ];
+  const EYES = [
+    { id: "dot", name: "Dots", aka: "two dots" },
+    { id: "happy", name: "Happy", aka: "arcs" },
+    { id: "sleepy", name: "Sleepy", aka: "narrow" },
+  ];
+  const STATES = [
+    { id: "idle", name: "Idle", blurb: "Breath, blink, and a glance" },
+    { id: "thinking", name: "Thinking", blurb: "Three orbs, a few orbits" },
+    { id: "working", name: "Working", blurb: "Pulls out a laptop" },
+    { id: "error", name: "Needs attention", blurb: "Concerned, one hand up" },
+    { id: "sleeping", name: "Sleeping", blurb: "Calm sleepy eyes and soft Zs" },
+  ];
+  const THINKS = [
+    { id: "t1", name: "T1 Orbit", aka: "full loop", blurb: "Three orbs on a level ring. The base Akash liked.", suggest: true },
+    { id: "t2", name: "T2 Wide", aka: "slow, larger", blurb: "The same ring, slower and further out." },
+    { id: "t3", name: "T3 Swing", aka: "partial arc", blurb: "They swing across the top and come back. Not a full loop." },
+    { id: "t4", name: "T4 Rise", aka: "vertical", blurb: "A vertical loop beside the head, like a thought climbing." },
+    { id: "t5", name: "T5 Tilt", aka: "tilted plane", blurb: "The ring is tipped, so the path reads as depth." },
+    { id: "t6", name: "T6 Parade", aka: "eyes travel", blurb: "Orbs do a full loop, and the eyes stroll across the front. Eyes stay round." },
+  ];
+  const WORKS = [
+    { id: "w1", name: "W1 Unfold", aka: "clamshell", blurb: "The lid opens in front. The node lifts and looks down.", suggest: true },
+    { id: "w2", name: "W2 Emerge", aka: "from the body", blurb: "A laptop grows out from the lower body. The body itself stays whole." },
+    { id: "w3", name: "W3 Peek", aka: "under the chin", blurb: "A smaller laptop rises to the chin. Screen light washes the face." },
+    { id: "w4", name: "W4 Vignette", aka: "in, hold, away", blurb: "The chat vignette’s timing: come in, work, and put it away." },
+  ];
+  const PRESSES = [
+    { id: "c1", name: "C1 Squash", aka: "settle", blurb: "A soft squash and a happy flash. The face does not turn." },
+    { id: "c2", name: "C2 Nod", aka: "lean", blurb: "A small lean back, then a nod and a tiny hop.", suggest: true },
+  ];
+
+  const FLAT = {
+    spark: "M50 4l11 24 25-6-14 22 20 18-26 3 2 26-18-18-18 18 2-26-26-3 20-18-14-22 25 6z",
+    hex: "M50 5l39 22v46L50 95 11 73V27z",
+    compass: "M50 4l14 32 32 14-32 14-14 32-14-32L4 50l32-14z",
+  };
+
+  const SHAPES = [
+    { id: "orb", name: "Orb", aka: "sphere", solid: true, shader: 0, radius: 0.78, face: { x: 0, y: 0.08, z: 0.62, gap: 0.2, scale: 1 } },
+    { id: "square", name: "Square", aka: "soft cuboid", solid: true, shader: 1, radius: 0.7, face: { x: 0, y: 0.06, z: 0.62, gap: 0.2, scale: 1 } },
+    { id: "spark", name: "Spark", aka: "spiky star", solid: false, face: { x: 50, y: 50, gap: 9, scale: 0.85 } },
+    { id: "hex", name: "Hex", aka: "hexagon", solid: false, face: { x: 50, y: 50, gap: 11, scale: 1 } },
+    { id: "leaf", name: "Leaf", aka: "egg", solid: true, shader: 2, radius: 0.8, face: { x: 0, y: 0.02, z: 0.58, gap: 0.18, scale: 0.96 } },
+    { id: "compass", name: "Compass", aka: "sparkle", solid: false, face: { x: 50, y: 50, gap: 8, scale: 0.66 } },
+    { id: "pebble", name: "Pebble", aka: "rounded stone", solid: true, shader: 3, radius: 0.78, face: { x: 0, y: 0.04, z: 0.55, gap: 0.18, scale: 0.96 } },
+  { id: "bloom", name: "Bloom", aka: "cloud", solid: true, shader: 4, radius: 1.02, face: { x: 0, y: 0.02, z: 0.5, gap: 0.18, scale: 0.82 } },
+  { id: "gumdrop", name: "Gumdrop", aka: "soft cone", solid: true, shader: 5, radius: 1.05, face: { x: 0, y: -0.12, z: 0.55, gap: 0.16, scale: 0.8 } },
+  ];
+
+  const selection = { shape: "orb", color: "#D7B56F", eyes: "dot", state: "idle", think: "t1", work: "w1", press: "c2" };
+  let intensity = 0.7;
+  let simTime = 0;
+  let frozen = null;
+  const actors = [];
+  let feedback = loadStore();
+  let reducedMotion = false;
+  let pageHidden = false;
+  let frameCount = 0;
+  let frameMs = 0;
+  let workMs = 0;
+
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smoothstep = (t) => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
+  const backOut = (t) => {
+    t = clamp(t, 0, 1);
+    const c = 1.35;
+    return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2;
+  };
+  function mix(rgb, target, amount) {
+    return rgb.map((c, i) => Math.round(c + ((typeof target === "number" ? target : target[i]) - c) * amount));
+  }
+  function css(rgb, a) {
+    return a == null ? `rgb(${rgb[0]},${rgb[1]},${rgb[2]})` : `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`;
+  }
+  function hash(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+    return (h >>> 0) / 4294967295;
+  }
+  function parseHex(color) {
+    const match = /^#?([0-9a-f]{6})$/i.exec(String(color).trim());
+    const value = match ? parseInt(match[1], 16) : 0xd7b56f;
+    return [(value >> 16) & 255, (value >> 8) & 255, value & 255];
+  }
+  function luminance(rgb) {
+    const l = rgb.map((part) => {
+      const c = part / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2];
+  }
+  function tonesOf(hex) {
+    const base = parseHex(hex);
+    return {
+      base,
+      light: mix(base, 255, 0.52),
+      shade: mix(base, 0, 0.2),
+      deep: mix(base, 0, 0.45),
+      hot: mix(mix(base, 255, 0.52), 255, 0.55),
+      eyes: luminance(base) > 0.179 ? [20, 17, 12] : [251, 248, 241],
+    };
+  }
+  const shapeOf = (id) => SHAPES.find((s) => s.id === id);
+  const colorOf = (hex) => COLORS.find((c) => c.hex.toUpperCase() === String(hex).toUpperCase()) || COLORS[0];
+  const eyeOf = (id) => EYES.find((e) => e.id === id);
+  const stateOf = (id) => STATES.find((s) => s.id === id);
+
+  function rotX(p, a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x, y: p.y * c - p.z * s, z: p.y * s + p.z * c };
+  }
+  function rotY(p, a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x * c + p.z * s, y: p.y, z: -p.x * s + p.z * c };
+  }
+  function rotZ(p, a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x * c - p.y * s, y: p.x * s + p.y * c, z: p.z };
+  }
+  function xform(p, pose) {
+    let q = { x: p.x * pose.sx, y: p.y * pose.sy, z: p.z * pose.sz };
+    q = rotZ(q, pose.roll);
+    q = rotX(q, pose.pitch);
+    q = rotY(q, pose.yaw);
+    q.y += pose.lift;
+    return q;
+  }
+  function project(p, w, h, focus, zoom) {
+    const roY = CAM.y + (focus || 0);
+    const dz = CAM.z * (zoom || 1) - p.z;
+    const uvx = p.x / dz / CAM.spread;
+    const uvy = (p.y - roY) / dz / CAM.spread;
+    return { x: w * 0.5 + uvx * h, y: h * 0.5 - uvy * h, unit: h / dz / CAM.spread };
+  }
+
+  function showError(err) {
+    const box = document.getElementById("error");
+    box.style.display = "block";
+    box.textContent = String(err && err.stack || err);
+    console.error(err);
+  }
+
+  function traceSolid(ctx, shape, r) {
+    ctx.beginPath();
+    if (shape.shader === 0) {
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+    } else if (shape.shader === 1) {
+      const s = r * 1.62;
+      roundRect(ctx, -s / 2, -s / 2, s, s, r * 0.46);
+    } else if (shape.shader === 2) {
+      ctx.ellipse(0, r * 0.06, r * 0.78, r * 1.18, 0, 0, Math.PI * 2);
+    } else if (shape.shader === 3) {
+      ctx.ellipse(-r * 0.04, r * 0.06, r * 1.08, r * 0.78, -0.08, 0, Math.PI * 2);
+    } else if (shape.shader === 4) {
+      ctx.moveTo(-1.12 * r, 0.00 * r);
+      ctx.bezierCurveTo(-1.12 * r, 0.06 * r, -1.10 * r, 0.12 * r, -1.08 * r, 0.18 * r);
+      ctx.bezierCurveTo(-1.06 * r, 0.24 * r, -1.02 * r, 0.29 * r, -0.99 * r, 0.34 * r);
+      ctx.bezierCurveTo(-0.95 * r, 0.40 * r, -0.92 * r, 0.45 * r, -0.88 * r, 0.50 * r);
+      ctx.bezierCurveTo(-0.84 * r, 0.55 * r, -0.80 * r, 0.60 * r, -0.75 * r, 0.63 * r);
+      ctx.bezierCurveTo(-0.70 * r, 0.67 * r, -0.64 * r, 0.69 * r, -0.58 * r, 0.70 * r);
+      ctx.bezierCurveTo(-0.52 * r, 0.71 * r, -0.45 * r, 0.68 * r, -0.39 * r, 0.69 * r);
+      ctx.bezierCurveTo(-0.33 * r, 0.70 * r, -0.27 * r, 0.73 * r, -0.21 * r, 0.76 * r);
+      ctx.bezierCurveTo(-0.16 * r, 0.78 * r, -0.10 * r, 0.82 * r, -0.05 * r, 0.83 * r);
+      ctx.bezierCurveTo(0.01 * r, 0.84 * r, 0.08 * r, 0.84 * r, 0.14 * r, 0.82 * r);
+      ctx.bezierCurveTo(0.20 * r, 0.80 * r, 0.24 * r, 0.75 * r, 0.30 * r, 0.72 * r);
+      ctx.bezierCurveTo(0.36 * r, 0.70 * r, 0.42 * r, 0.68 * r, 0.48 * r, 0.67 * r);
+      ctx.bezierCurveTo(0.54 * r, 0.66 * r, 0.60 * r, 0.67 * r, 0.66 * r, 0.65 * r);
+      ctx.bezierCurveTo(0.72 * r, 0.63 * r, 0.77 * r, 0.59 * r, 0.82 * r, 0.55 * r);
+      ctx.bezierCurveTo(0.87 * r, 0.51 * r, 0.90 * r, 0.46 * r, 0.94 * r, 0.41 * r);
+      ctx.bezierCurveTo(0.98 * r, 0.36 * r, 1.02 * r, 0.31 * r, 1.05 * r, 0.25 * r);
+      ctx.bezierCurveTo(1.08 * r, 0.20 * r, 1.11 * r, 0.14 * r, 1.12 * r, 0.08 * r);
+      ctx.bezierCurveTo(1.12 * r, 0.02 * r, 1.11 * r, -0.05 * r, 1.10 * r, -0.11 * r);
+      ctx.bezierCurveTo(1.08 * r, -0.16 * r, 1.04 * r, -0.22 * r, 1.00 * r, -0.26 * r);
+      ctx.bezierCurveTo(0.96 * r, -0.31 * r, 0.90 * r, -0.34 * r, 0.85 * r, -0.38 * r);
+      ctx.bezierCurveTo(0.80 * r, -0.42 * r, 0.75 * r, -0.45 * r, 0.70 * r, -0.49 * r);
+      ctx.bezierCurveTo(0.66 * r, -0.53 * r, 0.61 * r, -0.58 * r, 0.56 * r, -0.62 * r);
+      ctx.bezierCurveTo(0.51 * r, -0.65 * r, 0.45 * r, -0.68 * r, 0.39 * r, -0.69 * r);
+      ctx.bezierCurveTo(0.33 * r, -0.70 * r, 0.27 * r, -0.69 * r, 0.21 * r, -0.69 * r);
+      ctx.bezierCurveTo(0.14 * r, -0.68 * r, 0.08 * r, -0.67 * r, 0.02 * r, -0.67 * r);
+      ctx.bezierCurveTo(-0.04 * r, -0.68 * r, -0.10 * r, -0.71 * r, -0.16 * r, -0.72 * r);
+      ctx.bezierCurveTo(-0.22 * r, -0.73 * r, -0.29 * r, -0.74 * r, -0.35 * r, -0.74 * r);
+      ctx.bezierCurveTo(-0.41 * r, -0.73 * r, -0.47 * r, -0.71 * r, -0.52 * r, -0.68 * r);
+      ctx.bezierCurveTo(-0.58 * r, -0.65 * r, -0.62 * r, -0.60 * r, -0.67 * r, -0.56 * r);
+      ctx.bezierCurveTo(-0.72 * r, -0.52 * r, -0.76 * r, -0.48 * r, -0.81 * r, -0.44 * r);
+      ctx.bezierCurveTo(-0.86 * r, -0.40 * r, -0.92 * r, -0.37 * r, -0.96 * r, -0.33 * r);
+      ctx.bezierCurveTo(-1.01 * r, -0.28 * r, -1.05 * r, -0.24 * r, -1.08 * r, -0.18 * r);
+      ctx.bezierCurveTo(-1.10 * r, -0.13 * r, -1.12 * r, -0.06 * r, -1.12 * r, 0.00 * r);
+      ctx.closePath();
+    } else {
+      ctx.moveTo(0, -r * 0.92);
+      ctx.bezierCurveTo(r * 0.42, -r * 0.92, r * 0.98, -r * 0.05, r * 0.98, r * 0.48);
+      ctx.quadraticCurveTo(r * 0.98, r * 0.98, 0, r * 0.98);
+      ctx.quadraticCurveTo(-r * 0.98, r * 0.98, -r * 0.98, r * 0.48);
+      ctx.bezierCurveTo(-r * 0.98, -r * 0.05, -r * 0.42, -r * 0.92, 0, -r * 0.92);
+      ctx.closePath();
+    }
+  }
+
+  function drawSolid(ctx, cx, cy, bodyPx, pose, shape, tones) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(pose.roll || 0);
+    ctx.scale(pose.sx, pose.sy);
+    traceSolid(ctx, shape, bodyPx);
+    ctx.clip();
+    const hx = bodyPx * (-0.32 - pose.yaw * 1.1);
+    const hy = bodyPx * (-0.4 - (pose.pitch - 0.16) * 0.45);
+    const g = ctx.createRadialGradient(hx, hy, bodyPx * 0.05, bodyPx * 0.08, bodyPx * 0.12, bodyPx * 1.25);
+    g.addColorStop(0, css(tones.light));
+    g.addColorStop(0.34, css(tones.base));
+    g.addColorStop(0.78, css(mix(tones.base, tones.shade, 0.55)));
+    g.addColorStop(1, css(tones.shade));
+    ctx.fillStyle = g;
+    ctx.fillRect(-bodyPx * 2, -bodyPx * 2, bodyPx * 4, bodyPx * 4);
+    const belly = ctx.createLinearGradient(0, -bodyPx * 0.2, 0, bodyPx * 1.15);
+    belly.addColorStop(0, "rgba(0,0,0,0)");
+    belly.addColorStop(1, "rgba(0,0,0,0.22)");
+    ctx.fillStyle = belly;
+    ctx.fillRect(-bodyPx * 2, -bodyPx * 2, bodyPx * 4, bodyPx * 4);
+    const spec = ctx.createRadialGradient(hx, hy, 0, hx, hy, bodyPx * 0.48);
+    spec.addColorStop(0, "rgba(255,255,255,0.62)");
+    spec.addColorStop(0.45, "rgba(255,255,255,0.16)");
+    spec.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = spec;
+    ctx.fillRect(-bodyPx * 2, -bodyPx * 2, bodyPx * 4, bodyPx * 4);
+    if (shape.shader === 2) {
+      ctx.strokeStyle = css(tones.shade, 0.4);
+      ctx.lineWidth = Math.max(1, bodyPx * 0.045);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(0, -bodyPx * 0.95);
+      ctx.quadraticCurveTo(bodyPx * 0.04, -bodyPx * 0.55, 0, -bodyPx * 0.28);
+      ctx.stroke();
+    }
+    if (pose.glow > 0.02) {
+      const glow = ctx.createRadialGradient(0, bodyPx * 0.55, 2, 0, bodyPx * 0.45, bodyPx);
+      glow.addColorStop(0, `rgba(255,255,255,${0.45 * pose.glow})`);
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(-bodyPx * 2, -bodyPx * 2, bodyPx * 4, bodyPx * 4);
+    }
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    const rad = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rad, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rad);
+    ctx.arcTo(x + w, y + h, x, y + h, rad);
+    ctx.arcTo(x, y + h, x, y, rad);
+    ctx.arcTo(x, y, x + w, y, rad);
+    ctx.closePath();
+  }
+  function paintSphere(ctx, x, y, r, rgb) {
+    if (r < 0.7) return;
+    const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.38, r * 0.08, x, y, r);
+    g.addColorStop(0, css(mix(rgb, [255, 255, 255], 0.72)));
+    g.addColorStop(0.42, css(rgb));
+    g.addColorStop(1, css(mix(rgb, [0, 0, 0], 0.38)));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  function drawEyes(ctx, x, y, gap, r, style, shiftX, shiftY, rgb, alpha) {
+    if (alpha < 0.02 || r < 0.4) return;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const lx = x - gap + shiftX, rx = x + gap + shiftX, ey = y + shiftY;
+    if (style === "happy") {
+      ctx.strokeStyle = css(rgb);
+      ctx.lineWidth = Math.max(1.25, r * 0.5);
+      ctx.lineCap = "round";
+      for (const px of [lx, rx]) {
+        ctx.beginPath();
+        ctx.moveTo(px - r * 0.95, ey + r * 0.15);
+        ctx.quadraticCurveTo(px, ey - r * 0.95, px + r * 0.95, ey + r * 0.15);
+        ctx.stroke();
+      }
+    } else if (style === "sleepy") {
+      const w = r * 2.35, h = Math.max(1.4, r * 0.62);
+      ctx.fillStyle = css(rgb);
+      for (const px of [lx, rx]) {
+        roundRect(ctx, px - w / 2, ey - h / 2, w, h, h / 2);
+        ctx.fill();
+      }
+    } else {
+      for (const px of [lx, rx]) {
+        ctx.fillStyle = css(rgb);
+        ctx.beginPath();
+        ctx.arc(px, ey, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,.92)";
+        ctx.beginPath();
+        ctx.arc(px - r * 0.32, ey - r * 0.34, Math.max(0.6, r * 0.22), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+  function drawFrown(ctx, x, y, w, rgb) {
+    ctx.save();
+    ctx.strokeStyle = css(rgb);
+    ctx.lineWidth = Math.max(1.2, w * 0.14);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x - w, y + w * 0.35);
+    ctx.quadraticCurveTo(x, y - w * 0.45, x + w, y + w * 0.35);
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawHand(ctx, x, y, s, angle, rgb) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    ctx.fillStyle = css(rgb);
+    ctx.beginPath();
+    ctx.arc(0, s * 0.05, s * 0.62, 0, Math.PI * 2);
+    ctx.arc(-s * 0.58, -s * 0.28, s * 0.34, 0, Math.PI * 2);
+    ctx.fill();
+    roundRect(ctx, -s * 0.2, s * 0.28, s * 0.4, s * 0.55, s * 0.16);
+    ctx.fill();
+    ctx.restore();
+  }
+  function drawLaptop(ctx, cx, baseY, bodyPx, open, present, peek, tones) {
+    if (present < 0.02) return;
+    const small = bodyPx < 34;
+    const w = bodyPx * (peek ? 0.78 : 1.05);
+    const lidH = Math.max(small ? 5 : 8, bodyPx * (peek ? 0.42 : 0.46) * Math.max(open, 0.08));
+    const baseH = Math.max(small ? 2.5 : 4, bodyPx * 0.11);
+    ctx.save();
+    ctx.translate(cx, baseY);
+    ctx.scale(present, present);
+    ctx.fillStyle = css(tones.shade);
+    roundRect(ctx, -w * 0.62, -baseH * 0.2, w * 1.24, baseH, baseH * 0.45);
+    ctx.fill();
+    const top = -baseH * 0.2 - lidH;
+    const bezel = small ? 1.25 : Math.max(3, bodyPx * 0.06);
+    ctx.fillStyle = css(tones.deep);
+    roundRect(ctx, -w / 2, top, w, lidH, small ? 2 : 5);
+    ctx.fill();
+    if (lidH > bezel * 2.2) {
+      const pulse = 0.75 + 0.25 * Math.sin(simTime * 3.2);
+      ctx.fillStyle = css(mix(tones.hot, [255, 255, 255], 0.35), 0.55 + pulse * 0.4);
+      roundRect(ctx, -w / 2 + bezel, top + bezel, w - bezel * 2, lidH - bezel * 1.6, small ? 1.5 : 3);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  function drawFlat(ctx, shape, cx, cy, bodyPx, pose, tones) {
+    const path = new Path2D(FLAT[shape.id]);
+    const s = (bodyPx * 2.05) / 92;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(pose.roll);
+    ctx.scale(s * pose.sx, s * pose.sy);
+    ctx.translate(-50, -50);
+    const g = ctx.createRadialGradient(32, 26, 6, 50, 52, 62);
+    g.addColorStop(0, css(tones.light));
+    g.addColorStop(0.42, css(tones.base));
+    g.addColorStop(1, css(tones.shade));
+    ctx.lineJoin = "round";
+    ctx.lineWidth = shape.id === "spark" ? 7 : 12;
+    ctx.strokeStyle = css(tones.deep);
+    ctx.stroke(path);
+    ctx.fillStyle = g;
+    ctx.fill(path);
+    if (pose.glow > 0.02) {
+      ctx.clip(path);
+      const glow = ctx.createRadialGradient(50, 70, 4, 50, 62, 48);
+      glow.addColorStop(0, `rgba(255,255,255,${0.4 * pose.glow})`);
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, 100, 100);
+    }
+    ctx.restore();
+  }
+
+  function orbPoint(mode, index, time, radius) {
+    const base = index * 2.0944;
+    if (mode === "t3") {
+      const swing = Math.sin(time * 1.15) * 0.95;
+      const a = swing + (index - 1) * 0.42;
+      return { x: Math.sin(a) * radius * 0.95, y: 0.55 + Math.cos(a) * 0.28, z: 0.35 + Math.cos(a) * 0.15 };
+    }
+    if (mode === "t4") {
+      const a = time * 1.15 + base;
+      return { x: radius * 0.95, y: Math.sin(a) * radius * 0.72, z: Math.cos(a) * 0.48 };
+    }
+    const speed = mode === "t2" ? 0.55 : 1.05;
+    const rad = mode === "t2" ? radius + 0.34 : radius;
+    const a = time * speed + base;
+    const x = Math.cos(a) * rad * (mode === "t2" ? 1 : 0.9);
+    const z = Math.sin(a) * (mode === "t5" ? 0.38 : 0.55);
+    const y = (mode === "t5" ? 0.22 : 0.34) + (mode === "t5" ? Math.sin(a) * 0.42 : Math.max(0, -Math.sin(a)) * 0.48);
+    return { x, y, z };
+  }
+
+  function workPose(id, time) {
+    const out = { present: 0, open: 0, lift: 0, pitch: 0, glow: 0, bob: 0, squash: 0, peek: id === "w3" };
+    if (id === "w4") {
+      const t = time % 5.2;
+      const inn = t < 0.35 ? smoothstep(t / 0.35) : 1;
+      const lap = t < 0.2 ? 0 : t < 0.55 ? backOut((t - 0.2) / 0.35) : t < 4.35 ? 1 : t < 4.7 ? 1 - smoothstep((t - 4.35) / 0.35) : 0;
+      const back = t < 4.5 ? 1 : t < 4.95 ? 1 - smoothstep((t - 4.5) / 0.45) : 0;
+      const k = inn * back;
+      out.present = clamp(lap, 0, 1) * (back > 0 ? 1 : 0);
+      out.open = out.present;
+      out.lift = k * 0.04;
+      out.pitch = k * 0.24;
+      out.squash = k;
+      out.glow = (t > 0.45 && t < 4.4) ? 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(time * 3.4)) : out.present * 0.4;
+      out.bob = (t > 0.6 && t < 4.3) ? Math.sin(time * 6.2) * 0.012 : 0;
+      return out;
+    }
+    const dur = id === "w2" ? 4.2 : 3.8;
+    const u = (time % dur) / dur;
+    let k;
+    if (u < 0.16) k = id === "w1" ? backOut(u / 0.16) : smoothstep(u / 0.16);
+    else if (u < 0.78) k = 1;
+    else k = 1 - smoothstep((u - 0.78) / 0.22);
+    k = clamp(k, 0, 1);
+    if (id === "w2") {
+      out.present = k;
+      out.open = clamp(k * 1.15, 0, 1);
+      out.lift = k * 0.03;
+      out.pitch = k * 0.18;
+    } else if (id === "w3") {
+      out.present = k;
+      out.open = clamp(0.35 + k * 0.65, 0, 1);
+      out.lift = k * 0.02;
+      out.pitch = k * 0.3;
+      out.glow = k;
+    } else {
+      out.present = clamp(k * 1.05, 0, 1);
+      out.open = k;
+      out.lift = k * 0.04;
+      out.pitch = k * 0.24;
+    }
+    out.squash = k;
+    if (!out.glow) out.glow = (u > 0.16 && u < 0.78) ? 0.5 + 0.5 * (0.5 + 0.5 * Math.sin(time * 3.2)) : k * 0.35;
+    out.bob = (u > 0.2 && u < 0.78) ? Math.sin(time * 6) * 0.01 : 0;
+    return out;
+  }
+
+  function pressAmount(actor) {
+    if (actor.loopPress) {
+      const u = (simTime + actor.phase) % 2.5;
+      return u < 0.85 ? u / 0.85 : -1;
+    }
+    if (actor.pressUntil > simTime) return clamp((simTime - actor.pressStart) / 0.78, 0, 1);
+    return -1;
+  }
+
+  function computePose(actor, look) {
+    const shape = shapeOf(look.shape);
+    const amp = 0.22 + intensity * 0.78;
+    const person = shape.id === "pebble" ? 0.7 : shape.id === "spark" ? 1.15 : 1;
+    const breathe = Math.sin(simTime * 1.5 * person + actor.phase) * 0.028 * amp;
+    const pose = {
+      yaw: 0, pitch: shape.solid ? 0.16 : 0, roll: 0,
+      sx: 1 - breathe * 0.45, sy: 1 + breathe, sz: 1 - breathe * 0.35,
+      lift: (shape.solid ? breathe * 0.4 : 0),
+      focus: 0,
+      zoom: 1,
+      eye: look.eyes,
+      shiftX: 0, shiftY: 0,
+      glow: 0, frown: 0, hand: 0, wave: 0, zs: 0,
+      orbs: [],
+      laptop: null,
+    };
+    if (actor.lookX) {
+      pose.yaw += clamp(actor.lookX.x, -1, 1) * 0.18 * amp;
+      pose.pitch += clamp(actor.lookY.x, -1, 1) * 0.12 * amp;
+      pose.shiftX += actor.lookX.x * 0.35;
+      pose.shiftY += actor.lookY.x * 0.28;
+    }
+    if (!shape.solid) pose.pitch = 0;
+    const glance = ((simTime + actor.phase) % 6.4);
+    if (look.state === "idle" && glance < 0.9) {
+      const dir = Math.sin(actor.phase * 4) >= 0 ? 1 : -1;
+      const g = Math.sin((glance / 0.9) * Math.PI) * amp;
+      pose.yaw += dir * 0.16 * g * (shape.solid ? 1 : 0);
+      pose.roll += dir * 0.05 * g;
+      pose.shiftX += dir * 0.45 * g;
+    }
+    const blinkAt = (simTime + actor.phase * 1.7) % (look.state === "sleeping" ? 9 : 4.2);
+    if (blinkAt > 3.85 && look.state === "idle" && look.eyes === "dot") pose.eye = "sleepy";
+
+    if (look.state === "thinking") {
+      const radius = shape.radius ? shape.radius + 0.42 : 1.15;
+      for (let i = 0; i < 3; i++) pose.orbs.push(orbPoint(look.think, i, simTime + actor.phase, radius));
+      pose.zoom = 1.16;
+      if (look.think === "t6") {
+        const a = simTime * 0.85 + actor.phase;
+        pose.shiftX += Math.sin(a) * 0.7;
+        pose.shiftY += Math.cos(a) * 0.28;
+      }
+      pose.pitch += shape.solid ? -0.06 : 0;
+      pose.shiftY -= 0.2;
+    } else if (look.state === "working") {
+      const work = workPose(look.work, simTime + actor.phase * 0.2);
+      pose.lift += work.lift + work.bob;
+      if (shape.solid) pose.pitch += work.pitch;
+      pose.sy *= 1 - 0.08 * work.squash;
+      pose.sx *= 1 + 0.05 * work.squash;
+      pose.sz *= 1 + 0.04 * work.squash;
+      pose.shiftY += 0.22 * work.squash;
+      pose.glow = work.glow * (look.work === "w3" ? 1 : 0.7);
+      pose.focus = -0.02 * work.present;
+      pose.zoom = 1 + work.present * 0.46;
+      pose.laptop = work;
+    } else if (look.state === "error") {
+      pose.eye = "dot";
+      pose.shiftY -= 0.35;
+      pose.shiftX *= 0.4;
+      pose.frown = 1;
+      pose.hand = 1;
+      pose.wave = Math.sin(simTime * 2.6 + actor.phase) * 0.35;
+      pose.yaw += Math.sin(simTime * 1.4) * 0.04 * amp;
+    } else if (look.state === "sleeping") {
+      pose.eye = "sleepy";
+      pose.yaw *= 0.15;
+      pose.shiftX *= 0.2;
+      pose.shiftY *= 0.2;
+      pose.roll += shape.solid ? -0.08 : -0.05;
+      pose.zs = 1;
+      pose.sy += Math.sin(simTime * 0.8 + actor.phase) * 0.02 * amp;
+    }
+
+    const press = pressAmount(actor);
+    const which = actor.lockPress || selection.press;
+    if (press >= 0 && look.state !== "sleeping") {
+      const env = Math.sin(clamp(press, 0, 1) * Math.PI);
+      if (which === "c1") {
+        pose.sy *= 1 - 0.14 * env;
+        pose.sx *= 1 + 0.1 * env;
+        pose.sz *= 1 + 0.08 * env;
+        pose.lift += env * 0.05;
+      } else {
+        const nod = press < 0.42 ? -Math.sin(press / 0.42 * Math.PI) : Math.sin((press - 0.42) / 0.58 * Math.PI);
+        if (shape.solid) pose.pitch += nod * 0.22;
+        else pose.roll += nod * 0.08;
+        pose.lift += Math.sin(press * Math.PI) * 0.07;
+      }
+      if (look.state !== "error") pose.eye = "happy";
+    }
+    pose.yaw = clamp(pose.yaw, -0.24, 0.24);
+    if (shape.solid) pose.pitch = clamp(pose.pitch, -0.12, 0.48);
+    pose.roll = clamp(pose.roll, -0.16, 0.16);
+    return pose;
+  }
+
+  function drawActor(actor) {
+    const canvas = actor.canvas;
+    if (canvas.closest("[hidden]")) return;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (w < 2 || h < 2) return;
+    const dpr = actor.role === "hero" ? Math.min(1.5, window.devicePixelRatio || 1) : 1;
+    const bw = Math.max(1, Math.round(w * dpr));
+    const bh = Math.max(1, Math.round(h * dpr));
+    if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+    const look = {
+      shape: actor.lockShape || selection.shape,
+      color: actor.lockColor || selection.color,
+      eyes: actor.lockEyes || selection.eyes,
+      state: actor.lockState || selection.state,
+      think: actor.lockThink || selection.think,
+      work: actor.lockWork || selection.work,
+    };
+    const shape = shapeOf(look.shape);
+    const tones = tonesOf(look.color);
+    const pose = computePose(actor, look);
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const focus = pose.focus || 0;
+    const zoom = pose.zoom || 1;
+    const center = project(xform({ x: 0, y: 0, z: 0 }, pose), w, h, focus, zoom);
+    const unit = h / (CAM.z * zoom) / CAM.spread;
+    const bodyPx = (shape.radius || 0.78) * unit;
+
+    if (actor.role === "hero") {
+      ctx.fillStyle = "rgba(255,255,255,.035)";
+      ctx.beginPath();
+      ctx.ellipse(w / 2, h * 0.78, bodyPx * 1.35, bodyPx * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const ground = project({ x: 0, y: -bodyPx / unit, z: 0 }, w, h, 0, zoom);
+    const liftPx = pose.lift * unit;
+    ctx.save();
+    ctx.translate(w / 2, ground.y + bodyPx * 0.08);
+    ctx.scale(bodyPx * (0.92 + Math.abs(pose.yaw) * 0.2) * pose.sx, bodyPx * 0.24);
+    const sg = ctx.createRadialGradient(0, 0, 0.2, 0, 0, 1);
+    const sh = clamp(0.38 - pose.lift * 0.45, 0.12, 0.42);
+    sg.addColorStop(0, `rgba(0,0,0,${sh})`);
+    sg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = sg;
+    ctx.beginPath();
+    ctx.arc(0, 0, 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    void liftPx;
+
+    const placed = pose.orbs.map((o) => ({ o, p: project(o, w, h, focus, zoom), r: Math.max(1.6, 0.1 * unit) }));
+
+    ctx.save();
+    ctx.translate(actor.ox || 0, actor.oy || 0);
+    for (const item of placed) if (item.o.z < 0.02) paintSphere(ctx, item.p.x, item.p.y, Math.max(3, bodyPx * 0.2), tones.light);
+    if (shape.solid) drawSolid(ctx, center.x, center.y, bodyPx, pose, shape, tones);
+    else drawFlat(ctx, shape, center.x, center.y, bodyPx, pose, tones);
+
+    for (const item of placed) if (item.o.z >= 0.02) paintSphere(ctx, item.p.x, item.p.y, Math.max(3, bodyPx * 0.2), tones.light);
+
+    let eyeX, eyeY, gap, eyeR;
+    if (shape.solid) {
+      const anchor = xform({ x: shape.face.x, y: shape.face.y, z: shape.face.z }, pose);
+      const at = project(anchor, w, h, focus, zoom);
+      eyeX = at.x; eyeY = at.y;
+      gap = shape.face.gap * unit;
+      eyeR = Math.min(w, h) * 0.052 * shape.face.scale;
+    } else {
+      const s = (bodyPx * 2.05) / 92;
+      const c = Math.cos(pose.roll), sn = Math.sin(pose.roll);
+      const lx = (shape.face.x - 50) * s * pose.sx;
+      const ly = (shape.face.y - 50) * s * pose.sy;
+      eyeX = center.x + c * lx - sn * ly;
+      eyeY = center.y + sn * lx + c * ly;
+      gap = shape.face.gap * s;
+      eyeR = 5.5 * shape.face.scale * s;
+    }
+    if (pose.laptop) {
+      const lap = pose.laptop;
+      const baseY = center.y + bodyPx * (lap.peek ? 1.05 : 1.22);
+      drawLaptop(ctx, center.x, baseY, bodyPx, lap.open, lap.present, lap.peek, tones);
+    }
+    if (pose.hand > 0) {
+      const hx = eyeX + gap + eyeR * 3.4;
+      const hy = eyeY - eyeR * 3.1;
+      drawHand(ctx, hx, hy, Math.max(5.5, eyeR * 1.7), -0.6 + pose.wave, tones.base);
+    }
+    drawEyes(ctx, eyeX, eyeY, gap, eyeR, pose.eye, pose.shiftX * eyeR, pose.shiftY * eyeR, tones.eyes, 1);
+    if (pose.frown) drawFrown(ctx, eyeX, eyeY + eyeR * 2.15, eyeR * 1.15, tones.eyes);
+    if (pose.zs) {
+      ctx.fillStyle = css(tones.light);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i < 2; i++) {
+        const u = (simTime * 0.22 + actor.phase + i * 0.5) % 1;
+        ctx.globalAlpha = Math.sin(u * Math.PI) * 0.9;
+        ctx.font = `700 ${Math.max(8, bodyPx * 0.28)}px ui-sans-serif, system-ui`;
+        ctx.fillText("z", eyeX + gap + eyeR * 2.1, eyeY - eyeR * (0.4 + u * 3.2));
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  function loadStore() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(STORE) || "{}");
+      return raw && raw.items ? raw : { items: {} };
+    } catch { return { items: {} }; }
+  }
+  function saveStore() {
+    try { localStorage.setItem(STORE, JSON.stringify(feedback)); } catch { /* private mode */ }
+  }
+  function variantKey(sel) {
+    const parts = [sel.shape, sel.color.toUpperCase(), sel.eyes, sel.state];
+    if (sel.state === "thinking") parts.push(sel.think);
+    if (sel.state === "working") parts.push(sel.work);
+    parts.push(sel.press);
+    return parts.join("|");
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function describeIdea(sel) {
+    if (sel.state === "thinking") return THINKS.find((t) => t.id === sel.think).blurb;
+    if (sel.state === "working") return WORKS.find((t) => t.id === sel.work).blurb;
+    if (sel.state === "idle") return PRESSES.find((t) => t.id === sel.press).blurb + " Click the node to play it.";
+    return stateOf(sel.state).blurb;
+  }
+  function syncUI() {
+    const shape = shapeOf(selection.shape);
+    const color = colorOf(selection.color);
+    const eyes = eyeOf(selection.eyes);
+    const state = stateOf(selection.state);
+    const extra = selection.state === "thinking" ? " · " + THINKS.find((t) => t.id === selection.think).name : selection.state === "working" ? " · " + WORKS.find((t) => t.id === selection.work).name : "";
+    document.getElementById("variant-name").textContent = `${shape.name} · ${color.name} · ${eyes.name} · ${state.name}${extra}`;
+    document.getElementById("variant-id").textContent = variantKey(selection);
+    document.getElementById("idea").textContent = describeIdea(selection);
+    document.getElementById("state-pill").textContent = state.name;
+    document.getElementById("grid-caption").textContent = "· " + state.name + (extra ? " " + extra.replace(" · ", "· ") : "");
+    document.getElementById("color-caption").textContent = "· " + shape.name;
+    document.getElementById("think-strip").hidden = selection.state !== "thinking";
+    document.getElementById("work-strip").hidden = selection.state !== "working";
+    document.querySelectorAll("[data-pick]").forEach((btn) => {
+      const kind = btn.dataset.pick;
+      const value = btn.dataset.value;
+      const on = kind === "color" ? selection.color.toUpperCase() === value.toUpperCase() : selection[kind] === value;
+      btn.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    const item = feedback.items[variantKey(selection)];
+    document.getElementById("thumb-up").setAttribute("aria-pressed", item && item.vote === "up" ? "true" : "false");
+    document.getElementById("thumb-down").setAttribute("aria-pressed", item && item.vote === "down" ? "true" : "false");
+    const note = document.getElementById("note");
+    if (document.activeElement !== note) note.value = item && item.note || "";
+    document.getElementById("hero").setAttribute("aria-label", document.getElementById("variant-name").textContent);
+    for (const actor of actors) actor.dirty = true;
+    renderSaved();
+  }
+  function renderSaved() {
+    const list = document.getElementById("saved");
+    const empty = document.getElementById("empty-note");
+    const rows = Object.values(feedback.items).filter((item) => item.vote || item.note);
+    rows.sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    empty.hidden = rows.length > 0;
+    list.replaceChildren();
+    rows.slice(0, 40).forEach((item) => {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const mark = item.vote === "up" ? "↑" : item.vote === "down" ? "↓" : "·";
+      btn.innerHTML = `<strong class="${item.vote || ""}">${mark} ${escapeHtml(item.label || item.key)}</strong><br>${item.note ? escapeHtml(item.note) : ""}`;
+      btn.addEventListener("click", () => {
+        selection.shape = item.shape;
+        selection.color = item.color;
+        selection.eyes = item.eyes;
+        selection.state = item.state;
+        if (item.think) selection.think = item.think;
+        if (item.work) selection.work = item.work;
+        if (item.press) selection.press = item.press;
+        syncUI();
+      });
+      li.append(btn);
+      list.append(li);
+    });
+  }
+  function ensureItem() {
+    const key = variantKey(selection);
+    if (!feedback.items[key]) {
+      feedback.items[key] = {
+        key,
+        label: document.getElementById("variant-name").textContent,
+        shape: selection.shape,
+        color: selection.color,
+        eyes: selection.eyes,
+        state: selection.state,
+        think: selection.think,
+        work: selection.work,
+        press: selection.press,
+        vote: null,
+        note: "",
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return feedback.items[key];
+  }
+
+  function makeActor(canvas, role, locks) {
+    return {
+      canvas, role, ...locks,
+      phase: hash(role + (locks.lockShape || "") + (locks.lockThink || "") + (locks.lockWork || "") + (locks.lockPress || "")) * 6,
+      ox: 0, oy: 0, vx: 0, vy: 0,
+      lookX: { x: 0, v: 0 }, lookY: { x: 0, v: 0 },
+      pressStart: -10, pressUntil: -10,
+      loopPress: role === "press",
+      lockThink: locks.lockThink, lockWork: locks.lockWork,
+      visible: true, hot: false, dirty: true,
+    };
+  }
+  function currentLook(actor) {
+    return {
+      shape: actor.lockShape || selection.shape,
+      color: actor.lockColor || selection.color,
+      eyes: actor.lockEyes || selection.eyes,
+      state: actor.lockState || selection.state,
+      think: actor.lockThink || selection.think,
+      work: actor.lockWork || selection.work,
+    };
+  }
+
+  function addMini(parent, label, aka, suggest, locks, role) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "mini";
+    const canvas = document.createElement("canvas");
+    canvas.style.width = role === "press" ? "120px" : "104px";
+    canvas.style.height = role === "press" ? "108px" : "92px";
+    const name = document.createElement("b");
+    name.textContent = label;
+    const sub = document.createElement("small");
+    sub.textContent = aka;
+    btn.append(canvas, name, sub);
+    if (suggest) {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = "Suggested";
+      btn.append(tag);
+    }
+    parent.append(btn);
+    const actor = makeActor(canvas, role, locks);
+    if (locks.pick) {
+      btn.dataset.pick = locks.pick;
+      btn.dataset.value = locks.value;
+      btn.addEventListener("click", () => {
+        selection[locks.pick] = locks.value;
+        syncUI();
+      });
+    }
+    actors.push(actor);
+    return actor;
+  }
+
+  function build() {
+    const shapes = document.getElementById("shape-picker");
+    SHAPES.forEach((shape) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "shape-btn";
+      btn.dataset.pick = "shape";
+      btn.dataset.value = shape.id;
+      const canvas = document.createElement("canvas");
+      const name = document.createElement("span");
+      name.textContent = shape.name;
+      btn.append(canvas, name);
+      if (!shape.solid) {
+        const tag = document.createElement("span");
+        tag.className = "flat";
+        tag.textContent = "Flat";
+        btn.append(tag);
+      }
+      btn.title = `${shape.name} · ${shape.aka}`;
+      btn.addEventListener("click", () => { selection.shape = shape.id; syncUI(); });
+      shapes.append(btn);
+      const pickerActor = makeActor(canvas, "picker", { lockShape: shape.id, lockState: "idle" });
+      btn.addEventListener("pointerenter", () => { pickerActor.hot = true; });
+      btn.addEventListener("pointerleave", () => { pickerActor.hot = false; pickerActor.dirty = true; });
+      actors.push(pickerActor);
+    });
+    const colors = document.getElementById("color-picker");
+    COLORS.forEach((color) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "swatch";
+      btn.dataset.pick = "color";
+      btn.dataset.value = color.hex;
+      btn.style.background = color.hex;
+      btn.title = `${color.name} · ${color.alias} · ${color.hex}`;
+      btn.setAttribute("aria-label", `${color.name}, ${color.alias}`);
+      btn.addEventListener("click", () => { selection.color = color.hex; syncUI(); });
+      colors.append(btn);
+    });
+    const eyes = document.getElementById("eye-picker");
+    EYES.forEach((eye) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "eye-btn";
+      btn.dataset.pick = "eyes";
+      btn.dataset.value = eye.id;
+      const canvas = document.createElement("canvas");
+      const name = document.createElement("span");
+      name.textContent = eye.name;
+      btn.title = `${eye.name} · ${eye.aka}`;
+      btn.append(canvas, name);
+      btn.addEventListener("click", () => { selection.eyes = eye.id; syncUI(); });
+      eyes.append(btn);
+      actors.push(makeActor(canvas, "picker", { lockEyes: eye.id, lockState: "idle" }));
+    });
+    const states = document.getElementById("state-picker");
+    STATES.forEach((state) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "state-btn";
+      btn.dataset.pick = "state";
+      btn.dataset.value = state.id;
+      btn.innerHTML = `<b>${state.name}</b><small>${state.blurb}</small>`;
+      btn.addEventListener("click", () => { selection.state = state.id; syncUI(); });
+      states.append(btn);
+    });
+    const think = document.getElementById("think-strip");
+    const thinkLabel = document.createElement("p");
+    thinkLabel.className = "strip-label";
+    thinkLabel.textContent = "Thinking";
+    think.append(thinkLabel);
+    THINKS.forEach((row) => addMini(think, row.name, row.aka, row.suggest, { lockState: "thinking", lockThink: row.id, pick: "think", value: row.id }, "variant"));
+    const work = document.getElementById("work-strip");
+    const workLabel = document.createElement("p");
+    workLabel.className = "strip-label";
+    workLabel.textContent = "Working";
+    work.append(workLabel);
+    WORKS.forEach((row) => addMini(work, row.name, row.aka, row.suggest, { lockState: "working", lockWork: row.id, pick: "work", value: row.id }, "variant"));
+    const press = document.getElementById("press-strip");
+    const pressLabel = document.createElement("p");
+    pressLabel.className = "strip-label";
+    pressLabel.textContent = "Press";
+    press.append(pressLabel);
+    PRESSES.forEach((row) => addMini(press, row.name, row.aka, row.suggest, { lockState: "idle", lockPress: row.id, pick: "press", value: row.id }, "press"));
+    const grid = document.getElementById("shape-grid");
+    SHAPES.forEach((shape) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cell";
+      btn.dataset.pick = "shape";
+      btn.dataset.value = shape.id;
+      const canvas = document.createElement("canvas");
+      const name = document.createElement("b");
+      name.textContent = shape.name;
+      const aka = document.createElement("small");
+      aka.textContent = shape.aka;
+      btn.append(canvas, name, aka);
+      if (!shape.solid) {
+        const tag = document.createElement("span");
+        tag.className = "flat";
+        tag.textContent = "Flat";
+        btn.append(tag);
+      }
+      btn.addEventListener("click", () => { selection.shape = shape.id; syncUI(); });
+      grid.append(btn);
+      const cell = makeActor(canvas, "gallery", { lockShape: shape.id });
+      btn.addEventListener("pointerenter", () => { cell.hot = true; });
+      btn.addEventListener("pointerleave", () => { cell.hot = false; cell.dirty = true; });
+      actors.push(cell);
+    });
+    const colorGrid = document.getElementById("color-grid");
+    COLORS.forEach((color) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cell";
+      btn.dataset.pick = "color";
+      btn.dataset.value = color.hex;
+      const canvas = document.createElement("canvas");
+      const name = document.createElement("b");
+      name.textContent = color.name;
+      const aka = document.createElement("small");
+      aka.textContent = color.alias;
+      btn.append(canvas, name, aka);
+      btn.addEventListener("click", () => { selection.color = color.hex; syncUI(); });
+      colorGrid.append(btn);
+      const swatch = makeActor(canvas, "gallery", { lockColor: color.hex });
+      btn.addEventListener("pointerenter", () => { swatch.hot = true; });
+      btn.addEventListener("pointerleave", () => { swatch.hot = false; swatch.dirty = true; });
+      actors.push(swatch);
+    });
+    document.querySelectorAll("[data-role='size']").forEach((canvas) => actors.push(makeActor(canvas, "size", {})));
+    const hero = makeActor(document.getElementById("hero"), "hero", {});
+    actors.unshift(hero);
+    bindHero(hero);
+  }
+
+  function spring(s, target, dt, k, d) {
+    s.v += ((target - s.x) * k - s.v * d) * dt;
+    s.x += s.v * dt;
+  }
+  function bindHero(actor) {
+    const canvas = actor.canvas;
+    const ptr = { down: false, mode: "none", x: 0, y: 0, lx: 0, ly: 0 };
+    const local = (e) => {
+      const r = canvas.getBoundingClientRect();
+      return { x: e.clientX - r.left - r.width / 2, y: e.clientY - r.top - r.height / 2 };
+    };
+    canvas.addEventListener("pointermove", (e) => {
+      const p = local(e);
+      actor.pointer = p;
+      if (!ptr.down) return;
+      const step = Math.hypot(p.x - ptr.lx, p.y - ptr.ly);
+      if (ptr.mode === "down" && Math.hypot(p.x - ptr.x, p.y - ptr.y) > 10) ptr.mode = "drag";
+      if (ptr.mode === "drag") {
+        actor.dragging = true;
+        actor.ox = clamp(p.x - ptr.grabX, -canvas.clientWidth * 0.28, canvas.clientWidth * 0.28);
+        actor.oy = clamp(p.y - ptr.grabY, -canvas.clientHeight * 0.22, canvas.clientHeight * 0.22);
+        const dt = Math.max(0.016, (performance.now() - ptr.lt) / 1000);
+        actor.vx = (p.x - ptr.lx) / dt;
+        actor.vy = (p.y - ptr.ly) / dt;
+      }
+      ptr.lx = p.x; ptr.ly = p.y; ptr.lt = performance.now();
+      void step;
+    });
+    canvas.addEventListener("pointerdown", (e) => {
+      try { canvas.setPointerCapture(e.pointerId); } catch { /* already gone */ }
+      const p = local(e);
+      ptr.down = true; ptr.mode = "down"; ptr.x = ptr.lx = p.x; ptr.y = ptr.ly = p.y; ptr.lt = performance.now();
+      ptr.grabX = p.x - actor.ox; ptr.grabY = p.y - actor.oy;
+    });
+    const up = () => {
+      if (!ptr.down) return;
+      if (ptr.mode === "drag") actor.thrown = true;
+      else startPress(actor);
+      actor.dragging = false;
+      ptr.down = false; ptr.mode = "none";
+    };
+    canvas.addEventListener("pointerup", up);
+    canvas.addEventListener("pointercancel", up);
+    canvas.addEventListener("pointerleave", () => { if (!ptr.down) actor.pointer = null; });
+  }
+  function startPress(actor) {
+    actor.pressStart = simTime;
+    actor.pressUntil = simTime + 0.78;
+  }
+
+  function exportFeedback() {
+    const items = Object.values(feedback.items).filter((item) => item.vote || item.note);
+    const payload = { lab: "ensemble-node-design-lab", round: 2, exportedAt: new Date().toISOString(), items };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "node-design-lab-feedback-v2.json";
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 800);
+  }
+
+  function applyQuery() {
+    const q = new URLSearchParams(location.search);
+    const take = (key, list, field) => {
+      const value = q.get(key);
+      if (value && list.some((row) => row.id === value)) selection[field] = value;
+    };
+    take("shape", SHAPES, "shape");
+    take("eyes", EYES, "eyes");
+    take("state", STATES, "state");
+    take("think", THINKS, "think");
+    take("work", WORKS, "work");
+    take("press", PRESSES, "press");
+    const color = q.get("color");
+    if (color) {
+      const found = COLORS.find((c) => c.id === color.toLowerCase() || c.hex.toUpperCase() === color.toUpperCase());
+      if (found) selection.color = found.hex;
+    }
+    if (q.has("motion")) intensity = clamp(Number(q.get("motion")) / 100, 0, 1);
+    if (q.has("freeze")) frozen = Number(q.get("freeze"));
+  }
+
+  function boot() {
+    applyQuery();
+    reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches && !new URLSearchParams(location.search).has("motion");
+    if (reducedMotion) {
+      intensity = 0.15;
+      document.getElementById("motion-note").hidden = false;
+    }
+    document.getElementById("motion").value = String(Math.round(intensity * 100));
+    document.getElementById("motion-out").textContent = String(Math.round(intensity * 100));
+    build();
+    const watch = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const actor = actors.find((item) => item.canvas === entry.target);
+        if (actor) actor.visible = entry.isIntersecting;
+      }
+    }, { rootMargin: "120px" });
+    for (const actor of actors) watch.observe(actor.canvas);
+    pageHidden = document.hidden;
+    document.getElementById("motion").addEventListener("input", (e) => {
+      intensity = Number(e.target.value) / 100;
+      document.getElementById("motion-out").textContent = e.target.value;
+    });
+    document.getElementById("thumb-up").addEventListener("click", () => {
+      const item = ensureItem();
+      item.vote = item.vote === "up" ? null : "up";
+      item.label = document.getElementById("variant-name").textContent;
+      item.updatedAt = new Date().toISOString();
+      saveStore(); syncUI();
+    });
+    document.getElementById("thumb-down").addEventListener("click", () => {
+      const item = ensureItem();
+      item.vote = item.vote === "down" ? null : "down";
+      item.label = document.getElementById("variant-name").textContent;
+      item.updatedAt = new Date().toISOString();
+      saveStore(); syncUI();
+    });
+    document.getElementById("note").addEventListener("input", (e) => {
+      const item = ensureItem();
+      item.note = e.target.value.slice(0, 2000);
+      item.label = document.getElementById("variant-name").textContent;
+      item.updatedAt = new Date().toISOString();
+      saveStore();
+      renderSaved();
+    });
+    document.getElementById("export").addEventListener("click", exportFeedback);
+    document.getElementById("clear").addEventListener("click", () => {
+      if (!confirm("Clear every saved note and vote in this browser?")) return;
+      feedback = { items: {} };
+      saveStore();
+      syncUI();
+    });
+    syncUI();
+    document.documentElement.dataset.lab = "ready";
+    document.documentElement.dataset.renderer = "canvas2d";
+    let last = performance.now();
+    const lively = (actor) => actor.role === "hero" || actor.role === "size" || actor.role === "press" || actor.role === "variant";
+    const frame = (now) => {
+      try {
+        if (pageHidden && frozen == null) return;
+        const dt = clamp((now - last) / 1000, 0, 0.033);
+        last = now;
+        frameCount += 1;
+        frameMs += dt * 1000;
+        const drawStart = performance.now();
+        document.documentElement.dataset.frames = String(frameCount);
+        document.documentElement.dataset.frameMs = String(Math.round(frameMs / frameCount));
+        if (frozen == null && !reducedMotion) simTime += dt * (0.35 + intensity * 1.05);
+        else if (frozen != null) simTime = frozen;
+        const hero = actors[0];
+        if (hero.pointer && !hero.dragging) {
+          const nx = clamp(hero.pointer.x / (hero.canvas.clientWidth * 0.34), -1, 1);
+          const ny = clamp(hero.pointer.y / (hero.canvas.clientHeight * 0.34), -1, 1);
+          spring(hero.lookX, nx, dt, 50, 12);
+          spring(hero.lookY, ny, dt, 50, 12);
+        } else if (hero.dragging) {
+          hero.lookX.x = clamp(hero.ox / 220, -1, 1);
+          hero.lookY.x = clamp(hero.oy / 220, -1, 1);
+        } else {
+          spring(hero.lookX, 0, dt, 30, 10);
+          spring(hero.lookY, 0, dt, 30, 10);
+        }
+        if (!hero.dragging) {
+          const dragK = 64, dragD = 11;
+          hero.vx += (-hero.ox * dragK - hero.vx * dragD) * dt;
+          hero.vy += (-hero.oy * dragK - hero.vy * dragD) * dt;
+          hero.ox += hero.vx * dt;
+          hero.oy += hero.vy * dt;
+        }
+        for (const actor of actors) {
+          if (!actor.visible || actor.canvas.closest("[hidden]")) continue;
+          const moving = lively(actor) && !reducedMotion || actor.role === "hero";
+          if (moving || actor.hot || actor.dirty) {
+            drawActor(actor);
+            actor.dirty = false;
+          }
+        }
+        workMs += performance.now() - drawStart;
+        document.documentElement.dataset.workMs = String(Math.round(workMs / frameCount));
+      } catch (err) {
+        showError(err);
+        return;
+      }
+      requestAnimationFrame(frame);
+    };
+    document.addEventListener("visibilitychange", () => {
+      pageHidden = document.hidden;
+      if (!pageHidden) requestAnimationFrame(frame);
+    });
+    requestAnimationFrame(frame);
+  }
+
+  try { boot(); }
+  catch (err) { showError(err); }
+})();
+</script>
+</body>
+</html>

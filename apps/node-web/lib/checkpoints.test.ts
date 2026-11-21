@@ -166,6 +166,13 @@ test("an answer about the agent's own calls or an app folds into who was allowed
   assert.equal(words(withLocalAnswer({ ...program, status: "pending" }, local)), "Allowed @assistant-3 to run crontab · For this run", "an answer given here reads at once");
 });
 
+test("an own call of a kind the card does not make clear keeps Ensemble's words on its buttons and checkpoint", () => {
+  const neutral = { type: "computer", capability: "run", scope: "folder", label: "crontab", call: "crontab -e", options: ["Allow changes and commands", "Allow until this run ends"] };
+  assert.deepEqual(computerChoices(neutral), [{ option: "Allow changes and commands", label: "Allow changes and commands" }, { option: "Allow until this run ends", label: "Allow until this run ends" }], "whole, in Ensemble's order");
+  assert.equal(words({ ...neutral, status: "allowed", answer: "Allow until this run ends" }), "Allowed @assistant-3 to use its own tools for crontab · Allow until this run ends");
+  assert.equal(words({ ...neutral, status: "denied", answer: "No" }), "Didn't allow @assistant-3 to use its own tools for crontab");
+});
+
 test("a stuck plan step's card folds into the choice made, or that the plan moved on", () => {
   const card = { type: "plan_decision", plan: { id: "p1", step: "s2" }, attempt: 2, why: "same_error", question: "@tester's step in @lead's plan keeps failing the same way. Try it again, or finish the plan without it?", approveLabel: "Try again", discardLabel: "Finish without it" };
   assert.equal(planDecisionStep(card), "@tester's step");

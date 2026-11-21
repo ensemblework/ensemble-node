@@ -78,3 +78,33 @@ test("the agent's own calls, an app on the owner's screen and a stuck plan step 
   assert.equal(cardWords({ type: "plan_decision" }, "lead", "Crew").approve, "Try again", "a card without its labels still reads");
   assert.equal(cardWords({ type: "plan_decision" }, "lead", "Crew").discard, "Finish without it");
 });
+
+test("an own-tool card names its kind; without one, only Ensemble's exact answers say it", () => {
+  const card = { type: "computer", capability: "run", scope: "folder", label: "crontab", deviceName: "Laptop", call: "crontab -e" };
+  const named = ["write", "origin", "program", "tool", "unnamed"].map((kind) => computerAskKind({ ...card, own: { kind }, options: ["Allow once", "Allow until this run ends"] }));
+  assert.deepEqual(named, ["own_folder", "own_address", "own_call", "own_call", "own_unnamed"], "data.own.kind first, whatever the words");
+  assert.equal(computerAskKind({ ...card, own: { kind: "camera" }, options: ["Allow once"] }), "own", "a kind this page does not know is not read as another");
+  assert.equal(computerAskKind({ ...card, own: { what: "edit files" }, options: ["Allow changes and commands", "Allow changes and commands for this run"] }), "own_folder", "no kind named: Ensemble's words");
+  assert.equal(computerAskKind({ ...card, own: { what: "edit files" }, options: ["Allow it"] }), "own", "no kind named, other words: still the agent's own call");
+
+  const current: Array<[string[], string]> = [
+    [["Allow changes and commands", "Allow changes and commands for this run"], "own_folder"],
+    [["Allow this address", "Allow this address for this run"], "own_address"],
+    [["Allow once", "Allow for this run"], "own_call"],
+    [["Allow for this run", "allow once "], "own_call"],
+    [["Allow once"], "own_unnamed"],
+  ];
+  for (const [options, kind] of current) assert.equal(computerAskKind({ ...card, options }), kind, `an older card: ${options.join(", ")}`);
+
+  const reworded = [["Allow once", "Allow until this run ends"], ["Allow once", "Allow for this run", "Allow for this mission"], ["Allow changes and commands"], ["Allow this address for this run"]];
+  for (const options of reworded) assert.equal(computerAskKind({ ...card, options }), "own", `other words name no kind: ${options.join(", ")}`);
+  assert.equal(computerAskKind({ ...card, options: ["Once", "This mission", "Always for this folder"] }), "folder", "the node's own computer tools never say Allow");
+  assert.equal(computerAskKind({ ...card, scope: "origin", options: ["Just once", "Always for this site"] }), "origin");
+
+  const neutral = { ...card, options: ["Allow once", "Allow until this run ends"] };
+  assert.deepEqual(cardWords(neutral, "assistant-3", "A"), { title: "@assistant-3 wants to use its own tools for crontab on Laptop", wants: "wants to use its own tools for crontab on Laptop", approve: "Allow", discard: "Don't allow" });
+  assert.equal(cardWords({ ...neutral, label: undefined }, "assistant-3", "A").wants, "wants to use its own tools on Laptop");
+  const tool = { ...card, label: "write_file from desktop-commander", call: "write_file {}", options: ["Allow once", "Allow for this run"] };
+  assert.equal(cardWords({ ...tool, own: { kind: "tool" } }, "assistant-3", "A").wants, "wants to use write_file from desktop-commander on Laptop", "a tool by its named kind");
+  assert.equal(cardWords(tool, "assistant-3", "A").wants, "wants to run write_file from desktop-commander on Laptop", "an older card goes by its call");
+});

@@ -6,7 +6,8 @@
  * check and the report); questions about the agent's own calls (changes in a folder, a program) with
  * exactly Ensemble's answers, one press, folded into their checkpoint; an app on the owner's screen (This
  * mission or Don't allow); a stuck plan step answered with one press and a plan re-planning, with a partial
- * step's report and what is left; a node's memories (markers, pin, edit, restore, delete); a crew's group
+ * step's report and what is left; a node's memories (markers, pin, edit, restore, delete, two rows at
+ * once with one refused after the drawer closed); a crew's group
  * answers; and whether a computer's desktop apps can be used, with its facts in the ⓘ.
  * Never points at a hosted account or calls a model. Usage is in docs/05 (Browser regression).
  */
@@ -42,7 +43,7 @@ function fixture() {
       message("dm-a3", "u1", "text", "Fix the site build and tell me what is left.", {}, { authorKind: "human", authorNodeId: null }),
       message("dm-a3", "r1", "text", "Fixed the build: the site builds again. The docs page still needs a screenshot.", { turnId: "t1" }),
       computer("c-own-write", "@assistant-3 wants to run commands in ~/projects/site on Studio", { decisionId: "dec-own-write", capability: "run", scope: "folder", label: "~/projects/site", call: "Edit: src/build.ts", options: ["Allow changes and commands", "Allow changes and commands for this run"] }),
-      computer("c-own-program", "@assistant-3 wants to run crontab on Studio", { decisionId: "dec-own-program", capability: "run", scope: "folder", label: "crontab", call: "crontab -e", options: ["Allow once", "Allow for this run"] }),
+      computer("c-own-program", "@assistant-3 wants to run crontab on Studio", { decisionId: "dec-own-program", capability: "run", scope: "folder", label: "crontab", call: "crontab -e", own: { kind: "program" }, options: ["Allow once", "Allow for this run"] }),
       computer("c-app", "@assistant-3 wants to use Bitwarden on your screen on Studio", { decisionId: "dec-app", capability: "desktop", scope: "app", label: "Bitwarden", call: "desktop_act: click the vault", options: ["This mission"] }),
     ],
     crew: [
@@ -92,7 +93,7 @@ function fixture() {
     { id: "dev-2", name: "Old laptop", platform: "linux", appVersion: "0.9.0", folders: [], online: true, lastSeenAt: at(-1), revokedAt: null, sealKey: null, capabilities: { browser: 1, capture: { browser: true, video: null, setup: false, targets: {} }, desktop: 1, desktopReadiness: { ready: false, session: "none", consent: "ask", recorder: null, reason: "Ensemble here does not run inside a desktop session.", agentScreen: { ready: false, version: null, reason: "Needs GNOME Shell for the agent screen: sudo apt install gnome-shell" } } } },
   ];
   const boot = { me: { id: "me", name: "Akash", email: "akash@fieldnote.example", verified: true }, nodes: [a3, lead, tester], rooms, computers: [], credits: null, invites: [], templates: { nodes: [], crews: [] }, limits: { roomPeople: 10, nodesPerPerson: 3, crewNodes: 24, pins: 25, reactions: ["👍"], declineBlockDays: 30 }, models: { default: "gpt-5-mini", options: [] } };
-  return { boot, messages, trace, memories, devices, calls: [] };
+  return { boot, messages, trace, memories, devices, calls: [], hold: null };
 }
 
 try {
@@ -171,6 +172,15 @@ try {
       if (memoryOne && method === "PATCH") {
         const body = request.postDataJSON();
         state.calls.push({ memory: memoryOne[1], body });
+        // A change the test holds; meanwhile another tab replaced the memory, so Ensemble refuses it.
+        if (state.hold?.id === memoryOne[1]) {
+          await state.hold.until;
+          const held = state.memories.find((item) => item.id === memoryOne[1]);
+          const next = { ...held, id: `${held.id}-b`, content: held.content.replace(/\.$/, " and Codex."), updatedAt: new Date().toISOString() };
+          held.supersededById = next.id;
+          state.memories.push(next);
+          return json({ error: "That memory changed while you were saving; it was not replaced." }, 409);
+        }
         const row = state.memories.find((item) => item.id === memoryOne[1]);
         if (body.content !== undefined) {
           const next = { ...row, id: `${row.id}-2`, content: body.content, updatedAt: new Date().toISOString() };
@@ -338,9 +348,24 @@ try {
       assert.equal(await settings.getByText("Deploy only on Fridays.").count(), 0, "archived ones are folded");
       await row("British spelling").scrollIntoViewIfNeeded();
       await shot("memory", settings.locator("[data-drawer-panel]"));
+      // Two rows at once: each stays busy until its own request ends. A refusal shows even when its row is
+      // gone by then: the drawer is closed first, and another tab replaced that memory meanwhile.
+      let release;
+      state.hold = { id: "m1", until: new Promise((resolve) => (release = resolve)) };
+      const unpin = row("Run coding work").getByRole("button", { name: "Unpin", exact: true });
+      await unpin.click();
       await row("deploys from main").getByRole("button", { name: "Pin", exact: true }).click();
       await row("deploys from main").getByLabel("About this memory").getByText("Pinned").waitFor();
       assert.deepEqual(state.calls.find((call) => call.memory === "m3"), { memory: "m3", body: { pinned: true } });
+      assert.ok(await unpin.isDisabled(), "the first row stays busy while its own request runs");
+      await page.keyboard.press("Escape");
+      await settings.waitFor({ state: "detached" });
+      release();
+      await page.getByText("That memory changed while you were saving; it was not replaced.").waitFor();
+      state.hold = null;
+      await page.goto(`${WEB}/n/a3`);
+      await list.getByText("Run coding work with GitHub Copilot and Codex.").waitFor();
+      assert.equal(await list.getByText("Run coding work with GitHub Copilot.", { exact: true }).count(), 0, "the replaced revision is gone");
       await row("British spelling").getByRole("button", { name: "Edit", exact: true }).click();
       await settings.getByLabel("What it remembers").fill("Use British spelling in the docs and the app.");
       await settings.getByRole("button", { name: "Save", exact: true }).last().click();

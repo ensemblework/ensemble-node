@@ -46,7 +46,7 @@ const STATE: Record<string, Badge> = {
   expired: { label: "Expired", tone: "muted" },
 };
 
-/** What the card's label names, by the kind of question: a folder, an address, a program or tool, an app; nothing for a call that names no path. */
+/** What the card's label names, by the kind of question: a folder, an address, a program or tool, an app; nothing for a call that names no path, or an own call of a kind the card does not make clear (its title names it). */
 const WHERE: Record<ComputerAskKind, { icon: LucideIcon; name: string } | null> = {
   folder: { icon: FolderOpen, name: "Folder" },
   own_folder: { icon: FolderOpen, name: "Folder" },
@@ -55,6 +55,7 @@ const WHERE: Record<ComputerAskKind, { icon: LucideIcon; name: string } | null> 
   own_call: { icon: SquareTerminal, name: "Program" },
   app: { icon: AppWindow, name: "App" },
   own_unnamed: null,
+  own: null,
 };
 
 /** What the answers mean, in the card's ⓘ: for the agent's own calls and an app on the owner's screen. */
@@ -63,6 +64,7 @@ const ASK_INFO: Partial<Record<ComputerAskKind, string>> = {
   own_address: "Your agent's own tools, on your AI plan, want to call this address. Allow covers it from now on; Allow for this run, until this run ends.",
   own_call: "A program that can change your system, or a tool Ensemble does not know, is never allowed beyond this run.",
   own_unnamed: "A call that names no file or folder is asked about each time.",
+  own: "Your agent's own tools, on your AI plan, want to make this call. Each answer allows just what it says.",
   app: "Password managers, system settings, terminals, banking or wallet apps, and your own pointer and keyboard are asked about once per app for this piece of work, never for good.",
 };
 

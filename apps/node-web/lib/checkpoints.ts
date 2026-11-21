@@ -52,11 +52,12 @@ export function computerOptions(data: CardData): string[] {
  * rule: ask at most once per folder): "Allow in this folder from now on", "Only this mission", "Just
  * once". For one of the agent's own calls, and for an app on the owner's screen, exactly the answers
  * Ensemble offers, in its order: "Allow" and "Allow for this run" (the card's title already says what
- * for), "Allow once", "This mission". Each sends Ensemble's own words for it (`option`).
+ * for), "Allow once", "This mission"; an own call of a kind the card does not make clear keeps
+ * Ensemble's words whole. Each sends Ensemble's own words for it (`option`).
  */
 export function computerChoices(data: CardData): Array<{ option: string; label: string }> {
   const kind = computerAskKind(data);
-  if (kind === "app" || ownAsk(kind)) return computerOptions(data).map((option) => ({ option, label: option.replace(/^allow (?:changes and commands|this address)(?= for this run$|$)/i, "Allow") }));
+  if (kind === "app" || ownAsk(kind)) return computerOptions(data).map((option) => ({ option, label: kind === "own" ? option : option.replace(/^allow (?:changes and commands|this address)(?= for this run$|$)/i, "Allow") }));
   const rank = (option: string) => (/^always/i.test(option) ? 0 : /mission/i.test(option) ? 1 : /^once$/i.test(option) ? 2 : 3);
   const site = data?.scope === "origin";
   return computerOptions(data)

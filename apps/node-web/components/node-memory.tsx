@@ -19,7 +19,6 @@ import { Button, Input, Pill, Spinner, Textarea } from "./ui";
 /** The most characters one memory holds (Ensemble's `MEMORY_CHARS`). */
 const MEMORY_CHARS = 500;
 
-type Actions = ReturnType<typeof useMemoryActions>;
 type Change = { content?: string; pinned?: boolean; archived?: boolean } | "delete";
 
 function RowButton({ label, onClick, disabled, tone, children }: { label: string; onClick: () => void; disabled?: boolean; tone?: "danger"; children: ReactNode }) {
@@ -30,13 +29,14 @@ function RowButton({ label, onClick, disabled, tone, children }: { label: string
   );
 }
 
-function MemoryRow({ memory, actions }: { memory: NodeMemory; actions: Actions }) {
+function MemoryRow({ nodeId, memory }: { nodeId: string; memory: NodeMemory }) {
+  const actions = useMemoryActions(nodeId);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(memory.content);
   const editable = memoryEditable(memory);
   const markers = memoryMarkers(memory);
-  const busy = actions.isPending && actions.variables?.memoryId === memory.id;
-  const change = (next: Change, done?: () => void) => actions.mutate({ memoryId: memory.id, change: next }, { onSuccess: done, onError: toastError });
+  const busy = actions.isPending;
+  const change = (next: Change, done?: () => void) => actions.mutate({ memoryId: memory.id, change: next }, { onSuccess: done });
   const words = draft.trim();
   return (
     <li className="rounded-xl border border-line bg-bg px-3 py-2 text-sm" data-memory={memory.archived ? "archived" : memory.pinned ? "pinned" : "live"}>
@@ -94,7 +94,6 @@ function MemoryRow({ memory, actions }: { memory: NodeMemory; actions: Actions }
 export function NodeMemories({ nodeId }: { nodeId: string }) {
   const client = useQueryClient();
   const memories = useMemories(nodeId);
-  const actions = useMemoryActions(nodeId);
   const [text, setText] = useState("");
   const [adding, setAdding] = useState(false);
   const [archivedOpen, setArchivedOpen] = useState(false);
@@ -123,7 +122,7 @@ export function NodeMemories({ nodeId }: { nodeId: string }) {
       {memories.error ? <p className="text-sm text-danger">{memories.error.message}</p> : null}
       <ul className="space-y-1.5" data-memories>
         {live.map((memory) => (
-          <MemoryRow key={memory.id} memory={memory} actions={actions} />
+          <MemoryRow key={memory.id} nodeId={nodeId} memory={memory} />
         ))}
         {memories.data && !live.length ? <li className="text-sm text-muted">Nothing yet.</li> : null}
       </ul>
@@ -135,7 +134,7 @@ export function NodeMemories({ nodeId }: { nodeId: string }) {
           {archivedOpen ? (
             <ul className="space-y-1.5">
               {archived.map((memory) => (
-                <MemoryRow key={memory.id} memory={memory} actions={actions} />
+                <MemoryRow key={memory.id} nodeId={nodeId} memory={memory} />
               ))}
             </ul>
           ) : null}

@@ -501,6 +501,9 @@ export function useMemories(nodeId: string) {
 /**
  * Changes one memory (`PATCH …/memory/:memoryId`): new words make a revision that replaces it (a new id), a
  * pin or an archive applies in place; or deletes it with its earlier revisions. The list is read again after.
+ * One per memory row, so a row stays busy until its own request ends. A failure is a notice from here, not
+ * from `mutate`, so it shows even when its row is gone by then (the drawer closed, or the memory was
+ * replaced meanwhile).
  */
 export function useMemoryActions(nodeId: string) {
   const client = useQueryClient();
@@ -509,6 +512,7 @@ export function useMemoryActions(nodeId: string) {
       input.change === "delete"
         ? api<void>(`/api/node/nodes/${nodeId}/memory/${input.memoryId}`, { method: "DELETE" }).then(() => null)
         : api<{ memory: NodeMemory }>(`/api/node/nodes/${nodeId}/memory/${input.memoryId}`, { method: "PATCH", body: input.change }).then((result) => result.memory),
+    onError: toastError,
     onSettled: () => client.invalidateQueries({ queryKey: keys.memory(nodeId) }),
   });
 }

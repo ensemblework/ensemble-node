@@ -78,26 +78,43 @@ const COMPUTER_VERBS: Record<string, string> = { run: "run commands", git: "read
  * or at an address; one of the agent's own calls on its owner's AI plan, by what an answer covers
  * (`own_folder`: changes and commands in a folder; `own_address`: calls to an address; `own_call`: a
  * program that changes the system, or a tool Ensemble does not know; `own_unnamed`: one call that names
- * no path); or an app on the owner's screen (`app`). Ensemble's card says which by its options' own words.
+ * no path; `own`: one whose kind the card does not make clear); or an app on the owner's screen (`app`).
  */
-export type ComputerAskKind = "folder" | "origin" | "own_folder" | "own_address" | "own_call" | "own_unnamed" | "app";
+export type ComputerAskKind = "folder" | "origin" | "own_folder" | "own_address" | "own_call" | "own_unnamed" | "own" | "app";
 
-const OWN_KINDS: Record<string, ComputerAskKind> = { write: "own_folder", origin: "own_address", program: "own_call", tool: "own_call", unnamed: "own_unnamed" };
+/** The kind a card names (`data.own.kind`, Ensemble's node/own-tool-asks.ts). */
+const OWN_KINDS = new Map<string, ComputerAskKind>([
+  ["write", "own_folder"],
+  ["origin", "own_address"],
+  ["program", "own_call"],
+  ["tool", "own_call"],
+  ["unnamed", "own_unnamed"],
+]);
+
+/** Ensemble's answers for each kind (node/device-tool-decisions.ts `OWN_CHOICES`), for a card that does not name its kind. */
+const OWN_ANSWERS: ReadonlyArray<readonly [ComputerAskKind, readonly string[]]> = [
+  ["own_folder", ["allow changes and commands", "allow changes and commands for this run"]],
+  ["own_address", ["allow this address", "allow this address for this run"]],
+  ["own_call", ["allow once", "allow for this run"]],
+  ["own_unnamed", ["allow once"]],
+];
 
 export function computerAskKind(data: { scope?: unknown; options?: unknown; own?: unknown; [key: string]: unknown } | null | undefined): ComputerAskKind {
   if (data?.scope === "app") return "app";
-  const own = (data?.own ?? null) as { kind?: unknown } | null;
-  if (typeof own?.kind === "string" && OWN_KINDS[own.kind]) return OWN_KINDS[own.kind]!;
-  const options = Array.isArray(data?.options) ? data.options.filter((row): row is string => typeof row === "string").map((row) => row.trim()) : [];
-  if (options.some((option) => /^allow changes and commands/i.test(option))) return "own_folder";
-  if (options.some((option) => /^allow this address/i.test(option))) return "own_address";
-  if (options.some((option) => /^allow for this run$/i.test(option))) return "own_call";
-  if (options.some((option) => /^allow once$/i.test(option))) return "own_unnamed";
+  const own = data?.own && typeof data.own === "object" ? (data.own as { kind?: unknown }) : null;
+  if (typeof own?.kind === "string") return OWN_KINDS.get(own.kind) ?? "own";
+  const options = new Set(Array.isArray(data?.options) ? data.options.filter((row): row is string => typeof row === "string").map((row) => row.trim().toLowerCase()).filter(Boolean) : []);
+  // Without its kind, only Ensemble's exact answers say it: other words never guess one, as a reworded
+  // "Allow for this run" would make a program look like a call that names no path.
+  const named = OWN_ANSWERS.find(([, answers]) => answers.length === options.size && answers.every((answer) => options.has(answer)));
+  if (named) return named[0];
+  // The node's computer tools answer Once, This mission or Always; only the agent's own calls say Allow.
+  if (own || [...options].some((option) => /^allow\b/.test(option))) return "own";
   return data?.scope === "origin" ? "origin" : "folder";
 }
 
 /** Whether a computer card is about the agent's own calls on its owner's AI plan. */
-export const ownAsk = (kind: ComputerAskKind): boolean => kind.startsWith("own_");
+export const ownAsk = (kind: ComputerAskKind): boolean => kind === "own" || kind.startsWith("own_");
 
 /**
  * What a node asked its owner's computer for, after "wants to" or "Allowed @x to": "browse walmart.com",
@@ -114,13 +131,22 @@ export function computerAction(data: { capability?: unknown; label?: unknown; sc
 /**
  * The same for any computer card: a program or a tool by its name ("run crontab", "use write_file from
  * desktop-commander"), a call that names no path ("change files it does not name"), an app on the
- * owner's screen ("use Bitwarden on your screen"), else as `computerAction`.
+ * owner's screen ("use Bitwarden on your screen"), an own call of a kind the card does not make clear
+ * ("use its own tools for crontab"), else as `computerAction`.
  */
 export function computerAskAction(data: { capability?: unknown; label?: unknown; scope?: unknown; call?: unknown; options?: unknown; [key: string]: unknown } | null | undefined): string {
   const kind = computerAskKind(data);
   if (kind === "app") return `use ${text(data?.label, "an app")} on your screen`;
-  if (kind === "own_call") return `${/^use:/i.test(text(data?.call, "")) ? "use" : "run"} ${text(data?.label, "a program")}`;
+  if (kind === "own_call") {
+    const named = (data?.own as { kind?: unknown } | null | undefined)?.kind;
+    const use = named === "tool" || (named !== "program" && /^use:/i.test(text(data?.call, "")));
+    return `${use ? "use" : "run"} ${text(data?.label, "a program")}`;
+  }
   if (kind === "own_unnamed") return `${data?.capability === "read" ? "read" : "change"} ${text(data?.label, "files it does not name")}`;
+  if (kind === "own") {
+    const label = text(data?.label, "");
+    return `use its own tools${label ? ` for ${label}` : ""}`;
+  }
   return computerAction(data);
 }
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attemptLabel, attemptsToShow, blockedReason, candidateLabel, checkTally, heldState, isWorkCard, ledgerSummary, missionView, planProgress, requirementBadge, stepBadges, stepKindLine, stepName, stepRequirements, verdictLabel } from "./plan";
+import { attemptLabel, attemptsToShow, blockedReason, candidateLabel, checkTally, heldState, isWorkCard, leftLines, ledgerSummary, missionView, planProgress, requirementBadge, stepBadges, stepKindLine, stepName, stepRequirements, strengthWords, verdictLabel } from "./plan";
 import type { PlanStep } from "./types";
 
 const step = (id: string, extra: Partial<PlanStep> = {}): PlanStep => ({
@@ -21,6 +21,7 @@ const step = (id: string, extra: Partial<PlanStep> = {}): PlanStep => ({
 test("a mission's status; a plan from before outcomes that ended 'done' reads as ended, not running", () => {
   assert.deepEqual(missionView("running"), { status: "running", label: "Running", tone: "accent", live: true });
   assert.equal(missionView("reporting").live, true);
+  assert.deepEqual(missionView("replanning"), { status: "replanning", label: "Re-planning", tone: "accent", live: true }, "the lead re-plans stuck steps; Stop stays");
   assert.equal(missionView("draft").live, true);
   assert.deepEqual(missionView("succeeded"), { status: "succeeded", label: "Succeeded", tone: "ok", live: false });
   assert.deepEqual(missionView("partially_completed"), { status: "partially_completed", label: "Partly done", tone: "warn", live: false });
@@ -113,4 +114,25 @@ test("candidates, checks and the requirements ledger read in a line", () => {
   assert.equal(blockedReason("login_required"), "It needs a sign-in");
   assert.equal(blockedReason("unknown"), null);
   assert.equal(verdictLabel("skipped"), "Skipped");
+});
+
+test("reports v2: partial, uncertain and stopped hold the steps after them, and say what is left", () => {
+  assert.equal(stepBadges(step("p", { status: "done", outcome: "partial" }), []).outcome?.label, "Partly done");
+  assert.equal(stepBadges(step("u", { status: "done", outcome: "uncertain" }), []).outcome?.label, "Uncertain");
+  assert.equal(stepBadges(step("s", { status: "stopped", outcome: "stopped" }), []).outcome, null, "Stopped is not said twice");
+  for (const outcome of ["partial", "uncertain", "stopped"] as const) {
+    assert.equal(heldState(step("next", { after: ["w"] }), [step("w", { status: "done", outcome })]).held, true, `${outcome} never counts as done`);
+  }
+  assert.equal(planProgress({ steps: [step("a", { status: "done", outcome: "partial" }), step("b", { status: "done", outcome: "done" })] }).done, 1);
+  assert.equal(stepKindLine({ kind: "review", executor: "node" }), "Review");
+  assert.equal(attemptLabel({ n: 2, reason: "retry" }), "Attempt 2 · tried again");
+  assert.equal(attemptLabel({ n: 3, reason: "amend" }), "Attempt 3 · redone with the change");
+  assert.deepEqual(leftLines({ remaining: ["Book the venue", " ", "Send invites"], ownerDecision: "Which date?" }), ["Left to do: Book the venue; Send invites", "Needs you: Which date?"]);
+  assert.deepEqual(leftLines({ remaining: [] }), []);
+  assert.deepEqual(leftLines(null), []);
+  const first = { n: 1, reason: "first" as const, outcome: "partial", summary: null, startedAt: null, endedAt: null };
+  assert.equal(attemptsToShow({ attempts: [{ ...first, remaining: ["Send invites"] }] }).length, 1, "one attempt that says what is left is listed");
+  assert.equal(strengthWords("A"), "Evidence A: made and measured now");
+  assert.equal(strengthWords("C"), "Evidence C: from memory");
+  assert.equal(strengthWords(undefined), null);
 });

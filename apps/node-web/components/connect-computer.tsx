@@ -1,12 +1,12 @@
 "use client";
 
-import { Camera, Folder, Laptop, Monitor } from "lucide-react";
+import { AppWindow, Camera, Folder, Laptop, Monitor } from "lucide-react";
 import { Fragment } from "react";
-import { captureLine } from "@/lib/captures";
+import { captureLine, desktopLine } from "@/lib/captures";
 import { CLI_COMMAND, ENSEMBLE_LINKS } from "@/lib/config";
 import { ago } from "@/lib/text";
 import type { Computer, Device } from "@/lib/types";
-import { External, Pill } from "./ui";
+import { External, InfoTip, Pill } from "./ui";
 
 export function ComputerList({ computers }: { computers: Computer[] }) {
   if (!computers.length) return <p className="text-sm text-muted">No computer is paired yet.</p>;
@@ -47,7 +47,29 @@ function CaptureLine({ device }: { device: Device }) {
   );
 }
 
-/** Ensemble's paired computers with the folders each shares with Ensemble, its secret key and what it can capture. */
+/** Whether nodes can use desktop apps on a computer, on an agent screen or the owner's (docs/25 §11): one line, the facts in its ⓘ. */
+function DesktopLine({ device }: { device: Device }) {
+  const line = desktopLine(device.capabilities);
+  if (!line) return null;
+  return (
+    <p className={`mt-1 flex items-center gap-1.5 text-xs ${line.ready ? "text-muted" : "text-warn"}`} data-desktop={line.ready ? "ready" : "not-ready"}>
+      <AppWindow size={12} className="shrink-0" aria-hidden />
+      <span className="min-w-0">{line.text}</span>
+      <InfoTip
+        label={`About desktop apps on ${device.name}`}
+        text={
+          <ul className="space-y-1">
+            {line.facts.map((fact) => (
+              <li key={fact}>{fact}</li>
+            ))}
+          </ul>
+        }
+      />
+    </p>
+  );
+}
+
+/** Ensemble's paired computers with the folders each shares with Ensemble, its secret key, what it can capture and whether its desktop apps can be used. */
 export function DeviceList({ devices }: { devices: Device[] }) {
   if (!devices.length) return <p className="text-sm text-muted">No computer is paired yet.</p>;
   return (
@@ -75,6 +97,7 @@ export function DeviceList({ devices }: { devices: Device[] }) {
             )}
           </p>
           <CaptureLine device={device} />
+          <DesktopLine device={device} />
           <div className="mt-2 flex flex-wrap gap-1.5">
             {device.folders.length ? (
               device.folders.map((folder) => (

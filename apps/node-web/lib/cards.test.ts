@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cardWords, runAgent, runAsk, runCardAgent } from "./cards";
+import { cardWords, computerAskKind, runAgent, runAsk, runCardAgent } from "./cards";
 
 test("each kind of card says what it asks and what its answers are called", () => {
   assert.deepEqual(cardWords({ type: "post" }, "lead", "Launch"), { title: "Post this in “Launch” for you?", wants: "wants to post for you", approve: "Post", discard: "Discard" });
@@ -55,4 +55,26 @@ test("a run's own question or permission says which agent asks what", () => {
   assert.equal(runCardAgent({ engine: "copilot-cli", model: "gpt-6.1-sol" }), "GitHub Copilot", "from the run's own card");
   assert.equal(runCardAgent({ session: { id: "s1", agent: "Claude Code", agentId: "claude-code" } }), "Claude Code");
   assert.equal(runCardAgent({}), null);
+});
+
+test("the agent's own calls, an app on the owner's screen and a stuck plan step say what they ask", () => {
+  const write = { type: "computer", capability: "run", scope: "folder", label: "~/projects/site", deviceName: "Laptop", options: ["Allow changes and commands", "Allow changes and commands for this run"] };
+  const program = { type: "computer", capability: "run", scope: "folder", label: "crontab", deviceName: "Laptop", call: "crontab -e", options: ["Allow once", "Allow for this run"] };
+  const tool = { ...program, label: "write_file from desktop-commander", call: "Use: write_file from desktop-commander\nWith: {}" };
+  const unnamed = { type: "computer", capability: "read", scope: "folder", label: "files it does not name", options: ["Allow once"] };
+  const address = { type: "computer", capability: "http", scope: "origin", label: "http://192.168.1.20:8080", options: ["Allow this address", "Allow this address for this run"] };
+  const app = { type: "computer", capability: "desktop", scope: "app", label: "Bitwarden", deviceName: "Laptop", options: ["This mission"] };
+  assert.deepEqual([write, program, tool, unnamed, address, app].map(computerAskKind), ["own_folder", "own_call", "own_call", "own_unnamed", "own_address", "app"]);
+  assert.equal(computerAskKind({ scope: "folder", options: ["Once", "This mission", "Always for this folder"] }), "folder", "the node's computer tools");
+  assert.equal(computerAskKind({ scope: "origin", options: ["Once"] }), "origin");
+  assert.equal(computerAskKind({ scope: "folder", own: { kind: "program" }, options: [] }), "own_call", "a card that names its kind");
+  assert.equal(cardWords(write, "assistant-3", "A").title, "@assistant-3 wants to run commands in ~/projects/site on Laptop");
+  assert.equal(cardWords(program, "assistant-3", "A").title, "@assistant-3 wants to run crontab on Laptop");
+  assert.equal(cardWords(tool, "assistant-3", "A").wants, "wants to use write_file from desktop-commander on Laptop");
+  assert.equal(cardWords(unnamed, "assistant-3", "A").wants, "wants to read files it does not name");
+  assert.equal(cardWords(address, "assistant-3", "A").wants, "wants to call http://192.168.1.20:8080");
+  assert.equal(cardWords(app, "assistant-3", "A").title, "@assistant-3 wants to use Bitwarden on your screen on Laptop");
+  assert.deepEqual(cardWords({ type: "plan_decision", approveLabel: "Redo with the new version", discardLabel: "Keep the result" }, "lead", "Crew"), { title: "@lead's plan needs your decision", wants: "needs your decision on its plan", approve: "Redo with the new version", discard: "Keep the result" });
+  assert.equal(cardWords({ type: "plan_decision" }, "lead", "Crew").approve, "Try again", "a card without its labels still reads");
+  assert.equal(cardWords({ type: "plan_decision" }, "lead", "Crew").discard, "Finish without it");
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { captureLine, heldReasons, heldReasonWords, heldState, liveMeta, livePausedWords, pageAddress, takeoverReady } from "./captures";
+import { captureLine, desktopLine, heldReasons, heldReasonWords, heldState, liveMeta, livePausedWords, pageAddress, takeoverReady } from "./captures";
 
 test("held captures say why in the owner's words, each reason once", () => {
   assert.equal(heldReasonWords("It shows one of your saved secret values."), "It shows one of your saved secrets.");
@@ -82,4 +82,24 @@ test("a computer says what it can capture, or what to run there", () => {
   });
   assert.deepEqual(captureLine({ name: "Studio", capabilities: { browser: 1, capture: { ...capture, video: null, setup: false, targets: { web: { screenshot: true, video: false } } } } }, "ensemble"), { state: "ready", text: "Captures web pages (pictures)." });
   assert.equal(captureLine({ name: "Studio", capabilities: { browser: 1, capture: { ...capture, browser: false } } }, "ensemble").state, "setup", "no Chromium for Ensemble yet");
+});
+
+test("a computer says whether nodes can use its desktop apps, with the facts behind it", () => {
+  assert.equal(desktopLine({ browser: 1 }), null, "no desktop control reported: no line");
+  assert.equal(desktopLine(null), null);
+  const ready = { desktop: 1, desktopReadiness: { ready: true, session: "wayland" as const, consent: "remembered" as const, recorder: "webm" as const, agentScreen: { ready: true, version: "GNOME Shell 49.1" } } };
+  assert.deepEqual(desktopLine(ready), {
+    ready: true,
+    text: "Desktop apps: on an agent screen or yours.",
+    facts: ["Agent screen: ready (GNOME Shell 49.1). A private desktop of the node's own, which you can watch.", "Your screen: ready (Wayland). Allowed before: it starts without asking.", "Recordings are WebM."],
+  });
+  const agentOnly = desktopLine({ desktop: 1, desktopReadiness: { ready: false, session: "none", consent: "ask", recorder: "mp4", reason: "Ensemble here does not run inside a desktop session.", agentScreen: { ready: true, version: null } } });
+  assert.equal(agentOnly?.text, "Desktop apps: on an agent screen.");
+  assert.deepEqual(agentOnly?.facts.slice(1), ["Your screen: not ready. Ensemble here does not run inside a desktop session.", "Recordings are MP4."]);
+  const ownerOnly = desktopLine({ desktop: 1, desktopReadiness: { ready: true, session: "x11", consent: "ask", recorder: null, agentScreen: { ready: false, reason: "Needs GNOME Shell for the agent screen: sudo apt install gnome-shell" } } });
+  assert.equal(ownerOnly?.text, "Desktop apps: on your screen.");
+  assert.deepEqual(ownerOnly?.facts, ["Agent screen: not ready. Needs GNOME Shell for the agent screen: sudo apt install gnome-shell", "Your screen: ready (X11). The computer asks you the first time.", "No video encoder works there, so it takes pictures only."]);
+  const none = desktopLine({ desktop: 1, desktopReadiness: { ready: false, reason: "Needs python3 with its GObject bindings", agentScreen: { ready: false } } });
+  assert.deepEqual(none, { ready: false, text: "Desktop apps: not ready.", facts: ["Agent screen: not ready.", "Your screen: not ready. Needs python3 with its GObject bindings"] });
+  assert.deepEqual(desktopLine({ desktop: 1, desktopReadiness: null }), { ready: false, text: "Desktop apps: not checked yet.", facts: ["The computer has not said yet whether its screens are ready."] });
 });

@@ -42,13 +42,20 @@ export type Member = NodeMember | PersonMember;
 export type MessageKind = "text" | "approval" | "run" | "status" | "error" | "plan" | "request" | "files";
 
 export type PlanStepStatus = "waiting" | "working" | "done" | "blocked" | "skipped" | "stopped";
-export type StepKind = "build" | "verify" | "write" | "research" | "other";
+/** review: an independent check of another node's build or writing, with a verdict per acceptance criterion. */
+export type StepKind = "build" | "verify" | "review" | "write" | "research" | "other";
 /** Who does a step: another node, the node's own work lane, an agent session, or a helper. */
 export type StepExecutor = "node" | "self" | "session" | "helper";
-/** A step's result, separate from whether it ran: unknown until reported, unverified when nobody reported. */
-export type StepOutcome = "unknown" | "done" | "pass" | "fail" | "blocked" | "unverified";
-/** `done` is the status of plans made before outcomes existed: they ended. */
-export type MissionStatus = "draft" | "running" | "reporting" | "succeeded" | "partially_completed" | "failed" | "stopped" | "done";
+/**
+ * A step's result, separate from whether it ran: unknown until reported, unverified when nobody reported.
+ * partial: part of it is done (its report says what is left); uncertain: it ran, but whether it worked is not
+ * known; stopped: it was stopped. None of those three counts as done.
+ */
+export type StepOutcome = "unknown" | "done" | "pass" | "fail" | "blocked" | "unverified" | "partial" | "uncertain" | "stopped";
+/** How strong a check's evidence is: A a file or record made and measured now, B output seen in the session, C recollection. */
+export type EvidenceStrength = "A" | "B" | "C";
+/** `done` is the status of plans made before outcomes existed: they ended. `replanning`: the lead's one turn to re-plan stuck steps. */
+export type MissionStatus = "draft" | "running" | "replanning" | "reporting" | "succeeded" | "partially_completed" | "failed" | "stopped" | "done";
 
 /** One check a worker ran (Ensemble's node/report.ts). */
 export type Check = {
@@ -57,21 +64,28 @@ export type Check = {
   verdict: "pass" | "fail" | "blocked" | "skipped";
   detail?: string;
   evidence?: string[];
+  strength?: EvidenceStrength;
   rerun?: { command: string; cwd?: string; expects: "exit_0" | { outputMatches: string } };
 };
 /** What a build produced and a verification tested: a commit, or a content hash when nothing was committed. */
 export type Candidate = { repo?: string; folder?: string; branch?: string; commit?: string; contentHash?: string; url?: string };
-export type AttemptReason = "first" | "repair" | "retest" | "nudge";
-export type Attempt = { n: number; reason: AttemptReason; outcome: string; summary: string | null; checks?: Check[]; candidate?: Candidate; startedAt: string | null; endedAt: string | null };
+/** retry: tried again after it was stuck; amend: redone with what changed since it worked from it. */
+export type AttemptReason = "first" | "repair" | "retest" | "nudge" | "retry" | "amend";
+/** `remaining` and `ownerDecision` come from its report (reports v2): what is left, and the one decision only the owner can make. */
+export type Attempt = { n: number; reason: AttemptReason; outcome: string; summary: string | null; checks?: Check[]; candidate?: Candidate; remaining?: string[]; ownerDecision?: string; startedAt: string | null; endedAt: string | null };
 export type BlockedBy = "needs_owner" | "login_required" | "missing_access" | "environment" | "no_report" | "no_progress" | "unknown";
 /** What a worker reported at the end of its work: on a run card (`data.report`) and in a step's attempts. */
 export type StepReport = {
-  outcome: "done" | "pass" | "fail" | "blocked";
+  outcome: "done" | "pass" | "fail" | "blocked" | "partial" | "uncertain" | "stopped";
   summary: string;
   checks?: Check[];
   subject?: Candidate;
-  evidence?: Array<{ kind: string; ref: string; caption?: string }>;
+  evidence?: Array<{ kind: string; ref: string; caption?: string; strength?: EvidenceStrength }>;
   blockedBy?: BlockedBy;
+  /** What is left, in order (a partial or blocked result). */
+  remaining?: string[];
+  /** The one decision only the owner can make, when there is one. */
+  ownerDecision?: string;
 };
 
 export type RequirementStatus = "open" | "in_progress" | "accepted" | "failed" | "deferred" | "cancelled";
@@ -368,7 +382,12 @@ export type Room = {
   originMessageId?: string | null;
   helper?: { parentNodeId?: string | null; helperNodeId?: string | null; originRoomId?: string | null; originMessageId?: string | null; originPrivate?: boolean; planId?: string | null } | null;
   settings?: Record<string, unknown> | null;
+  /** A crew's or a room's group mode, from a server that has them: how a message that names several nodes is answered. */
+  mode?: GroupMode;
 };
+
+/** coordinated: one node answers, the lead hands parts out. independent: each node named answers on its own, then one brings the answers together. */
+export type GroupMode = "coordinated" | "independent";
 
 export type Computer = { id: string; name: string; platform: string; online: boolean; lastSeenAt: string | null };
 export type Credits = { available: boolean; limit: number; used: number; remaining: number; resetsAt: string; paused: boolean } | null;
@@ -528,7 +547,21 @@ export type CaptureSummary = {
  * to the owner. 2 for both: sign-ins and human checks in a clean browser it sees through by itself, with
  * the page's details on each frame and codes asked on the card.
  */
-export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; takeover?: number; logins?: number; [key: string]: unknown };
+export type DeviceCapabilities = { browser?: number; capture?: CaptureSummary | null; takeover?: number; logins?: number; desktop?: number; desktopReadiness?: DesktopReadiness | null; [key: string]: unknown };
+
+/**
+ * Whether desktop apps can be used on a computer (Ensemble docs/25 §11.8): the owner's screen (`ready`, its
+ * session, whether screen sharing was allowed before, the video format) and the agent's own private screen.
+ * Null when the computer could not tell in time.
+ */
+export type DesktopReadiness = {
+  ready: boolean;
+  session?: "wayland" | "x11" | "none";
+  consent?: "remembered" | "ask";
+  recorder?: "mp4" | "webm" | null;
+  reason?: string;
+  agentScreen?: { ready: boolean; version?: string | null; reason?: string } | null;
+};
 
 /** Ensemble's run approval (`GET /api/approvals`); `jobId` when Ensemble names the job too. */
 export type ApprovalRecord = { id: string; runId: string; jobId?: string | null; taskId: string | null; kind: string; title: string; preview: unknown; decision: string | null; requestedAt: string };
@@ -818,3 +851,144 @@ export type ShareCandidates = {
 
 /** A space of mine (`GET /api/spaces`): the ones I own can hold a room's work. */
 export type OwnSpace = { id: string; name: string; primary: boolean };
+
+/**
+ * A node's memory as its owner's list has it (`GET /api/node/nodes/:id/memory`, Ensemble docs/35 §5.6).
+ * The fields after `createdAt` come from a server with memory scopes; an older one sends the words only.
+ * `ownerWide`: about the owner, read by all their nodes; `supersededById`: a newer revision replaced it.
+ */
+export type NodeMemory = {
+  id: string;
+  content: string;
+  createdAt: string;
+  key?: string | null;
+  scope?: "owner" | "node" | "room" | "project";
+  scopeId?: string | null;
+  scopeTitle?: string | null;
+  ownerWide?: boolean;
+  pinned?: boolean;
+  archived?: boolean;
+  archivedAt?: string | null;
+  supersededById?: string | null;
+  source?: "node" | "owner";
+  authorNodeId?: string | null;
+  updatedAt?: string;
+  lastUsedAt?: string | null;
+};
+
+/** How a node turn ended (`node_turns.outcome`, Ensemble docs/35 §5.7), or where it is while it waits or runs. */
+export type TurnOutcome = "queued" | "running" | "waiting_approval" | "done" | "failed" | "parked" | "coalesced" | "skipped" | "retry" | "cancelled";
+/** How a reply says its work ended, as its trace's report reads it. */
+export type ReplyOutcome = "done" | "partial" | "blocked" | "failed" | "stopped" | "uncertain";
+/** Where a turn ran: Ensemble's loop or the owner's agent, who pays for the model, where its tools act, who keeps the conversation. */
+export type TurnPlacement = { loop?: "ensemble-api" | "subscription-cli"; inference?: "included" | "owner-key" | "local" | "owner-subscription"; toolsAt?: string | null; conversation?: "ensemble" | "agent-app" };
+
+/** One part of a turn's instructions and its size. */
+export type TraceSection = { name: string; tier: string; chars: number; tokens: number };
+/** A part left out to fit its tier's budget. */
+export type TraceDropped = { name: string; tier: string; reason?: string; tokens: number; items?: number };
+/** One of Ensemble's tool calls: how long it ran, the size of its whole result and of what the model was told. */
+export type TraceCall = { kind?: undefined; name: string; ms: number; state: string; resultChars: number; shownChars: number; offloaded?: boolean; readOnly?: boolean };
+/**
+ * One of the agent's own calls on the owner's AI plan (its shell, files, web): how long it ran, the characters
+ * of its input and output, and how Ensemble answered it (`asked`: the owner allowed it on a card).
+ */
+export type TraceOwnCall = { kind: "own"; name: string; ms: number | null; state: "ok" | "failed" | string; inChars: number | "unknown"; outChars: number | "unknown"; verdict: "allowed" | "asked" | "refused" | "unknown" | string };
+/**
+ * The skills, memories and workspace items the instructions chose, with their scores. A newer server keeps
+ * ids, kinds, scores and reasons only: a skill as `skill` (an owner's skill by its id), no words searched,
+ * no titles and no memory keys.
+ */
+export type TraceSelected = {
+  config?: { version?: string; hash?: string };
+  terms?: string[];
+  skills?: Array<{ name?: string; skill?: string; source?: string; score?: number; why?: string[] }>;
+  inline?: { name?: string; skill?: string; source?: string; chars?: number; cut?: boolean } | null;
+  memories?: Array<{ id: string; scope?: string; key?: string | null; pinned?: boolean; rank?: number; why?: string }>;
+  context?: Array<{ group?: string; kind?: string; id: string; title?: string; score?: number | null; why?: string[] }>;
+  left?: { memories?: number; context?: number };
+};
+/** The answer check: what it checked, each round that sent the reply back (or passed it), and whether the last reply passed. */
+export type TraceVerification = { checks?: string[]; rounds?: Array<{ round: number; problems: string | null }>; passed?: boolean | null };
+/** A conversation turn's report: how it ended, what it posted, the files that reached the owner, what is left. */
+export type TraceReplyReport = {
+  kind: "reply";
+  outcome?: ReplyOutcome;
+  stated?: ReplyOutcome;
+  chars?: number;
+  held?: number;
+  messages?: Array<{ id: string; kind: string; type?: string }>;
+  artifacts?: Array<{ id: string; kind: string; to: "chat" | "files" }>;
+  remaining?: string;
+  verified?: boolean | null;
+  emptyReply?: boolean;
+  falseClaims?: number;
+};
+/** A plan step's report (its `node_step_report` call), or that it sent none. */
+export type TraceStepReport = { kind: "step"; reported?: boolean; tool?: string; outcome?: string; checks?: number; passed?: number; evidence?: number; blockedBy?: string; summary?: string };
+
+/** A turn's trace (`node_turn_traces`): sizes, names, timings and models, never what anyone wrote or what a tool returned. */
+export type TurnTraceRecord = {
+  nodeId: string;
+  createdAt: string;
+  instructionVersion: string | null;
+  instructionHash: string | null;
+  sections: { hashes?: Record<string, string>; list?: TraceSection[]; dropped?: TraceDropped[] } | null;
+  toolSchemaHash: string | null;
+  toolCount: number | null;
+  modelRequested: string | null;
+  modelSent: string | null;
+  modelReported: string | null;
+  provider: string | null;
+  effort: string | null;
+  placement: TurnPlacement | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  credits: number | null;
+  costUsd: number | null;
+  calls: Array<TraceCall | TraceOwnCall>;
+  selected: TraceSelected | null;
+  verification: TraceVerification | null;
+  report: TraceReplyReport | TraceStepReport | null;
+  /** How the loop ran: Ensemble's (`kind: "ensemble"`) or the owner's agent (`kind: "subscription"`). */
+  loop: Record<string, unknown> | null;
+  error: string | null;
+};
+/** One decision Node made about a turn (`node_decisions`): routing and, later, skills, memory, context, sessions, models. */
+export type TraceDecision = {
+  id: string;
+  kind: string;
+  nodeId: string | null;
+  turnId: string | null;
+  configVersion: string;
+  inputs: Record<string, unknown>;
+  scores: unknown;
+  choice: Record<string, unknown>;
+  ambiguous: boolean;
+  createdAt: string;
+};
+/** The turn itself, as the trace route has it. */
+export type TurnRecord = {
+  id: string;
+  nodeId: string;
+  roomId: string | null;
+  reason: string;
+  private: boolean;
+  lane: string | null;
+  audience: string;
+  triggerMessageId: string | null;
+  planId: string | null;
+  planStep: string | null;
+  attempt: number;
+  originTurnId: string | null;
+  status: string;
+  outcome: TurnOutcome | string | null;
+  placement: TurnPlacement | null;
+  model: string | null;
+  credits: number | null;
+  error: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+};
+/** `GET /api/node/turns/:turnId/trace`, for the node's owner only: the turn, its trace (null while it runs) and the decisions about it. */
+export type TurnTraceView = { turn: TurnRecord; trace: TurnTraceRecord | null; decisions: TraceDecision[] };

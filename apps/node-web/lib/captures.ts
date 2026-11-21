@@ -1,7 +1,8 @@
 /**
  * Browsing and capture on the owner's computer in words (Ensemble docs/35 §8.16, docs/25 §10): why a
  * capture is held for its owner's preview, the held card's state, why a run's live view is paused,
- * the live picture's details from its headers, and what a computer can capture (or what to run there).
+ * the live picture's details from its headers, what a computer can capture (or what to run there), and
+ * whether its desktop apps can be used.
  */
 import type { CaptureSummary, DeviceCapabilities, LiveFrame } from "./types";
 
@@ -125,4 +126,31 @@ export function captureLine(device: { name: string; capabilities?: DeviceCapabil
   const video = capture.video === "mp4" ? " Videos are MP4." : capture.video === "webm" ? " Videos are WebM." : "";
   const text = `${can.length ? `Captures ${list(can)}.` : "Browses the web."}${video}`;
   return capture.setup ? { state: "ready", text, command } : { state: "ready", text };
+}
+
+export type DesktopLine = { ready: boolean; text: string; facts: string[] };
+
+const SESSIONS: Record<string, string> = { wayland: "Wayland", x11: "X11" };
+
+/**
+ * Whether nodes can use desktop apps on a computer (Ensemble docs/25 §11, docs/35 §8.16.5): on an agent
+ * screen of their own, on the owner's screen, both or neither, in a few words, and the facts behind it
+ * (each screen's state or what it needs, whether screen sharing was allowed before, the video format)
+ * for its ⓘ. Null when the computer does not report desktop control (another system, an older Ensemble).
+ */
+export function desktopLine(capabilities: DeviceCapabilities | null | undefined): DesktopLine | null {
+  if (!capabilities || typeof capabilities.desktop !== "number" || capabilities.desktop < 1) return null;
+  const readiness = capabilities.desktopReadiness;
+  if (!readiness || typeof readiness !== "object") return { ready: false, text: "Desktop apps: not checked yet.", facts: ["The computer has not said yet whether its screens are ready."] };
+  const agent = readiness.agentScreen && typeof readiness.agentScreen === "object" ? readiness.agentScreen : null;
+  const agentReady = agent?.ready === true;
+  const ownerReady = readiness.ready === true;
+  const text = agentReady && ownerReady ? "Desktop apps: on an agent screen or yours." : agentReady ? "Desktop apps: on an agent screen." : ownerReady ? "Desktop apps: on your screen." : "Desktop apps: not ready.";
+  const session = SESSIONS[readiness.session ?? ""];
+  const facts = [
+    agentReady ? `Agent screen: ready${agent?.version ? ` (${agent.version})` : ""}. A private desktop of the node's own, which you can watch.` : `Agent screen: not ready.${agent?.reason ? ` ${agent.reason}` : ""}`,
+    ownerReady ? `Your screen: ready${session ? ` (${session})` : ""}. ${readiness.consent === "remembered" ? "Allowed before: it starts without asking." : "The computer asks you the first time."}` : `Your screen: not ready.${readiness.reason ? ` ${readiness.reason}` : ""}`,
+    ...(agentReady || ownerReady ? [readiness.recorder === "mp4" ? "Recordings are MP4." : readiness.recorder === "webm" ? "Recordings are WebM." : "No video encoder works there, so it takes pictures only."] : []),
+  ];
+  return { ready: agentReady || ownerReady, text, facts };
 }

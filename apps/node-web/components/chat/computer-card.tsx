@@ -7,16 +7,16 @@
  * this folder from now on, Only this mission, Just once) or Don't allow: the owner is asked at most once
  * per folder. The node's call waits for the answer and goes on by itself.
  * The same card asks about one of the agent's own calls on the owner's AI plan (changes and commands in a
- * folder, an address, a program or tool, a call that names no path) and about an app on the owner's
- * screen: exactly the answers Ensemble offers ("Allow", "Allow for this run", "Allow once", "This
- * mission"), each one press, or Don't allow.
+ * folder, an address, a program or tool, a call that names no path) and about an app on a screen, the
+ * owner's or the node's own agent screen: exactly the answers Ensemble offers ("Allow", "Allow for this
+ * run", "Allow once", "This mission"), each one press, or Don't allow.
  * The answer is Ensemble's decision for it (`POST /api/decisions/:id/decide`, the option as `reason`),
  * so answering it in the Hub, the CLI or on a phone settles this card too.
  */
 import { AppWindow, Check, FolderOpen, Globe, Monitor, SquareTerminal, X, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 import { cardWords, computerAskKind, ownAsk, type ComputerAskKind } from "@/lib/cards";
-import { answerScope, choiceHint, computerAnswered, computerChoices, computerDecision } from "@/lib/checkpoints";
+import { answerScope, choiceHint, computerAnswered, computerAskInfo, computerChoices, computerDecision } from "@/lib/checkpoints";
 import { answerLocally, useDecide } from "@/lib/hooks";
 import type { Badge } from "@/lib/plan";
 import { clock } from "@/lib/text";
@@ -31,6 +31,8 @@ type ComputerData = {
   capability?: string;
   label?: string;
   scope?: "folder" | "origin" | "app";
+  /** An app's screen: the node's own agent screen or the owner's (absent: the owner's). */
+  screen?: "agent" | "owner";
   deviceName?: string;
   call?: string;
   options?: string[];
@@ -58,16 +60,6 @@ const WHERE: Record<ComputerAskKind, { icon: LucideIcon; name: string } | null> 
   own: null,
 };
 
-/** What the answers mean, in the card's ⓘ: for the agent's own calls and an app on the owner's screen. */
-const ASK_INFO: Partial<Record<ComputerAskKind, string>> = {
-  own_folder: "Your agent's own tools, on your AI plan, want to change files or run commands here. Allow covers them in this folder from now on; Allow for this run, until this run ends.",
-  own_address: "Your agent's own tools, on your AI plan, want to call this address. Allow covers it from now on; Allow for this run, until this run ends.",
-  own_call: "A program that can change your system, or a tool Ensemble does not know, is never allowed beyond this run.",
-  own_unnamed: "A call that names no file or folder is asked about each time.",
-  own: "Your agent's own tools, on your AI plan, want to make this call. Each answer allows just what it says.",
-  app: "Password managers, system settings, terminals, banking or wallet apps, and your own pointer and keyboard are asked about once per app for this piece of work, never for good.",
-};
-
 export function ComputerCard({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
   const data = message.data as ComputerData;
   const decide = useDecide();
@@ -81,7 +73,7 @@ export function ComputerCard({ message, ctx, node }: { message: Message; ctx: Me
   const decisionId = typeof data.decisionId === "string" && data.decisionId ? data.decisionId : null;
   const kind = computerAskKind(data);
   const where = WHERE[kind];
-  const info = ASK_INFO[kind];
+  const info = computerAskInfo(data);
   const answered = data.answer && (kind === "app" || ownAsk(kind)) ? answerScope(data.answer) : data.answer;
 
   const answer = (option: string | null) => {

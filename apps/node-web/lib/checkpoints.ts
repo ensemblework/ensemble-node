@@ -69,15 +69,39 @@ export function computerChoices(data: CardData): Array<{ option: string; label: 
     }));
 }
 
+/**
+ * How far "for this run" goes for the agent's own calls: Ensemble keeps that answer for the plan the call
+ * works for, else for this chat, for up to 30 days (its node/device-tools.ts `missionOf`). A card from a
+ * plan's step names the plan (`data.plan`); one from the lead's own turn for a plan does not, and reads as
+ * the chat.
+ */
+export function runReach(data: CardData): { covers: string; within: string } {
+  return text(data?.plan?.id) ? { covers: "this plan's work", within: "for this plan's work" } : { covers: "this chat, for up to 30 days", within: "in this chat for up to 30 days" };
+}
+
+/** What a computer card's answers mean, for its ⓘ: the agent's own calls and an app on a screen; none for the node's computer tools. */
+export function computerAskInfo(data: CardData): string | null {
+  const kind = computerAskKind(data);
+  const run = `Allow for this run covers ${runReach(data).covers}.`;
+  if (kind === "own_folder") return `Your agent's own tools, on your AI plan, want to change files or run commands here. Allow covers them in this folder from now on. ${run}`;
+  if (kind === "own_address") return `Your agent's own tools, on your AI plan, want to call this address. Allow covers it from now on. ${run}`;
+  if (kind === "own_call") return `A program that can change your system, or a tool Ensemble does not know, is never allowed for good. ${run}`;
+  if (kind === "own_unnamed") return "A call that names no file or folder is asked about each time.";
+  if (kind === "own") return "Your agent's own tools, on your AI plan, want to make this call. Each answer allows just what it says.";
+  if (kind === "app") return "Password managers, system settings, terminals, banking or wallet apps, and your own pointer and keyboard are asked about once per app for this piece of work, never for good.";
+  return null;
+}
+
 /** What an answer covers, for its button's tooltip. */
 export function choiceHint(option: string, data: CardData): string {
   const kind = computerAskKind(data);
   const label = text(data?.label);
   const run = /for this run$/i.test(option);
-  if (kind === "own_folder") return `Changes and commands in ${label || "this folder"}, ${run ? "until this run ends" : "from now on"}`;
-  if (kind === "own_address") return `Calls to ${label || "this address"}, ${run ? "until this run ends" : "from now on"}`;
+  const reach = runReach(data);
+  if (kind === "own_folder") return `Changes and commands in ${label || "this folder"}, ${run ? reach.within : "from now on"}`;
+  if (kind === "own_address") return `Calls to ${label || "this address"}, ${run ? reach.within : "from now on"}`;
   if (/^(allow )?once$/i.test(option)) return "Only this call";
-  if (run) return "Until this run ends";
+  if (run) return `Covers ${reach.covers}`;
   if (/mission/i.test(option)) return "Until this piece of work ends";
   if (/^always/i.test(option)) {
     const place = data?.scope === "origin" ? label || "this address" : `${label || "this folder"}${text(data?.deviceName) ? ` on ${text(data?.deviceName)}` : ""}`;

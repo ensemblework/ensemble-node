@@ -4,7 +4,7 @@
  * ended, its model, tokens and time; the instructions by part and tier; tool calls with the agent's own
  * calls marked and how they were answered; what it was given, with no titles or keys; decisions, the answer
  * check and the report); questions about the agent's own calls (changes in a folder, a program) with
- * exactly Ensemble's answers, one press, folded into their checkpoint; an app on the owner's screen (This
+ * exactly Ensemble's answers, one press, folded into their checkpoint; an app on the node's own screen (This
  * mission or Don't allow); a stuck plan step answered with one press and a plan re-planning, with a partial
  * step's report and what is left; a node's memories (markers, pin, edit, restore, delete, two rows at
  * once with one refused after the drawer closed); a crew's group
@@ -44,7 +44,7 @@ function fixture() {
       message("dm-a3", "r1", "text", "Fixed the build: the site builds again. The docs page still needs a screenshot.", { turnId: "t1" }),
       computer("c-own-write", "@assistant-3 wants to run commands in ~/projects/site on Studio", { decisionId: "dec-own-write", capability: "run", scope: "folder", label: "~/projects/site", call: "Edit: src/build.ts", options: ["Allow changes and commands", "Allow changes and commands for this run"] }),
       computer("c-own-program", "@assistant-3 wants to run crontab on Studio", { decisionId: "dec-own-program", capability: "run", scope: "folder", label: "crontab", call: "crontab -e", own: { kind: "program" }, options: ["Allow once", "Allow for this run"] }),
-      computer("c-app", "@assistant-3 wants to use Bitwarden on your screen on Studio", { decisionId: "dec-app", capability: "desktop", scope: "app", label: "Bitwarden", call: "desktop_act: click the vault", options: ["This mission"] }),
+      computer("c-app", "@assistant-3 wants to use Terminal on its own screen on Studio", { decisionId: "dec-app", capability: "desktop", scope: "app", screen: "agent", label: "Terminal", call: "desktop_act: open Terminal", options: ["This mission"] }),
     ],
     crew: [
       message("crew", "u2", "text", "@lead ship the login fix, tested on Safari.", {}, { authorKind: "human", authorNodeId: null }),
@@ -282,25 +282,29 @@ try {
       const write = timeline.locator('[id="m-c-own-write"]');
       await write.getByText("@assistant-3 wants to run commands in ~/projects/site on Studio").waitFor();
       assert.deepEqual(await write.getByRole("group", { name: "Your answer" }).getByRole("button").allInnerTexts(), ["Allow", "Allow for this run", "Don't allow"]);
-      assert.equal(await write.getByRole("button", { name: "Allow for this run" }).getAttribute("title"), "Changes and commands in ~/projects/site, until this run ends");
+      assert.equal(await write.getByRole("button", { name: "Allow for this run" }).getAttribute("title"), "Changes and commands in ~/projects/site, in this chat for up to 30 days");
       assert.equal(await write.getByRole("button", { name: "About this question" }).count(), 1, "how far each answer goes is in its ⓘ");
       await write.scrollIntoViewIfNeeded();
       await shot("own-ask", write);
       await fits("an own-tool card");
+      await write.getByRole("button", { name: "About this question" }).click();
+      await page.getByRole("tooltip").getByText("Allow for this run covers this chat, for up to 30 days.", { exact: false }).waitFor();
+      await page.keyboard.press("Escape");
+      await page.getByRole("tooltip").waitFor({ state: "detached" });
       await write.getByRole("button", { name: "Allow for this run" }).click();
       await write.getByRole("button", { name: "Allowed @assistant-3 to run commands in ~/projects/site · For this run" }).waitFor();
       assert.deepEqual(state.calls.find((row) => row.decide === "dec-own-write"), { decide: "dec-own-write", body: { decision: "allow", scope: "once", reason: "Allow changes and commands for this run" } }, "one press sends Ensemble's own words");
 
-      // A program: once or for this run; an app on the owner's screen: this mission or not.
+      // A program: once or for this run; an app on the node's own agent screen: this mission or not.
       const program = timeline.locator('[id="m-c-own-program"]');
       assert.deepEqual(await program.getByRole("group", { name: "Your answer" }).getByRole("button").allInnerTexts(), ["Allow once", "Allow for this run", "Don't allow"]);
       const app = timeline.locator('[id="m-c-app"]');
       assert.deepEqual(await app.getByRole("group", { name: "Your answer" }).getByRole("button").allInnerTexts(), ["This mission", "Don't allow"]);
-      assert.ok(await app.getByText("Bitwarden", { exact: true }).isVisible());
+      assert.ok(await app.getByText("Terminal", { exact: true }).isVisible());
       await app.scrollIntoViewIfNeeded();
       await shot("app-ask", app);
       await app.getByRole("button", { name: "Don't allow" }).click();
-      await app.getByRole("button", { name: "Didn't allow @assistant-3 to use Bitwarden on your screen" }).waitFor();
+      await app.getByRole("button", { name: "Didn't allow @assistant-3 to use Terminal on its own screen" }).waitFor();
       assert.deepEqual(state.calls.find((row) => row.decide === "dec-app")?.body, { decision: "deny", scope: "once" });
 
       // A plan re-planning, a partial step with what is left, and the stuck step's one decision.

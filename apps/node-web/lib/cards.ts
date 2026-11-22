@@ -78,7 +78,8 @@ const COMPUTER_VERBS: Record<string, string> = { run: "run commands", git: "read
  * or at an address; one of the agent's own calls on its owner's AI plan, by what an answer covers
  * (`own_folder`: changes and commands in a folder; `own_address`: calls to an address; `own_call`: a
  * program that changes the system, or a tool Ensemble does not know; `own_unnamed`: one call that names
- * no path; `own`: one whose kind the card does not make clear); or an app on the owner's screen (`app`).
+ * no path; `own`: one whose kind the card does not make clear); or an app on a screen (`app`): the
+ * owner's, or the node's own agent screen (`data.screen`).
  */
 export type ComputerAskKind = "folder" | "origin" | "own_folder" | "own_address" | "own_call" | "own_unnamed" | "own" | "app";
 
@@ -131,12 +132,13 @@ export function computerAction(data: { capability?: unknown; label?: unknown; sc
 /**
  * The same for any computer card: a program or a tool by its name ("run crontab", "use write_file from
  * desktop-commander"), a call that names no path ("change files it does not name"), an app on the
- * owner's screen ("use Bitwarden on your screen"), an own call of a kind the card does not make clear
- * ("use its own tools for crontab"), else as `computerAction`.
+ * owner's screen ("use Bitwarden on your screen") or on the node's own agent screen (`data.screen:
+ * "agent"`: "use Terminal on its own screen"; a card without `screen` is the owner's), an own call of a
+ * kind the card does not make clear ("use its own tools for crontab"), else as `computerAction`.
  */
 export function computerAskAction(data: { capability?: unknown; label?: unknown; scope?: unknown; call?: unknown; options?: unknown; [key: string]: unknown } | null | undefined): string {
   const kind = computerAskKind(data);
-  if (kind === "app") return `use ${text(data?.label, "an app")} on your screen`;
+  if (kind === "app") return `use ${text(data?.label, "an app")} on ${data?.screen === "agent" ? "its own screen" : "your screen"}`;
   if (kind === "own_call") {
     const named = (data?.own as { kind?: unknown } | null | undefined)?.kind;
     const use = named === "tool" || (named !== "program" && /^use:/i.test(text(data?.call, "")));

@@ -73,7 +73,9 @@ test("the agent's own calls, an app on the owner's screen and a stuck plan step 
   assert.equal(cardWords(tool, "assistant-3", "A").wants, "wants to use write_file from desktop-commander on Laptop");
   assert.equal(cardWords(unnamed, "assistant-3", "A").wants, "wants to read files it does not name");
   assert.equal(cardWords(address, "assistant-3", "A").wants, "wants to call http://192.168.1.20:8080");
-  assert.equal(cardWords(app, "assistant-3", "A").title, "@assistant-3 wants to use Bitwarden on your screen on Laptop");
+  assert.equal(cardWords(app, "assistant-3", "A").title, "@assistant-3 wants to use Bitwarden on your screen on Laptop", "a card without its screen: the owner's");
+  assert.equal(cardWords({ ...app, label: "Terminal", screen: "agent" }, "assistant-3", "A").title, "@assistant-3 wants to use Terminal on its own screen on Laptop", "an app on the node's own agent screen");
+  assert.equal(cardWords({ ...app, screen: "owner" }, "assistant-3", "A").wants, "wants to use Bitwarden on your screen on Laptop");
   assert.deepEqual(cardWords({ type: "plan_decision", approveLabel: "Redo with the new version", discardLabel: "Keep the result" }, "lead", "Crew"), { title: "@lead's plan needs your decision", wants: "needs your decision on its plan", approve: "Redo with the new version", discard: "Keep the result" });
   assert.equal(cardWords({ type: "plan_decision" }, "lead", "Crew").approve, "Try again", "a card without its labels still reads");
   assert.equal(cardWords({ type: "plan_decision" }, "lead", "Crew").discard, "Finish without it");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { approvalCheckpoint, cardCheckpoint, cardOpen, choiceHint, computerAnswered, computerChoices, computerDecision, computerOptions, decisionCheckpoint, planDecisionChoices, planDecisionStep, runDecisionAnswered, siteName, withLocalAnswer } from "./checkpoints";
+import { approvalCheckpoint, cardCheckpoint, cardOpen, choiceHint, computerAnswered, computerAskInfo, computerChoices, computerDecision, computerOptions, decisionCheckpoint, planDecisionChoices, planDecisionStep, runDecisionAnswered, siteName, withLocalAnswer } from "./checkpoints";
 import type { AgentDecision } from "./types";
 
 const where = { handle: "assistant-3", roomTitle: "Launch" };
@@ -145,13 +145,29 @@ test("the agent's own calls and an app on the owner's screen offer exactly Ensem
   for (const data of [write, program, unnamed, address, app]) assert.deepEqual(computerChoices(data).map((row) => row.option), data.options, "each button sends Ensemble's own words, in its order");
   assert.deepEqual(computerDecision("Allow changes and commands for this run"), { decision: "allow", scope: "once", reason: "Allow changes and commands for this run" }, "Ensemble reads the answer from its own words");
   assert.equal(choiceHint("Allow changes and commands", write), "Changes and commands in ~/projects/site, from now on");
-  assert.equal(choiceHint("Allow changes and commands for this run", write), "Changes and commands in ~/projects/site, until this run ends");
-  assert.equal(choiceHint("Allow this address for this run", address), "Calls to http://192.168.1.20:8080, until this run ends");
+  assert.equal(choiceHint("Allow changes and commands for this run", write), "Changes and commands in ~/projects/site, in this chat for up to 30 days");
+  assert.equal(choiceHint("Allow this address for this run", address), "Calls to http://192.168.1.20:8080, in this chat for up to 30 days");
   assert.equal(choiceHint("Allow once", program), "Only this call");
-  assert.equal(choiceHint("Allow for this run", program), "Until this run ends");
+  assert.equal(choiceHint("Allow for this run", program), "Covers this chat, for up to 30 days");
+  const step = { plan: { id: "plan-1", step: "s2" } };
+  assert.equal(choiceHint("Allow changes and commands for this run", { ...write, ...step }), "Changes and commands in ~/projects/site, for this plan's work", "a card from a plan's step: that plan");
+  assert.equal(choiceHint("Allow for this run", { ...program, ...step }), "Covers this plan's work");
   assert.equal(choiceHint("This mission", app), "Until this piece of work ends");
   assert.equal(choiceHint("Always for this folder", { scope: "folder", label: "live-test", deviceName: "Studio", options: ["Once", "Always for this folder"] }), "From now on, for this node in live-test on Studio");
   assert.equal(choiceHint("Once", { scope: "origin", options: ["Once"] }), "Only this call");
+});
+
+test("a computer card's ⓘ says how far each answer goes: the plan's work, else the chat for up to 30 days", () => {
+  const write = { type: "computer", capability: "run", scope: "folder", label: "~/projects/site", options: ["Allow changes and commands", "Allow changes and commands for this run"] };
+  const program = { type: "computer", capability: "run", scope: "folder", label: "crontab", options: ["Allow once", "Allow for this run"], call: "crontab -e" };
+  const address = { type: "computer", capability: "http", scope: "origin", label: "http://192.168.1.20:8080", options: ["Allow this address", "Allow this address for this run"] };
+  const step = { plan: { id: "plan-1", step: "s2" } };
+  assert.equal(computerAskInfo(write), "Your agent's own tools, on your AI plan, want to change files or run commands here. Allow covers them in this folder from now on. Allow for this run covers this chat, for up to 30 days.");
+  assert.match(computerAskInfo({ ...address, ...step }) ?? "", /Allow covers it from now on\. Allow for this run covers this plan's work\.$/);
+  assert.match(computerAskInfo(program) ?? "", /never allowed for good\. Allow for this run covers this chat, for up to 30 days\.$/);
+  assert.equal(computerAskInfo({ type: "computer", scope: "folder", options: ["Allow once"] }), "A call that names no file or folder is asked about each time.");
+  assert.equal(computerAskInfo({ type: "computer", scope: "folder", options: ["Once", "This mission", "Always for this folder"] }), null, "the node's own computer tools: no ⓘ");
+  for (const data of [write, program, address, { ...write, ...step }, { type: "computer", scope: "app", options: ["This mission"] }]) assert.doesNotMatch(computerAskInfo(data) ?? "", /\u2014|--|until this run ends/);
 });
 
 test("an answer about the agent's own calls or an app folds into who was allowed what, and for how long", () => {
@@ -162,6 +178,8 @@ test("an answer about the agent's own calls or an app folds into who was allowed
   assert.equal(words({ type: "computer", capability: "files", scope: "folder", label: "files it does not name", options: ["Allow once"], status: "denied", answer: "No" }), "Didn't allow @assistant-3 to change files it does not name");
   assert.equal(words({ type: "computer", capability: "desktop", scope: "app", label: "Bitwarden", options: ["This mission"], status: "allowed", answer: "This mission" }), "Allowed @assistant-3 to use Bitwarden on your screen · This mission");
   assert.equal(words({ type: "computer", capability: "desktop", scope: "app", label: "the pointer and keyboard", options: ["This mission"], status: "expired" }), "No answer in time: @assistant-3 asked to use the pointer and keyboard on your screen");
+  assert.equal(words({ type: "computer", capability: "desktop", scope: "app", screen: "agent", label: "Terminal", options: ["This mission"], status: "allowed", answer: "This mission" }), "Allowed @assistant-3 to use Terminal on its own screen · This mission", "an app on the node's own agent screen");
+  assert.equal(words({ type: "computer", capability: "desktop", scope: "app", screen: "owner", label: "Bitwarden", options: ["This mission"], status: "denied", answer: "No" }), "Didn't allow @assistant-3 to use Bitwarden on your screen");
   const local = computerAnswered("Allow for this run", new Date("2026-11-21T10:00:00Z"));
   assert.equal(words(withLocalAnswer({ ...program, status: "pending" }, local)), "Allowed @assistant-3 to run crontab · For this run", "an answer given here reads at once");
 });

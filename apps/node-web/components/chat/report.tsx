@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * What a worker reported (Ensemble's node/report.ts): its outcome, its checks with their verdicts, and
- * the candidate it built or tested. Used by run cards (`data.report`) and by a plan step's attempts.
+ * What a worker reported (Ensemble's node/report.ts): its outcome, its checks with their verdicts and the
+ * strength of their evidence, the candidate it built or tested, and what is left. Used by run cards
+ * (`data.report`) and by a plan step's attempts.
  */
 import { CircleCheck, CircleDashed, CircleSlash, CircleX, GitCommitHorizontal } from "lucide-react";
-import { blockedReason, candidateLabel, checkTally, outcomeBadge, verdictLabel } from "@/lib/plan";
+import { blockedReason, candidateLabel, checkTally, leftLines, outcomeBadge, strengthWords, verdictLabel } from "@/lib/plan";
 import { candidateWords } from "@/lib/plan-facts";
 import type { Candidate, Check, StepReport } from "@/lib/types";
 import { External, Pill } from "../ui";
@@ -29,6 +30,11 @@ export function CheckList({ checks }: { checks: readonly Check[] }) {
           <VerdictIcon verdict={check.verdict} />
           <span className="min-w-0 flex-1">
             <span className="font-medium">{check.name}</span>
+            {strengthWords(check.strength) ? (
+              <span className="ml-1.5 rounded border border-line px-1 align-[1px] text-[10px] text-muted" title={strengthWords(check.strength)!}>
+                {check.strength}
+              </span>
+            ) : null}
             {check.detail ? <span className="block whitespace-pre-wrap break-words text-xs text-muted">{check.detail}</span> : null}
             {check.rerun ? (
               <code className="mt-0.5 block truncate font-mono text-[11px] text-muted" title={check.rerun.command}>
@@ -65,7 +71,22 @@ export function CandidateTag({ candidate, label = "Candidate", verb }: { candida
   );
 }
 
-/** A run's structured report: outcome, checks, what it built or tested, links it gave. A run card shows its summary on its own (`summary` false). */
+/** What a report or attempt says is left, and the decision only the owner can make. */
+export function LeftLines({ report }: { report: { remaining?: unknown; ownerDecision?: unknown } | null | undefined }) {
+  const lines = leftLines(report);
+  if (!lines.length) return null;
+  return (
+    <ul className="space-y-0.5 text-xs text-muted" aria-label="What is left">
+      {lines.map((line) => (
+        <li key={line} className="break-words">
+          {line}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** A run's structured report: outcome, checks, what it built or tested, what is left, links it gave. A run card shows its summary on its own (`summary` false). */
 export function ReportView({ report, handles, summary = true }: { report: StepReport; handles: ReadonlySet<string>; summary?: boolean }) {
   const badge = outcomeBadge(report.outcome);
   const tally = checkTally(report.checks);
@@ -84,6 +105,7 @@ export function ReportView({ report, handles, summary = true }: { report: StepRe
       </div>
       {summary && report.summary ? <RichText text={report.summary} handles={handles} small kindLinks /> : null}
       <CheckList checks={report.checks ?? []} />
+      <LeftLines report={report} />
       {links.length ? (
         <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
           {links.map((row) => (

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Download, FolderOpen, Pause, Play, SquareTerminal, Trash2 } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { CLI_COMMAND, ENSEMBLE_LINKS } from "@/lib/config";
@@ -18,11 +18,10 @@ import { ModelPicker } from "./model-picker";
 import { HandleInput } from "./handle-input";
 import { AppearancePicker } from "./node-avatar";
 import { NodeCompanion } from "./node-companion";
+import { NodeMemories } from "./node-memory";
 import { EvidenceGallery } from "./chat/evidence";
 import { NodeRoutines } from "./routines";
 import { Button, External, Field, Input, Notice, Segmented, Spinner, Switch, Textarea } from "./ui";
-
-type Memory = { id: string; content: string; createdAt: string };
 
 function Section({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -102,11 +101,9 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
   const [role, setRole] = useState(node.role);
   const [charter, setCharter] = useState(node.charter);
   const [avatar, setAvatar] = useState<Avatar>(node.avatar);
-  const [memoryText, setMemoryText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<{ name?: string; slug?: string }>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const memory = useQuery({ queryKey: keys.memory(node.id), queryFn: () => api<{ memories: Memory[] }>(`/api/node/nodes/${node.id}/memory`).then((result) => result.memories) });
   const devices = useDevices();
   const boot = useBootstrap();
   const sharedRooms = node.autonomy?.sharedRooms ?? "ask";
@@ -288,34 +285,7 @@ export function NodeSettings({ node, onExport }: { node: NodeFull; onExport?: ()
       </Section>
 
       <Section title="Memory" hint={`What ${node.name} remembers between chats.`}>
-        <div className="flex gap-2">
-          <Input value={memoryText} onChange={(event) => setMemoryText(event.target.value)} placeholder="Our docs use British spelling" maxLength={500} aria-label="Something to remember" />
-          <Button
-            tone="ghost"
-            disabled={!memoryText.trim()}
-            onClick={() =>
-              void api(`/api/node/nodes/${node.id}/memory`, { body: { content: memoryText } })
-                .then(() => {
-                  setMemoryText("");
-                  void client.invalidateQueries({ queryKey: keys.memory(node.id) });
-                })
-                .catch(toastError)
-            }
-          >
-            Add
-          </Button>
-        </div>
-        <ul className="space-y-1.5">
-          {(memory.data ?? []).map((row) => (
-            <li key={row.id} className="flex items-start justify-between gap-2 rounded-xl border border-line bg-bg px-3 py-2 text-sm">
-              <span>{row.content}</span>
-              <button className="text-muted hover:text-danger" aria-label="Forget" onClick={() => void api(`/api/node/nodes/${node.id}/memory/${row.id}`, { method: "DELETE" }).then(() => client.invalidateQueries({ queryKey: keys.memory(node.id) }))}>
-                <Trash2 size={14} />
-              </button>
-            </li>
-          ))}
-          {memory.data && !memory.data.length ? <li className="text-sm text-muted">Nothing yet.</li> : null}
-        </ul>
+        <NodeMemories nodeId={node.id} />
       </Section>
 
       <section className="flex flex-wrap gap-2 border-t border-line pt-5">

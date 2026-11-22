@@ -14,6 +14,7 @@ export type MissionView = { status: Exclude<MissionStatus, "done">; label: strin
 const MISSION: Record<Exclude<MissionStatus, "done">, Badge & { live: boolean }> = {
   draft: { label: "Planning", tone: "accent", live: true },
   running: { label: "Running", tone: "accent", live: true },
+  replanning: { label: "Re-planning", tone: "accent", live: true },
   reporting: { label: "Reporting", tone: "accent", live: true },
   succeeded: { label: "Succeeded", tone: "ok", live: false },
   partially_completed: { label: "Partly done", tone: "warn", live: false },
@@ -33,7 +34,7 @@ export function missionView(status: string | null | undefined): MissionView {
 /** Outcomes that let the steps after it start. */
 const SATISFIED: ReadonlySet<string> = new Set(["done", "pass"]);
 /** Outcomes that hold the steps after it until a repair or a decision. */
-const HOLDING: ReadonlySet<string> = new Set(["fail", "blocked", "unverified"]);
+const HOLDING: ReadonlySet<string> = new Set(["fail", "blocked", "unverified", "partial", "uncertain", "stopped"]);
 const ENDED: ReadonlySet<string> = new Set(["done", "blocked", "skipped", "stopped"]);
 
 /** A step's current outcome; a step from before outcomes has the one its status implies. */
@@ -100,6 +101,9 @@ const OUTCOME: Record<string, Badge> = {
   fail: { label: "Fail", tone: "danger" },
   blocked: { label: "Blocked", tone: "warn" },
   unverified: { label: "Unverified", tone: "warn" },
+  partial: { label: "Partly done", tone: "warn" },
+  uncertain: { label: "Uncertain", tone: "warn" },
+  stopped: { label: "Stopped", tone: "muted" },
 };
 
 export function outcomeBadge(outcome: string | null | undefined): Badge | null {
@@ -118,11 +122,11 @@ export function stepBadges(step: PlanStep, steps: readonly PlanStep[]): { status
   if (held) return { status: { label: "Held", tone: "warn" }, outcome: null, held, holder };
   const status = STATUS[step.status] ?? { label: step.status, tone: "muted" as const };
   if (step.status === "done" && verdict && outcome !== "done") return { status: { label: "Finished", tone: "muted" }, outcome: verdict, held, holder };
-  const repeats = (step.status === "done" && outcome === "done") || (step.status === "blocked" && outcome === "blocked") || step.status === "working" || step.status === "waiting";
+  const repeats = (step.status === "done" && outcome === "done") || (step.status === "blocked" && outcome === "blocked") || (step.status === "stopped" && outcome === "stopped") || step.status === "working" || step.status === "waiting";
   return { status, outcome: repeats ? null : verdict, held, holder };
 }
 
-const KIND: Record<string, string> = { build: "Build", verify: "Verify", write: "Write", research: "Research" };
+const KIND: Record<string, string> = { build: "Build", verify: "Verify", review: "Review", write: "Write", research: "Research" };
 const EXECUTOR: Record<string, string> = { self: "on its own", session: "agent session", helper: "helper" };
 
 /** "Verify · agent session": what a step does and who does it; empty for a plan from before kinds. */
@@ -130,18 +134,18 @@ export function stepKindLine(step: Pick<PlanStep, "kind" | "executor">): string 
   return [step.kind ? KIND[step.kind] : null, step.executor ? EXECUTOR[step.executor] : null].filter(Boolean).join(" · ");
 }
 
-const REASON: Record<string, string> = { repair: "repair", retest: "retest", nudge: "asked to report" };
+const REASON: Record<string, string> = { repair: "repair", retest: "retest", nudge: "asked to report", retry: "tried again", amend: "redone with the change" };
 
-/** "Attempt 2 · repair", "Attempt 2 · retest"; the first is just "Attempt 1". */
+/** "Attempt 2 · repair", "Attempt 2 · tried again"; the first is just "Attempt 1". */
 export function attemptLabel(attempt: Pick<Attempt, "n" | "reason">): string {
   const reason = REASON[attempt.reason];
   return `Attempt ${attempt.n}${reason ? ` · ${reason}` : ""}`;
 }
 
-/** A step's attempts, oldest first: listed only when there was more than one, or the one has checks or a candidate. */
+/** A step's attempts, oldest first: listed only when there was more than one, or the one has checks, a candidate or work left. */
 export function attemptsToShow(step: Pick<PlanStep, "attempts">): Attempt[] {
   const attempts = Array.isArray(step.attempts) ? [...step.attempts].sort((a, b) => a.n - b.n) : [];
-  return attempts.length > 1 || attempts.some((row) => row.checks?.length || row.candidate) ? attempts : [];
+  return attempts.length > 1 || attempts.some((row) => row.checks?.length || row.candidate || row.remaining?.length || row.ownerDecision) ? attempts : [];
 }
 
 /** What a build produced or a verification tested, short ("a1b2c3d on testing") and in full for its tooltip. */
@@ -214,3 +218,15 @@ const VERDICT: Record<string, string> = { pass: "Passed", fail: "Failed", blocke
 
 /** A check's verdict in words, for screen readers and tooltips. */
 export const verdictLabel = (verdict: string): string => VERDICT[verdict] ?? verdict;
+
+const STRENGTH: Record<string, string> = { A: "made and measured now", B: "seen in the session", C: "from memory" };
+
+/** How strong a check's evidence is, for its mark's tooltip: "Evidence A: made and measured now"; null when not said. */
+export const strengthWords = (strength: string | null | undefined): string | null => (strength && STRENGTH[strength] ? `Evidence ${strength}: ${STRENGTH[strength]}` : null);
+
+/** What a report or attempt says is left, and the one decision only the owner can make: one line each, or nothing. */
+export function leftLines(report: { remaining?: unknown; ownerDecision?: unknown } | null | undefined): string[] {
+  const remaining = Array.isArray(report?.remaining) ? report.remaining.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim()) : [];
+  const decision = typeof report?.ownerDecision === "string" && report.ownerDecision.trim() ? report.ownerDecision.trim() : null;
+  return [remaining.length ? `Left to do: ${remaining.join("; ")}` : null, decision ? `Needs you: ${decision}` : null].filter((line): line is string => Boolean(line));
+}

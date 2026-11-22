@@ -2,12 +2,13 @@
  * A node's owner-only cards (approval messages) in words: what the card asks and what its two answers
  * are called, the same in the conversation and in the Activity panel. Held writes, drafts, work on the
  * computer (starting or sending to a session, or handing one to another node), secrets and sign-ins; a
- * question from the owner's computer (a folder or a website used for the first time), a command to run
- * as administrator; a proposed node or crew, or an existing node to bring into a crew; captures held
+ * question from the owner's computer (a folder or a website used for the first time, one of the agent's
+ * own calls on the owner's AI plan, an app on the owner's screen), a command to run as administrator; a
+ * proposed node or crew, or an existing node to bring into a crew; a stuck step of a plan; captures held
  * for the owner to check before they are sent; a question or permission from a run the node started
  * (its coding agent asks); and in rooms with other people, a request for work or a review, a request
  * the lead drafted for the owner to send, and a question about sharing something private (Ensemble
- * docs/35 §6.1, §8.9, §8.16, §12.4, §12.6).
+ * docs/35 §6.1, §6.2, §8.9, §8.13, §8.16, §12.4, §12.6).
  */
 import { deviceCodeCommand } from "./device-code";
 import { liveTitle } from "./live-session";
@@ -73,6 +74,50 @@ export function runAsk(data: { command?: unknown; title?: unknown; [key: string]
 const COMPUTER_VERBS: Record<string, string> = { run: "run commands", git: "read git", files: "change files", http: "call", browse: "browse", read: "share files" };
 
 /**
+ * What a computer card asks about (Ensemble docs/35 §8.13, §8.16.5): the node's computer tools in a folder
+ * or at an address; one of the agent's own calls on its owner's AI plan, by what an answer covers
+ * (`own_folder`: changes and commands in a folder; `own_address`: calls to an address; `own_call`: a
+ * program that changes the system, or a tool Ensemble does not know; `own_unnamed`: one call that names
+ * no path; `own`: one whose kind the card does not make clear); or an app on a screen (`app`): the
+ * owner's, or the node's own agent screen (`data.screen`).
+ */
+export type ComputerAskKind = "folder" | "origin" | "own_folder" | "own_address" | "own_call" | "own_unnamed" | "own" | "app";
+
+/** The kind a card names (`data.own.kind`, Ensemble's node/own-tool-asks.ts). */
+const OWN_KINDS = new Map<string, ComputerAskKind>([
+  ["write", "own_folder"],
+  ["origin", "own_address"],
+  ["program", "own_call"],
+  ["tool", "own_call"],
+  ["unnamed", "own_unnamed"],
+]);
+
+/** Ensemble's answers for each kind (node/device-tool-decisions.ts `OWN_CHOICES`), for a card that does not name its kind. */
+const OWN_ANSWERS: ReadonlyArray<readonly [ComputerAskKind, readonly string[]]> = [
+  ["own_folder", ["allow changes and commands", "allow changes and commands for this run"]],
+  ["own_address", ["allow this address", "allow this address for this run"]],
+  ["own_call", ["allow once", "allow for this run"]],
+  ["own_unnamed", ["allow once"]],
+];
+
+export function computerAskKind(data: { scope?: unknown; options?: unknown; own?: unknown; [key: string]: unknown } | null | undefined): ComputerAskKind {
+  if (data?.scope === "app") return "app";
+  const own = data?.own && typeof data.own === "object" ? (data.own as { kind?: unknown }) : null;
+  if (typeof own?.kind === "string") return OWN_KINDS.get(own.kind) ?? "own";
+  const options = new Set(Array.isArray(data?.options) ? data.options.filter((row): row is string => typeof row === "string").map((row) => row.trim().toLowerCase()).filter(Boolean) : []);
+  // Without its kind, only Ensemble's exact answers say it: other words never guess one, as a reworded
+  // "Allow for this run" would make a program look like a call that names no path.
+  const named = OWN_ANSWERS.find(([, answers]) => answers.length === options.size && answers.every((answer) => options.has(answer)));
+  if (named) return named[0];
+  // The node's computer tools answer Once, This mission or Always; only the agent's own calls say Allow.
+  if (own || [...options].some((option) => /^allow\b/.test(option))) return "own";
+  return data?.scope === "origin" ? "origin" : "folder";
+}
+
+/** Whether a computer card is about the agent's own calls on its owner's AI plan. */
+export const ownAsk = (kind: ComputerAskKind): boolean => kind === "own" || kind.startsWith("own_");
+
+/**
  * What a node asked its owner's computer for, after "wants to" or "Allowed @x to": "browse walmart.com",
  * "call api.example.com", "run commands in live-test". A website is the address itself; a folder is
  * where the capability is used.
@@ -84,15 +129,41 @@ export function computerAction(data: { capability?: unknown; label?: unknown; sc
   return `${COMPUTER_VERBS[capability] ?? "use the computer"} in ${label}`;
 }
 
+/**
+ * The same for any computer card: a program or a tool by its name ("run crontab", "use write_file from
+ * desktop-commander"), a call that names no path ("change files it does not name"), an app on the
+ * owner's screen ("use Bitwarden on your screen") or on the node's own agent screen (`data.screen:
+ * "agent"`: "use Terminal on its own screen"; a card without `screen` is the owner's), an own call of a
+ * kind the card does not make clear ("use its own tools for crontab"), else as `computerAction`.
+ */
+export function computerAskAction(data: { capability?: unknown; label?: unknown; scope?: unknown; call?: unknown; options?: unknown; [key: string]: unknown } | null | undefined): string {
+  const kind = computerAskKind(data);
+  if (kind === "app") return `use ${text(data?.label, "an app")} on ${data?.screen === "agent" ? "its own screen" : "your screen"}`;
+  if (kind === "own_call") {
+    const named = (data?.own as { kind?: unknown } | null | undefined)?.kind;
+    const use = named === "tool" || (named !== "program" && /^use:/i.test(text(data?.call, "")));
+    return `${use ? "use" : "run"} ${text(data?.label, "a program")}`;
+  }
+  if (kind === "own_unnamed") return `${data?.capability === "read" ? "read" : "change"} ${text(data?.label, "files it does not name")}`;
+  if (kind === "own") {
+    const label = text(data?.label, "");
+    return `use its own tools${label ? ` for ${label}` : ""}`;
+  }
+  return computerAction(data);
+}
+
 /** A card's title, its line in a list of what waits for you, and its answers. `handle` is the node's, `roomTitle` the conversation's. */
 export function cardWords(data: CardData, handle: string, roomTitle: string): CardWords {
   const type = text(data?.type, "tools");
   switch (type) {
     case "computer": {
       const on = typeof data?.deviceName === "string" && data.deviceName.trim() ? ` on ${data.deviceName.trim()}` : "";
-      const what = `${computerAction(data)}${on}`;
+      const what = `${computerAskAction(data)}${on}`;
       return { title: `@${handle} wants to ${what}`, wants: `wants to ${what}`, approve: "Allow", discard: "Don't allow" };
     }
+    case "plan_decision":
+      // A stuck step of the lead's plan: one decision, one press (Ensemble docs/35 §6.2).
+      return { title: `@${handle}'s plan needs your decision`, wants: "needs your decision on its plan", approve: text(data?.approveLabel, "Try again"), discard: text(data?.discardLabel, "Finish without it") };
     case "sudo": {
       const on = typeof data?.deviceName === "string" && data.deviceName.trim() ? ` on ${data.deviceName.trim()}` : "";
       return { title: `@${handle} wants to run a command as administrator${on}`, wants: `wants to run a command as administrator${on}`, approve: "Run as administrator", discard: "Don't run" };

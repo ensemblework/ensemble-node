@@ -4,7 +4,7 @@
  * which opens back into the card. These are the rules: which cards are still open, the chip's words for
  * each kind of card, the answer a computer's question sends, and the chips of a run's own questions.
  */
-import { computerAction, runAgent, runAsk } from "./cards";
+import { computerAskAction, computerAskKind, ownAsk, runAgent, runAsk } from "./cards";
 import { deviceCodeCommand } from "./device-code";
 import { liveEndedText, liveOpen } from "./live-session";
 import { loginCommand, loginProvider, loginPurpose, loginSite } from "./login";
@@ -48,11 +48,16 @@ export function computerOptions(data: CardData): string[] {
 }
 
 /**
- * The computer's answers as buttons, the lasting one first (the owner's rule: ask at most once per
- * folder): "Allow in this folder from now on", "Only this mission", "Just once". Each still sends the
- * computer's own words for it (`option`).
+ * The computer's answers as buttons. For the node's computer tools, the lasting one first (the owner's
+ * rule: ask at most once per folder): "Allow in this folder from now on", "Only this mission", "Just
+ * once". For one of the agent's own calls, and for an app on the owner's screen, exactly the answers
+ * Ensemble offers, in its order: "Allow" and "Allow for this run" (the card's title already says what
+ * for), "Allow once", "This mission"; an own call of a kind the card does not make clear keeps
+ * Ensemble's words whole. Each sends Ensemble's own words for it (`option`).
  */
 export function computerChoices(data: CardData): Array<{ option: string; label: string }> {
+  const kind = computerAskKind(data);
+  if (kind === "app" || ownAsk(kind)) return computerOptions(data).map((option) => ({ option, label: kind === "own" ? option : option.replace(/^allow (?:changes and commands|this address)(?= for this run$|$)/i, "Allow") }));
   const rank = (option: string) => (/^always/i.test(option) ? 0 : /mission/i.test(option) ? 1 : /^once$/i.test(option) ? 2 : 3);
   const site = data?.scope === "origin";
   return computerOptions(data)
@@ -62,6 +67,77 @@ export function computerChoices(data: CardData): Array<{ option: string; label: 
       option,
       label: /^always/i.test(option) ? (site ? "Allow this address from now on" : "Allow in this folder from now on") : /mission/i.test(option) ? "Only this mission" : /^once$/i.test(option) ? "Just once" : option,
     }));
+}
+
+/**
+ * How far "for this run" goes for the agent's own calls: Ensemble keeps that answer for the plan the call
+ * works for, else for this chat, for up to 30 days (its node/device-tools.ts `missionOf`). A card from a
+ * plan's step names the plan (`data.plan`); one from the lead's own turn for a plan does not, and reads as
+ * the chat.
+ */
+export function runReach(data: CardData): { covers: string; within: string } {
+  return text(data?.plan?.id) ? { covers: "this plan's work", within: "for this plan's work" } : { covers: "this chat, for up to 30 days", within: "in this chat for up to 30 days" };
+}
+
+/** What a computer card's answers mean, for its ⓘ: the agent's own calls and an app on a screen; none for the node's computer tools. */
+export function computerAskInfo(data: CardData): string | null {
+  const kind = computerAskKind(data);
+  const run = `Allow for this run covers ${runReach(data).covers}.`;
+  if (kind === "own_folder") return `Your agent's own tools, on your AI plan, want to change files or run commands here. Allow covers them in this folder from now on. ${run}`;
+  if (kind === "own_address") return `Your agent's own tools, on your AI plan, want to call this address. Allow covers it from now on. ${run}`;
+  if (kind === "own_call") return `A program that can change your system, or a tool Ensemble does not know, is never allowed for good. ${run}`;
+  if (kind === "own_unnamed") return "A call that names no file or folder is asked about each time.";
+  if (kind === "own") return "Your agent's own tools, on your AI plan, want to make this call. Each answer allows just what it says.";
+  if (kind === "app") return "Password managers, system settings, terminals, banking or wallet apps, and your own pointer and keyboard are asked about once per app for this piece of work, never for good.";
+  return null;
+}
+
+/** What an answer covers, for its button's tooltip. */
+export function choiceHint(option: string, data: CardData): string {
+  const kind = computerAskKind(data);
+  const label = text(data?.label);
+  const run = /for this run$/i.test(option);
+  const reach = runReach(data);
+  if (kind === "own_folder") return `Changes and commands in ${label || "this folder"}, ${run ? reach.within : "from now on"}`;
+  if (kind === "own_address") return `Calls to ${label || "this address"}, ${run ? reach.within : "from now on"}`;
+  if (/^(allow )?once$/i.test(option)) return "Only this call";
+  if (run) return `Covers ${reach.covers}`;
+  if (/mission/i.test(option)) return "Until this piece of work ends";
+  if (/^always/i.test(option)) {
+    const place = data?.scope === "origin" ? label || "this address" : `${label || "this folder"}${text(data?.deviceName) ? ` on ${text(data?.deviceName)}` : ""}`;
+    return `From now on, for this node in ${place}`;
+  }
+  return option;
+}
+
+/** An answer about the agent's own calls or an app, short for a checkpoint: "For this run", "From now on", "Once". */
+export function answerScope(answer: string): string {
+  if (/for this run$/i.test(answer)) return "For this run";
+  if (/^allow once$/i.test(answer)) return "Once";
+  if (/^allow (changes and commands|this address)$/i.test(answer)) return "From now on";
+  return answer;
+}
+
+/** Whose step a stuck plan step's card is about, from its question ("@tester's step in @lead's plan…"). */
+export function planDecisionStep(data: CardData): string {
+  const handle = /^(@[a-z0-9][a-z0-9-]*)'s step\b/i.exec(text(data?.question))?.[1];
+  return handle ? `${handle}'s step` : "the stuck step";
+}
+
+export type PlanChoice = { label: string; hint: string };
+
+/**
+ * A stuck plan step's two answers, one press each, in Ensemble's own words for its buttons, with what each
+ * does for the buttons' tooltips and the card's ⓘ: try the step again or finish the plan without it; or,
+ * when what it worked from changed (`why: "conflict"`), redo it with the new version or keep its result.
+ */
+export function planDecisionChoices(data: CardData): { approve: PlanChoice; discard: PlanChoice } {
+  const conflict = data?.why === "conflict";
+  const approve = text(data?.approveLabel) || (conflict ? "Redo with the new version" : "Try again");
+  const discard = text(data?.discardLabel) || (conflict ? "Keep the result" : "Finish without it");
+  return conflict
+    ? { approve: { label: approve, hint: "the step runs again on the new version" }, discard: { label: discard, hint: "its result stands as it is" } }
+    : { approve: { label: approve, hint: "the step runs once more" }, discard: { label: discard, hint: "the plan ends without this step" } };
 }
 
 /** What answering a computer's question sends to `POST /api/decisions/:id/decide`: the option picked travels as `reason`. */
@@ -108,10 +184,21 @@ export function cardCheckpoint(data: CardData, context: { handle: string; roomTi
   const expired = status === "expired";
   switch (type) {
     case "computer": {
-      const action = computerAction(data);
-      if (status === "allowed") return ok(`Allowed ${node} to ${action}${text(data?.answer) ? ` · ${text(data?.answer)}` : ""}`);
+      const action = computerAskAction(data);
+      const kind = computerAskKind(data);
+      const answer = text(data?.answer);
+      const how = answer && (kind === "app" || ownAsk(kind)) ? answerScope(answer) : answer;
+      if (status === "allowed") return ok(`Allowed ${node} to ${action}${how ? ` · ${how}` : ""}`);
       if (status === "denied") return no(`Didn't allow ${node} to ${action}`);
       if (expired) return late(`No answer in time: ${node} asked to ${action}`);
+      break;
+    }
+    case "plan_decision": {
+      const step = planDecisionStep(data);
+      const choices = planDecisionChoices(data);
+      if (status === "approved") return ok(`Chose “${choices.approve.label}” for ${step}`);
+      if (status === "discarded") return no(`Chose “${choices.discard.label}” for ${step}`);
+      if (expired) return late(`The plan moved on before an answer about ${step}`);
       break;
     }
     case "sudo": {

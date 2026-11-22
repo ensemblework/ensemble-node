@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Crown, Download, Handshake, LogOut, MailPlus, Plus, ShieldCheck, Trash2, UserMinus, UserPlus, X } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -11,10 +11,10 @@ import { awayLine, presenceBadge, requestKind, requestState, requestUndecided } 
 import { ago } from "@/lib/text";
 import { grantLabel, helperThread } from "@/lib/threads";
 import { toast } from "@/lib/toast";
-import type { Bootstrap, Member, NodeFull, NodePublic, Room, RoomInvite } from "@/lib/types";
+import type { Bootstrap, GroupMode, Member, NodeFull, NodePublic, Room, RoomInvite } from "@/lib/types";
 import { NodeAvatar, PersonAvatar } from "../node-avatar";
 import { NodeSettings } from "../node-settings";
-import { Button, Drawer, External, Field, Input, Notice, Pill } from "../ui";
+import { Button, Drawer, External, Field, Input, Notice, Pill, Segmented, SettingRow } from "../ui";
 import { useKeepHelper } from "./helper-thread";
 import { PresenceDot } from "./room-cards";
 import { MyStatus } from "./room-people";
@@ -24,6 +24,17 @@ type NodeMember = Extract<Member, { kind: "node" }>;
 type PersonMember = Extract<Member, { kind: "person" }>;
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+
+const GROUP_MODES: ReadonlyArray<{ id: GroupMode; label: string }> = [
+  { id: "coordinated", label: "Coordinated" },
+  { id: "independent", label: "Independent" },
+];
+
+/** What the two group modes mean (Ensemble docs/35 §4), for the row's ⓘ. */
+function groupModeInfo(kind: Room["kind"], creator: boolean): string {
+  const brings = kind === "room" ? "the room's steward, or your own lead," : "the lead";
+  return `Coordinated: one node answers, and the lead hands parts to the others. Independent: each node you name answers on its own, without seeing the others' answers first; then ${brings} brings the answers together, once all have answered or after ten minutes.${creator ? "" : " Only the person who made it can change this."}`;
+}
 
 function KeepHelperButton({ helper }: { helper: NodePublic }) {
   const { keep, keeping } = useKeepHelper(helper);
@@ -128,6 +139,8 @@ export function RoomSettings({
   const [duty, setDuty] = useState(meMember?.responsibility ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [mode, setMode] = useState<GroupMode | undefined>(room.mode);
+  useEffect(() => setMode(room.mode), [room.mode]);
 
   const act = async (name: string, work: () => Promise<unknown>, done?: string): Promise<boolean> => {
     setError(null);
@@ -231,6 +244,23 @@ export function RoomSettings({
       </div>
     ) : null;
 
+  // How a crew or a room answers a message that names several nodes; only from a server with group modes.
+  const changeMode = (next: GroupMode) => {
+    const before = mode;
+    setMode(next);
+    void act("mode", () => api<{ room: Room }>(`/api/node/rooms/${room.id}`, { method: "PATCH", body: { mode: next } })).then((ok) => (ok ? undefined : setMode(before)));
+  };
+  const modeRow =
+    mode && (room.kind === "crew" || room.kind === "room") ? (
+      <SettingRow title="Group answers" hint="When a message names several nodes." info={groupModeInfo(room.kind, creator)}>
+        {creator ? (
+          <Segmented label="Group answers" size="sm" value={mode} onChange={changeMode} options={GROUP_MODES} />
+        ) : (
+          <span className="text-sm text-muted">{GROUP_MODES.find((row) => row.id === mode)?.label}</span>
+        )}
+      </SettingRow>
+    ) : null;
+
   const footer = (
     <section className="flex flex-wrap gap-2 border-t border-line pt-4">
       <Button tone="ghost" onClick={onExport}>
@@ -312,6 +342,7 @@ export function RoomSettings({
         <div className="space-y-6">
           {titleField}
           {error ? <Notice tone="error">{error}</Notice> : null}
+          {modeRow}
           <Section title={`Nodes in this crew (${nodeMembers.length})`} hint="The lead takes every message nobody is @mentioned in, plans, and hands out work.">
             <ul className="space-y-1.5">
               {nodeMembers.map((member) =>
@@ -366,6 +397,7 @@ export function RoomSettings({
       <div className="space-y-6">
         {titleField}
         {error ? <Notice tone="error">{error}</Notice> : null}
+        {modeRow}
 
         <MyStatus roomId={room.id} meId={me} open={open} />
 

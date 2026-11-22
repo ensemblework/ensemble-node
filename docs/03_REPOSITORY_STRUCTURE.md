@@ -53,7 +53,8 @@ ensemble-node/
 │   │   │                        start page), files on a message and Save on my computer (file-chips.tsx), rich text and code blocks
 │   │   │                        (code-block.tsx), settings drawer (DM, crew, room), search panel, pinned bar and drawer,
 │   │   │                        a device code for the owner (device-code-card.tsx), a node's live terminal or
-│   │   │                        browser (live-card.tsx)
+│   │   │                        browser (live-card.tsx), a turn's trace in a drawer (trace-view.tsx), a stuck
+│   │   │                        plan step's one decision (plan-decision-card.tsx)
 │   │   ├── shell.tsx            recent-chat sidebar, workspace menu, phone sheet, layout, auth guard, ⌘K search
 │   │   ├── sidebar-frame.tsx    desktop resize handle, keyboard and saved width
 │   │   ├── appearance-provider.tsx, appearance-settings.tsx
@@ -79,14 +80,16 @@ ensemble-node/
 │   │   ├── countdown.tsx        the time left on a card or in the remote view, ticking
 │   │   ├── qr-code.tsx          a QR code as a picture phones read (loaded only when shown)
 │   │   ├── decision-answer.tsx  answering a run's own questions and run approvals on its run card
-│   │   ├── credits.tsx, connect-computer.tsx (computer lists, what each can capture, links to pair one), turnstile.tsx
+│   │   ├── credits.tsx, connect-computer.tsx (computer lists, what each can capture, whether its desktop
+│   │   │                        apps can be used, links to pair one), turnstile.tsx
+│   │   ├── node-memory.tsx      a node's memories: markers, add, edit, pin, archive or restore, delete
 │   │   ├── node-avatar.tsx      Node signature faces (shape, a colour shaded in its own hue, eyes that fit the shape),
 │   │   │                        compatible morph outlines, shape-specific working motion, and the appearance picker
 │   │   ├── handle-input.tsx     a node's handle after its @
 │   │   ├── model-logo.tsx       canonical local model/vendor and agent marks
 │   │   ├── connector-logo.tsx, tool-icon.tsx
 │   │   │                        shared local vendor logos and generic tool fallbacks
-│   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, drawer, menus, pausable notification timers,
+│   │   ├── brand.tsx, ui.tsx    mark; buttons, fields, switch, setting row, drawer, menus, pausable notification timers,
 │   │   │                        External (new-tab links)
 │   ├── lib/
 │   │   ├── original-files.ts, file-buffers.ts
@@ -118,7 +121,10 @@ ensemble-node/
 │   │   │                        pixels per module and its quiet zone (tested)
 │   │   ├── sudo.ts              a command run as administrator: the password sealed for the computer, bound to the
 │   │   │                        card and the command's hash, and its words (tested)
-│   │   ├── checkpoints.ts       which owner cards are still open, each settled card's one line, a computer's answer (tested)
+│   │   ├── checkpoints.ts       which owner cards are still open, each settled card's one line, a computer's answer,
+│   │   │                        the agent's own calls' and a stuck plan step's answers (tested)
+│   │   ├── trace.ts, memory.ts  a turn's trace in words (its line, parts, calls and own calls, what it was given,
+│   │   │                        decisions, the answer check, the report); a node's memories and their markers (tested)
 │   │   ├── file-types.ts        what a file is by its name, else its type: its family (icon) and label (tested)
 │   │   ├── file-preview.ts      which files preview as text in the chat (Markdown, code, JSON, text), their first
 │   │   │                        lines, 200 KB at most, folded when there are many (tested)
@@ -145,7 +151,7 @@ ensemble-node/
 │   │   │                        roles, the lead's notes, digests, results, decisions);
 │   │   │                        a lead's trust settings (defaults, merging, what changed); owner cards in words;
 │   │   │                        why a capture is held, a paused live view, a live picture's details, what a
-│   │   │                        computer can capture
+│   │   │                        computer can capture and whether its desktop apps can be used
 │   │   ├── text.ts, markdown.ts, chat.ts, models.ts, crew.ts, ensemble.ts, decisions.ts, work-log.ts, attachments.ts
 │   │   │                        pure helpers (tested): chat filters, reactions, days, search highlights, emails,
 │   │   │                        what a message sends and a retry sends again, the attachment shelf and pasted

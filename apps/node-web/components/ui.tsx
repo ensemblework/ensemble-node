@@ -158,6 +158,22 @@ export function Switch({ checked, onChange, label, hint, info, disabled }: { che
   );
 }
 
+/** One setting: its title and one short line on the left, the rest in its ⓘ, and one control on the right (below it when narrow). */
+export function SettingRow({ title, hint, info, children }: { title: ReactNode; hint?: ReactNode; info?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      <span className="min-w-0">
+        <span className="flex items-center gap-1 text-sm font-medium">
+          {title}
+          {info ? <InfoTip text={info} /> : null}
+        </span>
+        {hint ? <span className="mt-0.5 block text-xs text-muted">{hint}</span> : null}
+      </span>
+      <div className="shrink-0">{children}</div>
+    </div>
+  );
+}
+
 /** A small set of mutually exclusive choices, like a tab strip. */
 export function Segmented<T extends string>({ value, onChange, options, label, size = "md" }: { value: T; onChange: (next: T) => void; options: ReadonlyArray<{ id: T; label: ReactNode; title?: string }>; label: string; size?: "sm" | "md" }) {
   return (

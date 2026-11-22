@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Handshake, Lock, MessageSquareShare, Pin, PinOff, Reply, SmilePlus, SquareCheckBig, Trash2, Wrench, X } from "lucide-react";
+import { Activity, AlertTriangle, Check, ChevronDown, CircleSlash, Copy, CornerUpLeft, Cpu, ExternalLink, Handshake, Lock, MessageSquareShare, Pin, PinOff, Reply, SmilePlus, SquareCheckBig, Trash2, Wrench, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cardWords, runAgent, runCardAgent } from "@/lib/cards";
 import { canDelete, canPin, canReact, isDeleted, messagePreview, reactionRows, reactionsOf } from "@/lib/chat";
@@ -13,6 +13,7 @@ import { mediaItems } from "@/lib/evidence";
 import { canShare, sharedLabel, type RoomTab } from "@/lib/rooms";
 import type { HelperThread } from "@/lib/threads";
 import { toast, toastError } from "@/lib/toast";
+import { messageTurn } from "@/lib/trace";
 import type { HeldCall, Member, Message, MessageFile, NodePublic, PeerRequest, ReplyTo, RoomKind, ToolChip } from "@/lib/types";
 import { messageTask } from "@/lib/work";
 import { toolChipSummary } from "@/lib/work-log";
@@ -34,6 +35,7 @@ import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 import { RunDecisionCard } from "./run-decision-card";
 import { PlanCard } from "./plan-card";
+import { PlanDecisionCard } from "./plan-decision-card";
 import { CrewAddCard, DisclosureCard, NodeProposalCard, RequestCard, RequestDraftCard, RequestOwnerCard, StatusCardsMessage } from "./room-cards";
 import { DecisionLine, DeclinedLine, DigestCard, PageRoleLine, ResultCard, ResultFacts, RoomEventsExtras, SpaceOfferCard } from "./room-work";
 import { SudoCard } from "./sudo-card";
@@ -83,6 +85,8 @@ export type MessageContext = {
   spaceId?: string | null;
   /** In a chat with only my nodes: asks them to save a file I attached on my computer (a reply to its message, in the composer). */
   onAskSave?: (message: Message, file: MessageFile) => void;
+  /** Opens the trace of the turn that posted a message of one of my own nodes (lib/trace.ts). */
+  onTrace?: (turnId: string) => void;
 };
 
 const appLink = (href: string | null | undefined) => (href ? (href.startsWith("http") ? href : `${ENSEMBLE_APP}${href}`) : null);
@@ -204,6 +208,7 @@ function ApprovalCard({ message: original, ctx, node }: { message: Message; ctx:
 
 function ApprovalBody({ message, ctx, node }: { message: Message; ctx: MessageContext; node?: NodePublic }) {
   if (message.data.type === "computer") return <ComputerCard message={message} ctx={ctx} node={node} />;
+  if (message.data.type === "plan_decision") return <PlanDecisionCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "run_decision") return <RunDecisionCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "sudo") return <SudoCard message={message} ctx={ctx} node={node} />;
   if (message.data.type === "crew_add") return <CrewAddCard message={message} ctx={ctx} node={node} />;
@@ -397,7 +402,10 @@ function MessageActions({ message, ctx, mine, open, setOpen }: { message: Messag
     setSharing(false);
     setOpen(false);
   };
-  if (!canReact(message)) return null;
+  const turnId = ctx.onTrace ? messageTurn(message, ctx.meId, (id) => ctx.nodes.get(id)?.ownerId) : null;
+  const reactable = canReact(message);
+  // A card of my own node's (an ask, a plan) offers only its trace here.
+  if (!reactable && !turnId) return null;
   const share = (as: "me" | "lead") => {
     ctx.onShare?.(message, as);
     close();
@@ -438,28 +446,37 @@ function MessageActions({ message, ctx, mine, open, setOpen }: { message: Messag
         ))
       ) : (
         <>
-          <ActionButton label="Add a reaction" onClick={() => setEmoji(true)}>
-            <SmilePlus size={15} />
-          </ActionButton>
-          <ActionButton label="Reply" onClick={() => (ctx.onReply(message), close())}>
-            <Reply size={15} />
-          </ActionButton>
-          {message.body ? (
-            <ActionButton label="Copy text" onClick={() => void navigator.clipboard.writeText(readableBody(message)).then(() => toast("Copied.", "ok"), toastError).finally(close)}>
-              <Copy size={14} />
+          {reactable ? (
+            <>
+              <ActionButton label="Add a reaction" onClick={() => setEmoji(true)}>
+                <SmilePlus size={15} />
+              </ActionButton>
+              <ActionButton label="Reply" onClick={() => (ctx.onReply(message), close())}>
+                <Reply size={15} />
+              </ActionButton>
+              {message.body ? (
+                <ActionButton label="Copy text" onClick={() => void navigator.clipboard.writeText(readableBody(message)).then(() => toast("Copied.", "ok"), toastError).finally(close)}>
+                  <Copy size={14} />
+                </ActionButton>
+              ) : null}
+              {shareable ? (
+                <ActionButton label="Share to room" onClick={() => setSharing(true)}>
+                  <MessageSquareShare size={14} />
+                </ActionButton>
+              ) : null}
+              {pinned || canPin(message) ? (
+                <ActionButton label={pinned ? "Unpin" : "Pin for everyone here"} onClick={() => (pin.mutate({ messageId: message.id, pinned: !pinned }, { onSuccess: () => toast(pinned ? "Unpinned." : "Pinned.", "ok") }), close())}>
+                  {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+                </ActionButton>
+              ) : null}
+            </>
+          ) : null}
+          {turnId ? (
+            <ActionButton label="Trace" onClick={() => (ctx.onTrace?.(turnId), close())}>
+              <Activity size={14} />
             </ActionButton>
           ) : null}
-          {shareable ? (
-            <ActionButton label="Share to room" onClick={() => setSharing(true)}>
-              <MessageSquareShare size={14} />
-            </ActionButton>
-          ) : null}
-          {pinned || canPin(message) ? (
-            <ActionButton label={pinned ? "Unpin" : "Pin for everyone here"} onClick={() => (pin.mutate({ messageId: message.id, pinned: !pinned }, { onSuccess: () => toast(pinned ? "Unpinned." : "Pinned.", "ok") }), close())}>
-              {pinned ? <PinOff size={14} /> : <Pin size={14} />}
-            </ActionButton>
-          ) : null}
-          {canDelete(message, ctx.meId) ? (
+          {reactable && canDelete(message, ctx.meId) ? (
             <ActionButton
               label="Delete"
               tone="danger"

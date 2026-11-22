@@ -31,7 +31,7 @@ import { Pill, Spinner } from "../ui";
 import { EvidenceGallery, type RequirementLink } from "./evidence";
 import { HelperThreadChip } from "./helper-thread";
 import type { MessageContext } from "./message";
-import { CandidateTag, CheckList } from "./report";
+import { CandidateTag, CheckList, LeftLines } from "./report";
 import { RichText } from "./rich-text";
 import { RunCard } from "./run-card";
 
@@ -144,6 +144,9 @@ function Attempts({ attempts, kind, handles }: { attempts: Attempt[]; kind?: str
                 <CheckList checks={attempt.checks} />
               </div>
             ) : null}
+            <div className="mt-1 empty:hidden">
+              <LeftLines report={attempt} />
+            </div>
           </li>
         );
       })}

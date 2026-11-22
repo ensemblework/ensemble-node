@@ -34,6 +34,7 @@ import { RoomBoardView } from "./room-board";
 import { RequestForm, TrustSheet } from "./room-people";
 import { RoomSettings } from "./room-settings";
 import { SearchPanel } from "./search";
+import { TraceView } from "./trace-view";
 import { WorkStrip } from "./work-strip";
 import { useFileWorkspace } from "../files/workspace";
 import { WorkingStatus } from "../working-status";
@@ -119,6 +120,8 @@ export function RoomView({ roomId }: { roomId: string }) {
   const [helper, setHelper] = useState<HelperThread | null>(null);
   // A routine run's card, opened from the strip: it is not in the timeline.
   const [cardId, setCardId] = useState<string | null>(null);
+  // The turn whose trace is open (a message's Trace action, my own nodes only).
+  const [traceId, setTraceId] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [reply, setReply] = useState<Message | null>(null);
   const [draft, setDraft] = useState<ComposerDraft | null>(null);
@@ -458,6 +461,7 @@ export function RoomView({ roomId }: { roomId: string }) {
       threadsOf: (message: Message) => attached.get(message.id) ?? [],
       helperOf: (nodeId: string) => threads.find((thread) => thread.helper?.id === nodeId),
       onHelper: (thread: HelperThread) => setHelper(thread),
+      onTrace: (turnId: string) => setTraceId(turnId),
       sessionCardOf: (sessionId: string) => sessionCards.get(sessionId),
       runCardOf: (jobId: string) => runLinks.runs.get(jobId),
       decisionCardOf: (decisionId: string) => runLinks.questions.get(decisionId),
@@ -955,6 +959,9 @@ export function RoomView({ roomId }: { roomId: string }) {
       </Drawer>
       <Drawer open={Boolean(cardId)} onClose={() => setCardId(null)} title="Routine run">
         {cardId ? <DetachedCard planId={cardId} ctx={ctx} /> : null}
+      </Drawer>
+      <Drawer open={Boolean(traceId)} onClose={() => setTraceId(null)} title="Trace">
+        {traceId ? <TraceView turnId={traceId} /> : null}
       </Drawer>
     </div>
   );

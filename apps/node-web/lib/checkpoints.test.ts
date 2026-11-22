@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { approvalCheckpoint, cardCheckpoint, cardOpen, computerAnswered, computerChoices, computerDecision, computerOptions, decisionCheckpoint, runDecisionAnswered, siteName, withLocalAnswer } from "./checkpoints";
+import { approvalCheckpoint, cardCheckpoint, cardOpen, choiceHint, computerAnswered, computerAskInfo, computerChoices, computerDecision, computerOptions, decisionCheckpoint, planDecisionChoices, planDecisionStep, runDecisionAnswered, siteName, withLocalAnswer } from "./checkpoints";
 import type { AgentDecision } from "./types";
 
 const where = { handle: "assistant-3", roomTitle: "Launch" };
@@ -128,4 +128,88 @@ test("a run's question folds into what was decided, by whom, and how far it goes
   assert.deepEqual(local, { status: "answered", answer: "Use main", answeredAt: "2026-10-31T01:00:00.000Z", decision: "allow", scope: "once" });
   assert.equal(words(withLocalAnswer({ ...question, status: "pending" }, local)), "Answered: “Use main”");
   assert.equal(words(withLocalAnswer({ ...permission, status: "pending" }, runDecisionAnswered({ decision: "allow", scope: "once" }))), "Allowed GitHub Copilot to run python3 search.py · Once");
+});
+
+test("the agent's own calls and an app on the owner's screen offer exactly Ensemble's answers, one press each", () => {
+  const write = { type: "computer", capability: "run", scope: "folder", label: "~/projects/site", deviceName: "Laptop", options: ["Allow changes and commands", "Allow changes and commands for this run"] };
+  const program = { type: "computer", capability: "run", scope: "folder", label: "crontab", options: ["Allow once", "Allow for this run"], call: "crontab -e" };
+  const unnamed = { type: "computer", capability: "files", scope: "folder", label: "files it does not name", options: ["Allow once"] };
+  const address = { type: "computer", capability: "http", scope: "origin", label: "http://192.168.1.20:8080", options: ["Allow this address", "Allow this address for this run"] };
+  const app = { type: "computer", capability: "desktop", scope: "app", label: "Bitwarden", options: ["This mission"] };
+  const labels = (data: Record<string, unknown>) => computerChoices(data).map((row) => row.label);
+  assert.deepEqual(labels(write), ["Allow", "Allow for this run"], "in Ensemble's order; the title says what for");
+  assert.deepEqual(labels(program), ["Allow once", "Allow for this run"]);
+  assert.deepEqual(labels(unnamed), ["Allow once"], "a call that names no path: once only");
+  assert.deepEqual(labels(address), ["Allow", "Allow for this run"]);
+  assert.deepEqual(computerChoices(app), [{ option: "This mission", label: "This mission" }], "an app on the owner's screen: this mission only");
+  for (const data of [write, program, unnamed, address, app]) assert.deepEqual(computerChoices(data).map((row) => row.option), data.options, "each button sends Ensemble's own words, in its order");
+  assert.deepEqual(computerDecision("Allow changes and commands for this run"), { decision: "allow", scope: "once", reason: "Allow changes and commands for this run" }, "Ensemble reads the answer from its own words");
+  assert.equal(choiceHint("Allow changes and commands", write), "Changes and commands in ~/projects/site, from now on");
+  assert.equal(choiceHint("Allow changes and commands for this run", write), "Changes and commands in ~/projects/site, in this chat for up to 30 days");
+  assert.equal(choiceHint("Allow this address for this run", address), "Calls to http://192.168.1.20:8080, in this chat for up to 30 days");
+  assert.equal(choiceHint("Allow once", program), "Only this call");
+  assert.equal(choiceHint("Allow for this run", program), "Covers this chat, for up to 30 days");
+  const step = { plan: { id: "plan-1", step: "s2" } };
+  assert.equal(choiceHint("Allow changes and commands for this run", { ...write, ...step }), "Changes and commands in ~/projects/site, for this plan's work", "a card from a plan's step: that plan");
+  assert.equal(choiceHint("Allow for this run", { ...program, ...step }), "Covers this plan's work");
+  assert.equal(choiceHint("This mission", app), "Until this piece of work ends");
+  assert.equal(choiceHint("Always for this folder", { scope: "folder", label: "live-test", deviceName: "Studio", options: ["Once", "Always for this folder"] }), "From now on, for this node in live-test on Studio");
+  assert.equal(choiceHint("Once", { scope: "origin", options: ["Once"] }), "Only this call");
+});
+
+test("a computer card's ⓘ says how far each answer goes: the plan's work, else the chat for up to 30 days", () => {
+  const write = { type: "computer", capability: "run", scope: "folder", label: "~/projects/site", options: ["Allow changes and commands", "Allow changes and commands for this run"] };
+  const program = { type: "computer", capability: "run", scope: "folder", label: "crontab", options: ["Allow once", "Allow for this run"], call: "crontab -e" };
+  const address = { type: "computer", capability: "http", scope: "origin", label: "http://192.168.1.20:8080", options: ["Allow this address", "Allow this address for this run"] };
+  const step = { plan: { id: "plan-1", step: "s2" } };
+  assert.equal(computerAskInfo(write), "Your agent's own tools, on your AI plan, want to change files or run commands here. Allow covers them in this folder from now on. Allow for this run covers this chat, for up to 30 days.");
+  assert.match(computerAskInfo({ ...address, ...step }) ?? "", /Allow covers it from now on\. Allow for this run covers this plan's work\.$/);
+  assert.match(computerAskInfo(program) ?? "", /never allowed for good\. Allow for this run covers this chat, for up to 30 days\.$/);
+  assert.equal(computerAskInfo({ type: "computer", scope: "folder", options: ["Allow once"] }), "A call that names no file or folder is asked about each time.");
+  assert.equal(computerAskInfo({ type: "computer", scope: "folder", options: ["Once", "This mission", "Always for this folder"] }), null, "the node's own computer tools: no ⓘ");
+  for (const data of [write, program, address, { ...write, ...step }, { type: "computer", scope: "app", options: ["This mission"] }]) assert.doesNotMatch(computerAskInfo(data) ?? "", /\u2014|--|until this run ends/);
+});
+
+test("an answer about the agent's own calls or an app folds into who was allowed what, and for how long", () => {
+  const program = { type: "computer", capability: "run", scope: "folder", label: "crontab", options: ["Allow once", "Allow for this run"], call: "crontab -e" };
+  assert.deepEqual(cardCheckpoint({ ...program, status: "allowed", answer: "Allow for this run" }, where), { text: "Allowed @assistant-3 to run crontab · For this run", tone: "ok", icon: "check" });
+  assert.equal(words({ ...program, call: "Use: write_file from desktop-commander", label: "write_file from desktop-commander", status: "allowed", answer: "Allow once" }), "Allowed @assistant-3 to use write_file from desktop-commander · Once");
+  assert.equal(words({ type: "computer", capability: "run", scope: "folder", label: "~/site", options: ["Allow changes and commands", "Allow changes and commands for this run"], status: "allowed", answer: "Allow changes and commands" }), "Allowed @assistant-3 to run commands in ~/site · From now on");
+  assert.equal(words({ type: "computer", capability: "files", scope: "folder", label: "files it does not name", options: ["Allow once"], status: "denied", answer: "No" }), "Didn't allow @assistant-3 to change files it does not name");
+  assert.equal(words({ type: "computer", capability: "desktop", scope: "app", label: "Bitwarden", options: ["This mission"], status: "allowed", answer: "This mission" }), "Allowed @assistant-3 to use Bitwarden on your screen · This mission");
+  assert.equal(words({ type: "computer", capability: "desktop", scope: "app", label: "the pointer and keyboard", options: ["This mission"], status: "expired" }), "No answer in time: @assistant-3 asked to use the pointer and keyboard on your screen");
+  assert.equal(words({ type: "computer", capability: "desktop", scope: "app", screen: "agent", label: "Terminal", options: ["This mission"], status: "allowed", answer: "This mission" }), "Allowed @assistant-3 to use Terminal on its own screen · This mission", "an app on the node's own agent screen");
+  assert.equal(words({ type: "computer", capability: "desktop", scope: "app", screen: "owner", label: "Bitwarden", options: ["This mission"], status: "denied", answer: "No" }), "Didn't allow @assistant-3 to use Bitwarden on your screen");
+  const local = computerAnswered("Allow for this run", new Date("2026-11-21T10:00:00Z"));
+  assert.equal(words(withLocalAnswer({ ...program, status: "pending" }, local)), "Allowed @assistant-3 to run crontab · For this run", "an answer given here reads at once");
+});
+
+test("an own call of a kind the card does not make clear keeps Ensemble's words on its buttons and checkpoint", () => {
+  const neutral = { type: "computer", capability: "run", scope: "folder", label: "crontab", call: "crontab -e", options: ["Allow changes and commands", "Allow until this run ends"] };
+  assert.deepEqual(computerChoices(neutral), [{ option: "Allow changes and commands", label: "Allow changes and commands" }, { option: "Allow until this run ends", label: "Allow until this run ends" }], "whole, in Ensemble's order");
+  assert.equal(words({ ...neutral, status: "allowed", answer: "Allow until this run ends" }), "Allowed @assistant-3 to use its own tools for crontab · Allow until this run ends");
+  assert.equal(words({ ...neutral, status: "denied", answer: "No" }), "Didn't allow @assistant-3 to use its own tools for crontab");
+});
+
+test("a stuck plan step's card folds into the choice made, or that the plan moved on", () => {
+  const card = { type: "plan_decision", plan: { id: "p1", step: "s2" }, attempt: 2, why: "same_error", question: "@tester's step in @lead's plan keeps failing the same way. Try it again, or finish the plan without it?", approveLabel: "Try again", discardLabel: "Finish without it" };
+  assert.equal(planDecisionStep(card), "@tester's step");
+  assert.equal(planDecisionStep({ question: "Something else" }), "the stuck step");
+  assert.equal(cardOpen({ ...card, status: "pending" }), true);
+  assert.equal(cardOpen({ ...card, status: "applying" }), true, "while its answer is carried out");
+  assert.deepEqual(cardCheckpoint({ ...card, status: "approved" }, where), { text: "Chose “Try again” for @tester's step", tone: "ok", icon: "check" });
+  assert.deepEqual(cardCheckpoint({ ...card, status: "discarded" }, where), { text: "Chose “Finish without it” for @tester's step", tone: "muted", icon: "x" });
+  assert.equal(words({ ...card, approveLabel: "Redo with the new version", status: "approved" }), "Chose “Redo with the new version” for @tester's step");
+  assert.deepEqual(cardCheckpoint({ ...card, status: "expired" }, where), { text: "The plan moved on before an answer about @tester's step", tone: "muted", icon: "clock" });
+});
+
+test("a stuck plan step's card offers Ensemble's two answers, one press each, with what each does", () => {
+  const choices = planDecisionChoices({ type: "plan_decision", why: "stuck", approveLabel: "Try again", discardLabel: "Finish without it" });
+  assert.deepEqual(choices, { approve: { label: "Try again", hint: "the step runs once more" }, discard: { label: "Finish without it", hint: "the plan ends without this step" } });
+  const conflict = planDecisionChoices({ type: "plan_decision", why: "conflict", approveLabel: "Redo with the new version", discardLabel: "Keep the result" });
+  assert.deepEqual([conflict.approve.label, conflict.discard.label], ["Redo with the new version", "Keep the result"]);
+  assert.equal(conflict.discard.hint, "its result stands as it is");
+  assert.deepEqual([planDecisionChoices({ why: "conflict" }).approve.label, planDecisionChoices({ why: "conflict" }).discard.label], ["Redo with the new version", "Keep the result"], "a card without its labels reads by why it was asked");
+  assert.equal(words({ type: "plan_decision", why: "conflict", question: "@writer's step in @lead's plan: x changed", status: "discarded" }), "Chose “Keep the result” for @writer's step");
+  for (const row of [choices, conflict]) for (const text of [row.approve.label, row.approve.hint, row.discard.label, row.discard.hint]) assert.doesNotMatch(text, /\u2014|--/);
 });

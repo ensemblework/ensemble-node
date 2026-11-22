@@ -14,6 +14,7 @@ import { moveQueued, withoutQueued } from "./session";
 import { mergeMessage } from "./text";
 import { toast, toastError } from "./toast";
 import { runEnded } from "./work-log";
+import { turnLive } from "./trace";
 import { mergeConversationSnapshot, roomWithMessage } from "./conversations";
 import type {
   Activity,
@@ -34,6 +35,7 @@ import type {
   Me,
   Message,
   ModelList,
+  NodeMemory,
   NodePublic,
   PeerRequest,
   QueuedRun,
@@ -45,6 +47,7 @@ import type {
   SessionAction,
   StatusCard,
   TrustView,
+  TurnTraceView,
   WorkMode,
 } from "./types";
 
@@ -104,6 +107,8 @@ export const keys = {
   live: (jobId: string) => ["live", jobId] as const,
   /** A node's own captures on my computers. */
   nodeCaptures: (nodeId: string) => ["node-captures", nodeId] as const,
+  /** A node turn's trace (owner only). */
+  turnTrace: (turnId: string) => ["turn-trace", turnId] as const,
 };
 
 /** How often an active run on screen is read again. */
@@ -475,6 +480,41 @@ export function useLiveView(jobId: string, enabled: boolean) {
 /** A node's own captures on my computers, newest first. */
 export function useNodeCaptures(nodeId: string, enabled = true) {
   return useQuery({ queryKey: keys.nodeCaptures(nodeId), queryFn: () => evidence.ofNode(nodeId).then((rows) => [...rows].reverse()), enabled: Boolean(nodeId) && enabled, staleTime: 30_000 });
+}
+
+/** A node turn's trace, read while its drawer is open, and again every few seconds while the turn still runs (its trace is kept when it ends). */
+export function useTurnTrace(turnId: string | null) {
+  return useQuery({
+    queryKey: keys.turnTrace(turnId ?? ""),
+    queryFn: () => api<TurnTraceView>(`/api/node/turns/${encodeURIComponent(turnId!)}/trace`),
+    enabled: Boolean(turnId),
+    retry: (count, error) => !(error instanceof ApiError && error.status < 500) && count < 2,
+    refetchInterval: (query) => (query.state.data && !query.state.data.trace && turnLive(query.state.data.turn) ? 4000 : false),
+  });
+}
+
+/** A node's memories and my own memories about me, live ones first (`GET /api/node/nodes/:id/memory`). */
+export function useMemories(nodeId: string) {
+  return useQuery({ queryKey: keys.memory(nodeId), queryFn: () => api<{ memories: NodeMemory[] }>(`/api/node/nodes/${nodeId}/memory`).then((result) => result.memories) });
+}
+
+/**
+ * Changes one memory (`PATCH …/memory/:memoryId`): new words make a revision that replaces it (a new id), a
+ * pin or an archive applies in place; or deletes it with its earlier revisions. The list is read again after.
+ * One per memory row, so a row stays busy until its own request ends. A failure is a notice from here, not
+ * from `mutate`, so it shows even when its row is gone by then (the drawer closed, or the memory was
+ * replaced meanwhile).
+ */
+export function useMemoryActions(nodeId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { memoryId: string; change: { content?: string; pinned?: boolean; archived?: boolean } | "delete" }): Promise<NodeMemory | null> =>
+      input.change === "delete"
+        ? api<void>(`/api/node/nodes/${nodeId}/memory/${input.memoryId}`, { method: "DELETE" }).then(() => null)
+        : api<{ memory: NodeMemory }>(`/api/node/nodes/${nodeId}/memory/${input.memoryId}`, { method: "PATCH", body: input.change }).then((result) => result.memory),
+    onError: toastError,
+    onSettled: () => client.invalidateQueries({ queryKey: keys.memory(nodeId) }),
+  });
 }
 
 /** Sends or discards one held capture; its card settles when all of its files are answered. */

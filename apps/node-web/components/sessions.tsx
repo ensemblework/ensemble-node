@@ -9,7 +9,7 @@ import { api } from "@/lib/api";
 import { toast } from "@/lib/toast";
 import { requestJump } from "@/lib/jump";
 import { fileName, originalKey } from "@/lib/original-files";
-import { cardLink, runsCount, sessionPlace, sessionStatus } from "@/lib/session";
+import { cardLink, childrenLine, runsCount, sessionPlace, sessionStatus } from "@/lib/session";
 import { ago } from "@/lib/text";
 import type { SessionSummary } from "@/lib/types";
 import { useFileWorkspace } from "./files/workspace";
@@ -75,6 +75,7 @@ function SessionRow({ row }: { row: SessionSummary }) {
     <Drawer open={confirm} onClose={() => { if (!deletion.isPending) setConfirm(false); }} title="Delete session?" side="center">
       <p className="break-words text-sm font-medium">{row.title}</p>
       <p className="mt-2 text-sm leading-6 text-muted">Stop active work, cancel queued messages and permanently delete this {row.agentName} session&apos;s saved history on {row.computer ?? "its computer"}.</p>
+      {childrenLine(row.children) ? <p className="mt-2 text-sm leading-6 text-muted">{childrenLine(row.children)}</p> : null}
       <p className="mt-2 text-sm leading-6 text-muted">Project files and your chat messages stay. This cannot be undone. The computer must be online and running the latest Ensemble.</p>
       {deletion.error ? <div className="mt-3" role="alert"><Notice tone="error">{deletion.error.message}</Notice></div> : null}
       {deletion.isPending ? <p className="mt-3 text-xs text-muted" role="status">Stopping work and deleting saved agent history…</p> : null}

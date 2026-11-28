@@ -235,6 +235,8 @@ export type SessionSummary = {
   latestTask: string;
   summary: string;
   runs: number;
+  /** Sessions this one started (sub-agents, child threads) that Ensemble recorded: deleted with it. */
+  children?: number;
   lastActiveAt: string;
   deletion?: { state: "pending" | "deleted"; error?: string; until?: number } | null;
   usedBy?: Array<{ node: { id: string; name: string; slug: string }; room: { id: string; title: string; kind: string } | null }>;

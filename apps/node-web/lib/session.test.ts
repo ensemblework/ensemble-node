@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agentName, cardLink, handOverChoices, moveQueued, newestSessionCards, observedMissing, queuedLine, queueOrder, runsCount, sessionActions, sessionAgent, sessionLatest, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
+import { agentName, cardLink, childrenLine, handOverChoices, moveQueued, newestSessionCards, observedMissing, queuedLine, queueOrder, runsCount, sessionActions, sessionAgent, sessionLatest, sessionLive, sessionManager, sessionPlace, sessionStatus, settingsLine, settingsRows, settingValue, withoutQueued } from "./session";
 import type { QueuedRun } from "./types";
 
 test("settings asked for, sent and reported read side by side; not reported is said, and changes are marked", () => {
@@ -114,4 +114,11 @@ test("a session's or a run's card, as a link into its conversation", () => {
   assert.equal(cardLink({ messageId: null, roomId: "crew" }), null);
   assert.equal(cardLink({ messageId: "m1" }), null, "a run from before roomId");
   assert.equal(cardLink(null), null, "a Hub or CLI session has no card");
+});
+
+test("deleting a session says how many sessions it started go with it", () => {
+  assert.equal(childrenLine(undefined), null);
+  assert.equal(childrenLine(0), null);
+  assert.equal(childrenLine(1), "This session started 1 more session. It'll be deleted too.");
+  assert.equal(childrenLine(4), "This session started 4 more sessions. They'll be deleted too.");
 });

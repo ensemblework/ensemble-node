@@ -25,6 +25,12 @@ const AGENTS: Record<string, string> = {
 /** An agent's name: "claude-code" → "Claude Code"; names it does not know stay as given. */
 export const agentName = (value: string): string => AGENTS[value.trim().toLowerCase()] ?? value.trim();
 
+/** The delete confirmation's line for the sessions this one started (the same words as Ensemble's own card). */
+export function childrenLine(count: number | undefined): string | null {
+  if (!count || count <= 0) return null;
+  return count === 1 ? "This session started 1 more session. It'll be deleted too." : `This session started ${count} more sessions. They'll be deleted too.`;
+}
+
 const text = (value: unknown): string | null => (typeof value === "string" && value.trim() ? value.trim() : null);
 
 /**
